@@ -1,5 +1,4 @@
-# MIRA
-## Memory, Intelligence, Recall, Assistant
+# MIRA - Memory, Intelligence, Recall, Assistant
 
 **Project Type:** Personal AI Knowledge Base · Context-Aware AI Assistant · Proactive Personal Agent
 
