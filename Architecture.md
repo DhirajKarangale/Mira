@@ -31,47 +31,76 @@ The initial design prioritizes local information management and controlled shari
 
 ## 4. Architecture & Data Flow
 
-MIRA is divided into five decoupled modules communicating through defined public interfaces and asynchronous queues.
+MIRA is divided into six decoupled modules communicating through a centralized Message Broker, defined public interfaces, and asynchronous queues.
 
 ```text
-                 ┌──────────────────┐
-                 │      Client      │
-                 │  User interaction│
-                 └────────┬─────────┘
-                          │ User request
-                          ▼
-                 ┌──────────────────┐
-                 │      Engine      │◄──────────────┐
-                 │  LLM coordination│               │
-                 └────────┬─────────┘               │
-                          │ Retrieve context         │ Response / context
-                          ▼                          │
-                 ┌──────────────────┐               │
-                 │      Memory      │───────────────┘
-                 │ Short/long-term  │
-                 └────────▲─────────┘
-                          │ Extracted information
-                          │
-                 ┌────────┴─────────┐
-                 │     Collector    │
-                 │ Background data │
-                 └──────────────────┘
-
-          Vault provides controlled access to credentials
-          and internal application data for authorized modules.
+                          ┌──────────────────┐
+                          │      Client      │
+                          │  User interaction│
+                          └────────┬─────────┘
+                                   │
+                                   ▼
+                    ┌──────────────────────────────┐
+                    │        Message Broker        │
+                    │   Redis Streams & HTTP API   │
+                    └───▲──────┬────────▲──────┬───┘
+                        │      │        │      │
+         ┌──────────────┘      │        │      └──────────────┐
+         ▼                     ▼        ▼                     ▼
+┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+│    Collector     │  │      Engine      │  │      Memory      │
+│ Background data  │  │ LLM coordination │  │ Short/long-term  │
+└──────────────────┘  └──────────────────┘  └──────────────────┘
+                               ▲
+                               │
+                      ┌────────┴─────────┐
+                      │      Vault       │
+                      │  Secure storage  │
+                      └──────────────────┘
 ```
 
 ### Main Data Flows
 
-1. **Background Memory Flow:** Collector gathers and extracts information, then passes useful data to Memory.
-2. **User Request Flow:** Client sends a request to Engine.
-3. **Context Retrieval Flow:** Engine asks Memory for relevant context.
-4. **AI Response Flow:** Engine sends the request and selected context to the cloud AI service, then returns the response to Client.
-5. **Secure Internal Data Flow:** Authorized modules access credentials and other internal data through Vault's public interface.
+1. **Centralized Messaging Backbone:** Each and every module connects directly to the Message Broker for inter-module communication, job distribution, and event streaming.
+2. **Background Memory Flow:** Collector pushes collected data batches to the Message Broker, which queues and forwards records to Memory via its callback URL.
+3. **User Request Flow:** Client posts requests as jobs to the Message Broker, which routes them to Engine.
+4. **Context Retrieval Flow:** Engine requests context from Memory through the Message Broker and receives context callbacks.
+5. **AI Response Flow:** Engine processes jobs with cloud AI services and routes results back through the Message Broker to Client callback endpoints.
+6. **Secure Internal Data Flow:** Authorized modules access credentials and internal configuration data through Vault's public interface.
 
-Modules communicate strictly through their public interfaces rather than importing or modifying internal implementations directly.
+Modules communicate strictly through defined public interfaces and the Message Broker rather than importing or modifying internal implementations directly.
 
 ## 5. Modules
+
+### Message Broker
+
+**Purpose:** Serve as the central asynchronous communication hub and job distribution system connecting all MIRA modules.
+
+**Responsibilities:**
+- Connect all MIRA modules (Client, Collector, Engine, Memory, Vault) through a unified messaging backbone.
+- Provide a POST endpoint to add jobs and events into Redis Streams.
+- Provide parallel GET endpoints / workers that consume streams concurrently and dispatch data to respective services with their callback URLs.
+- Manage message delivery guarantees, tracking, retries, and acknowledgments.
+
+**Technology Stack:**
+- **Language:** Python
+- **Message Store / Queue:** Redis (Redis Streams)
+- **API Framework:** FastAPI
+- **Async Concurrency:** Python `asyncio`
+- **HTTP Client:** `httpx` (for callback dispatching)
+
+**Endpoints & Processing Flow:**
+1. **Job Ingestion (POST Endpoint):**
+   - Receives jobs via `POST /jobs` from any module.
+   - Accepts payload containing `job_id`, `target_service` (or `stream_name`), data `payload`, and `callback_url`.
+   - Validates data and appends the job to the corresponding Redis Stream via `XADD`.
+   - Returns an immediate response confirming the job is queued.
+2. **Parallel Stream Consumers (GET Endpoints / Background Dispatchers):**
+   - Multiple GET endpoints / consumer loops run in parallel (powered by `asyncio`), each listening to designated Redis streams for specific target services.
+   - When a job arrives, the consumer reads the payload and dispatches an HTTP request to the target service's designated `callback_url`.
+3. **Acknowledgment & Retries:**
+   - Upon receiving a successful HTTP confirmation from the callback service, the message is acknowledged in the Redis Stream via `XACK`.
+   - Failed or unacknowledged deliveries remain queued for retries based on configured policy.
 
 ### Collector
 
@@ -80,7 +109,7 @@ Modules communicate strictly through their public interfaces rather than importi
 **Responsibilities:**
 - Run background collection tasks.
 - Extract useful information from collected sources.
-- Send extracted data to Memory for processing and storage.
+- Send extracted data to Memory via Message Broker for processing and storage.
 
 **Technology Stack:**
 - **Language:** Rust
@@ -108,9 +137,9 @@ Modules communicate strictly through their public interfaces rather than importi
    - If no match is found, run OCR to extract text and add the result to the cache.
    - Maintain the cache using LRU eviction, keeping a maximum of 5 entries.
 5. **Queue Storage:** Add extracted text to the storage queue with its capture timestamp, recorded consistently with timezone information.
-6. **Batch Dispatch:** Batch and send data to Memory every `MEMORY_BATCH_INTERVAL_SECS = 120` seconds.
+6. **Batch Dispatch:** Batch and send data to Memory via Message Broker's POST endpoint every `MEMORY_BATCH_INTERVAL_SECS = 120` seconds.
    - Use asynchronous processing.
-   - Retry failed submissions and retain queued records until Memory confirms receipt.
+   - Retry failed submissions and retain queued records until receipt confirmation is received.
 7. **Privacy Controls:** Respect privacy controls by pausing collection when requested and excluding configured sensitive applications.
 
 ### Engine
@@ -128,18 +157,17 @@ Modules communicate strictly through their public interfaces rather than importi
 - **LLM integration:** LangChain
 - **Workflow orchestration:** LangGraph (when needed)
 - **Data validation:** Pydantic
-- **Job queue:** Redis Streams
+- **Job queue:** Redis Streams (via Message Broker)
 - **Workers:** Python + asyncio
 - **API:** FastAPI (if HTTP endpoints are needed)
 
 **Flow:**
-1. **Requesting Module:** Generates a unique `job_id` and calls an Engine function with the `job_id`, payload, and callback URL.
-2. **Engine:** Validates the request and pushes the job into the appropriate Redis Stream.
-3. **Redis Streams:** Holds the job until a worker consumes it through the configured consumer group.
-4. **Worker:** Processes the job by calling the required LLM or embedding model.
-5. **Worker:** Stores the result, updates the job status, and sends the result to the callback URL with the same `job_id`.
-6. **Requesting Module:** Receives the response, matches it using its `job_id`, and continues its workflow.
-7. **Failure Handling:** Failed jobs are retried; exhausted retries are marked as failed so the requesting module can handle the error.
+1. **Requesting Module:** Generates a unique `job_id` and submits a job to Message Broker's POST endpoint with the `job_id`, payload, and callback URL.
+2. **Message Broker:** Ingests the job into the appropriate Redis Stream and dispatches it in parallel to Engine.
+3. **Worker:** Engine worker consumes and processes the job by calling the required LLM or embedding model.
+4. **Worker:** Stores the result, updates the job status, and sends the result to the callback URL with the same `job_id`.
+5. **Requesting Module:** Receives the response, matches it using its `job_id`, and continues its workflow.
+6. **Failure Handling:** Failed jobs are retried; exhausted retries are marked as failed so the requesting module can handle the error.
 
 ### Memory
 
@@ -149,7 +177,7 @@ Modules communicate strictly through their public interfaces rather than importi
 - Store information in appropriate formats.
 - Organize short-term and long-term memory.
 - Retrieve relevant information for other modules.
-- Accept useful extracted data from Collector.
+- Accept useful extracted data from Collector via Message Broker.
 
 **Technology Stack:**
 - **Language:** Python
@@ -161,7 +189,7 @@ Modules communicate strictly through their public interfaces rather than importi
 - **Time handling:** Python datetime with timezone-aware timestamps
 
 **Flow:**
-1. **Receive Data:** Memory receives information from Collector or other modules, including text content, timestamp, source, and project/application details.
+1. **Receive Data:** Memory receives information from Collector or other modules via Message Broker dispatch to its callback URL, including text content, timestamp, source, and project/application details.
 2. **Process Data:** Clean and structure the content, attach metadata, and generate embeddings through Engine.
 3. **Store Data:** Save embeddings and searchable metadata in Qdrant; store additional records and memory relationships in SQLite.
 4. **Short-Term Memory:** Keep recent events and context for quick retrieval and ongoing tasks.
