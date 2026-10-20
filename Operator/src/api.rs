@@ -25,9 +25,9 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/", get(root_handler))
         .route("/health", get(root_handler))
-        .route("/status", get(status_handler))
-        .route("/start", get(start_capture_handler))
-        .route("/stop", get(stop_capture_handler))
+        .route("/status", get(status_handler).post(status_handler))
+        .route("/start", get(start_capture_handler).post(start_capture_handler))
+        .route("/stop", get(stop_capture_handler).post(stop_capture_handler))
         .route("/delete", post(delete_screenshot_handler))
         .with_state(state)
 }
@@ -52,6 +52,7 @@ async fn status_handler(State(state): State<AppState>) -> impl IntoResponse {
             "service": "Operator",
             "status": if running { "started" } else { "stopped" },
             "is_running": running,
+            "is_capturing": running,
             "auto_start": auto_start,
             "capture_interval_secs": interval
         })),

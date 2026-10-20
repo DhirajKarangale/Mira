@@ -43,13 +43,141 @@ html, body, #root {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Hide scrollbars for horizontal nav */
+/* ==========================================================================
+   MIRA Reusable Global & Component Scrollbar Styling
+   - Slim (6px), modern, unobtrusive pill design
+   - Cyan hover/active glow matching MIRA theme
+   - Cross-browser (WebKit / Blink + standard Firefox scrollbar-width / scrollbar-color)
+   - Works across Windows, macOS, Linux, and all dynamic scrollable elements
+   - Supports both dark and light modes
+   ========================================================================== */
+
+/* 1. Standard CSS Scrollbars (Firefox & Standard-compliant engines) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+/* 2. WebKit / Chromium Scrollbars (Chrome, Edge, Safari, Opera, Brave) */
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-track:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background-color 0.18s ease-in-out, border-color 0.18s ease-in-out, box-shadow 0.18s ease-in-out;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(6, 182, 212, 0.5); /* MIRA Cyan glow */
+  border-color: rgba(6, 182, 212, 0.35);
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.35);
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background: rgba(6, 182, 212, 0.75);
+  box-shadow: 0 0 14px rgba(6, 182, 212, 0.55);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* 3. Reusable Classes: .custom-scrollbar & .mira-scrollbar */
+.custom-scrollbar,
+.mira-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar,
+.mira-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track,
+.mira-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb,
+.mira-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background-color 0.18s ease-in-out, border-color 0.18s ease-in-out, box-shadow 0.18s ease-in-out;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover,
+.mira-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(6, 182, 212, 0.5);
+  border-color: rgba(6, 182, 212, 0.35);
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.35);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:active,
+.mira-scrollbar::-webkit-scrollbar-thumb:active {
+  background: rgba(6, 182, 212, 0.75);
+  box-shadow: 0 0 14px rgba(6, 182, 212, 0.55);
+}
+
+.custom-scrollbar::-webkit-scrollbar-corner,
+.mira-scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* 4. Light Mode Theme Support */
+.light,
+[data-theme="light"],
+.light *,
+[data-theme="light"] * {
+  scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+}
+
+.light *::-webkit-scrollbar-thumb,
+[data-theme="light"] *::-webkit-scrollbar-thumb,
+.light .custom-scrollbar::-webkit-scrollbar-thumb,
+[data-theme="light"] .custom-scrollbar::-webkit-scrollbar-thumb,
+.light .mira-scrollbar::-webkit-scrollbar-thumb,
+[data-theme="light"] .mira-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.light *::-webkit-scrollbar-thumb:hover,
+[data-theme="light"] *::-webkit-scrollbar-thumb:hover,
+.light .custom-scrollbar::-webkit-scrollbar-thumb:hover,
+[data-theme="light"] .custom-scrollbar::-webkit-scrollbar-thumb:hover,
+.light .mira-scrollbar::-webkit-scrollbar-thumb:hover,
+[data-theme="light"] .mira-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(6, 182, 212, 0.65);
+  border-color: rgba(6, 182, 212, 0.4);
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.3);
+}
+
+/* 5. Utility to completely hide scrollbar when requested */
 .no-scrollbar::-webkit-scrollbar {
-  display: none;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 .no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
 }
 
 /* Hide native white browser number spinners in dark mode */

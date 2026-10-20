@@ -49,6 +49,7 @@ impl CaptureManager {
             "Started screenshot capture service (interval: {}s)",
             interval_secs
         ));
+        crate::local_state::save_local_state(true);
 
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(Duration::from_secs(interval_secs));
@@ -93,6 +94,7 @@ impl CaptureManager {
             }
 
             running_flag.store(false, Ordering::SeqCst);
+            crate::local_state::save_local_state(false);
             info!("Background screenshot capture loop exited cleanly.");
         });
 
@@ -103,6 +105,7 @@ impl CaptureManager {
         let mut sender_guard = self.stop_sender.lock().await;
 
         if !self.is_running.load(Ordering::SeqCst) {
+            crate::local_state::save_local_state(false);
             return Ok(false);
         }
 
@@ -111,6 +114,7 @@ impl CaptureManager {
         }
 
         self.is_running.store(false, Ordering::SeqCst);
+        crate::local_state::save_local_state(false);
         info!("Stopped background screenshot capture loop.");
         vault_logger::log_event("Stopped screenshot capture service");
 

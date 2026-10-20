@@ -3,6 +3,7 @@ mod broker_client;
 mod capture;
 mod config;
 mod flow;
+mod local_state;
 mod vault_logger;
 
 use api::{create_router, AppState};
@@ -91,7 +92,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let manager = CaptureManager::new();
 
-    if cfg.auto_start {
+    // Check local Operator state (persisted locally in operator_state.json)
+    let saved_state = local_state::load_local_state();
+    if saved_state.is_capturing {
+        info!("Resuming screenshot capture loop from saved local Operator state (is_capturing=true)...");
+        let resume_manager = manager.clone();
+        tokio::spawn(async move {
+            match resume_manager.start_capture().await {
+                Ok(true) => info!("Screenshot capture loop successfully resumed from local Operator state."),
+                Ok(false) => info!("Screenshot capture loop already running."),
+                Err(err) => tracing::error!("Failed to resume capture loop from local state: {}", err),
+            }
+        });
+    } else if cfg.auto_start {
         info!("AUTO_START is enabled in Vault config. Scheduling screenshot capture with a 10-second delay...");
         let auto_manager = manager.clone();
         tokio::spawn(async move {

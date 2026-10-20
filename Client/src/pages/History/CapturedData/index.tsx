@@ -19,16 +19,8 @@ const INITIAL_DEMO_RANGE: StoredDataRange = {
 };
 
 export const CapturedDataPage: FC = () => {
-  // Capturing execution status: Started vs Stopped (initialized synchronously from localStorage to prevent refresh flicker)
-  const [status, setStatus] = useState<CaptureStatus>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("mira_capture_status");
-      if (saved === "Started" || saved === "Stopped") {
-        return saved;
-      }
-    }
-    return "Stopped";
-  });
+  // Capturing execution status: Started vs Stopped (determined by Operator live status)
+  const [status, setStatus] = useState<CaptureStatus>("Stopped");
 
   // Auto-start configuration from Vault
   const [autoStart, setAutoStart] = useState<boolean>(false);
@@ -41,7 +33,7 @@ export const CapturedDataPage: FC = () => {
   // Modal state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  // Load initial operator configurations from Vault & Operator status
+  // Load initial operator configurations from Vault & Operator status directly from Operator service
   const loadInitialConfigs = useCallback(async () => {
     try {
       const vaultConfig = await fetchOperatorConfig();
@@ -56,7 +48,6 @@ export const CapturedDataPage: FC = () => {
       const opStatus = await fetchOperatorStatus();
       if (
         opStatus.is_running ||
-        opStatus.is_capturing ||
         opStatus.status === "started" ||
         opStatus.status === "Started"
       ) {
@@ -65,15 +56,18 @@ export const CapturedDataPage: FC = () => {
         setStatus("Stopped");
       }
     } catch {
-      // Fallback
+      setStatus("Stopped");
     }
   }, []);
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("mira_capture_status");
+    }
     loadInitialConfigs();
   }, [loadInitialConfigs]);
 
-  // Toggle capturing status: Started <-> Stopped with persistent backend and local sync
+  // Toggle capturing status: Started <-> Stopped directly via Operator service
   const handleToggleStatus = async () => {
     const nextStatus: CaptureStatus = status === "Stopped" ? "Started" : "Stopped";
     setStatus(nextStatus);
@@ -85,6 +79,8 @@ export const CapturedDataPage: FC = () => {
       }
     } catch (err) {
       console.warn("Could not toggle capturing status:", err);
+      // Revert if Operator request failed
+      setStatus(status);
     }
   };
 
