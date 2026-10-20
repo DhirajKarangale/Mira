@@ -40,7 +40,7 @@ export function App() {
       {/* Main Content Area - Occupies entire remaining area below the header */}
       <main
         id="main-content-viewport"
-        className="flex-1 relative w-full overflow-hidden bg-radial from-zinc-900/20 via-[#080c14] to-[#04070d]"
+        className="flex-1 relative w-full h-[calc(100vh-2.5rem)] overflow-hidden bg-radial from-zinc-900/20 via-[#080c14] to-[#04070d]"
         role="tabpanel"
         aria-live="polite"
       >
