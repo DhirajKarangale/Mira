@@ -7,6 +7,7 @@ pub const SCREENSHOT_CONSUMER_KEY: &str = "screenshot_process";
 pub struct ScreenshotJob {
     pub job_id: String,
     pub consumer_key: String,
+    pub os: String,
     pub app_name: String,
     pub timestamp: String,
     pub image_path: String,

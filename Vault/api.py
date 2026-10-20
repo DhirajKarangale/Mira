@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+import platform
+import sys
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -158,3 +160,35 @@ async def trigger_cleanup():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": f"Cleanup failed: {str(e)}"}
         )
+
+
+def detect_os() -> str:
+    os_name = platform.system()
+    if os_name == "Windows":
+        try:
+            win_ver = sys.getwindowsversion()
+            version = "11" if win_ver.build >= 22000 else "10"
+        except Exception:
+            version = platform.release()
+        return f"Windows {version}"
+    elif os_name == "Darwin":
+        mac_ver = platform.mac_ver()[0]
+        ver_major = mac_ver.split(".")[0] if mac_ver else ""
+        return f"macOS {ver_major}".strip()
+    elif os_name == "Linux":
+        try:
+            import distro
+            return distro.name(pretty=True)
+        except Exception:
+            return f"Linux {platform.release()}"
+    return f"{os_name} {platform.release()}".strip()
+
+
+@router.get(
+    "/os",
+    response_model=str,
+    status_code=status.HTTP_200_OK
+)
+async def get_os() -> str:
+    return detect_os()
+

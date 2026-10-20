@@ -115,6 +115,22 @@ Retrieves configuration for a module (e.g. `logs`, `message_broker`) or single k
 
 ---
 
+### 2.6 OS Detection
+`GET /os`
+
+Detects the host operating system and returns its name and version.
+
+- **Request Example:**
+  ```bash
+  curl http://127.0.0.1:8001/os
+  ```
+- **Response (`200 OK`):**
+  ```json
+  "Windows 11"
+  ```
+
+---
+
 ## 3. How to Run
 
 ### Install Dependencies

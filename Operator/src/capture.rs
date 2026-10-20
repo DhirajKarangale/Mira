@@ -259,14 +259,19 @@ pub fn capture_silent_screenshot() -> Result<CapturedScreenshot, Box<dyn std::er
         job_id, width, height, app_name, output_path
     );
 
-    let abs_path = match std::fs::canonicalize(&output_path) {
+    let raw_abs_path = match std::fs::canonicalize(&output_path) {
         Ok(p) => p.to_string_lossy().to_string(),
         Err(_) => output_path.to_string_lossy().to_string(),
     };
+    let abs_path = raw_abs_path
+        .strip_prefix(r"\\?\")
+        .unwrap_or(&raw_abs_path)
+        .to_string();
 
     let job = ScreenshotJob {
         job_id,
         consumer_key: SCREENSHOT_CONSUMER_KEY.to_string(),
+        os: config.os.clone(),
         app_name,
         timestamp,
         image_path: abs_path,

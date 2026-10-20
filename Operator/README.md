@@ -113,20 +113,37 @@ Every captured frame produces a job sent to Message Broker (`POST /jobs`):
 | :--- | :--- | :--- |
 | `job_id` | `String` (UUID v4) | Unique identifier for the capture frame. |
 | `consumer_key` | `String` | Stream routing key (`screenshot_process`). |
+| `os` | `String` | Host operating system retrieved from Vault (`Windows 11`, `Windows 10`, `macOS`, `Linux`, etc.). |
 | `app_name` | `String` | Active foreground process name (e.g. `msedge.exe`, `Code.exe`). |
 | `timestamp` | `String` | Formatted timestamp: `dd/mm/yyyyTHH:mm:ss`. |
-| `image_path` | `String` | Absolute path to the saved PNG screenshot file (`AppName_timestamp.png`). |
+| `image_path` | `String` | Absolute path to the saved PNG screenshot file on the host filesystem (`<project_path>/Operator/screenshots/<AppName>_<timestamp>.png`). Dynamically adapts to the host OS and installation directory. |
 
-**Example Job Object:**
+**Example Job Object (Windows):**
 ```json
 {
   "job_id": "786a78ce-e62d-4108-9e4e-5349fceb7e9c",
   "consumer_key": "screenshot_process",
+  "os": "Windows 11",
   "app_name": "msedge.exe",
   "timestamp": "20/10/2026T13:13:45",
   "image_path": "E:\\FullStack\\Mira\\Operator\\screenshots\\msedge_20-10-2026T13-13-45.png"
 }
 ```
+
+**Example Job Object (Linux / macOS):**
+```json
+{
+  "job_id": "786a78ce-e62d-4108-9e4e-5349fceb7e9c",
+  "consumer_key": "screenshot_process",
+  "os": "Ubuntu 22.04",
+  "app_name": "chrome",
+  "timestamp": "20/10/2026T13:13:45",
+  "image_path": "/home/user/Mira/Operator/screenshots/chrome_20-10-2026T13-13-45.png"
+}
+```
+
+> [!NOTE]
+> `image_path` is resolved dynamically at runtime as the absolute local path on the host machine. It automatically conforms to the host filesystem separators (`\` on Windows, `/` on Linux/macOS) and adapts to wherever the project is cloned or launched from.
 
 ---
 

@@ -80,8 +80,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cfg = config::init_config().await;
     info!(
-        "Loaded configuration from Vault: CAPTURE_INTERVAL_SECS={}s",
-        cfg.capture_interval_secs
+        "Loaded configuration from Vault: CAPTURE_INTERVAL_SECS={}s, OS={}",
+        cfg.capture_interval_secs, cfg.os
     );
 
     vault_logger::log_event(format!(

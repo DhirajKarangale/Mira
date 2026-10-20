@@ -8,6 +8,7 @@ use tracing::info;
 pub struct OperatorConfig {
     pub capture_interval_secs: u64,
     pub screenshots_dir: PathBuf,
+    pub os: String,
 }
 
 static CONFIG: OnceLock<OperatorConfig> = OnceLock::new();
@@ -131,17 +132,57 @@ pub async fn init_config() -> &'static OperatorConfig {
         capture_interval_secs
     );
 
-    let screenshots_dir = std::env::var("SCREENSHOTS_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("screenshots"));
+    let os_endpoint = format!("{}/os", vault_url);
+    info!("Fetching OS from Vault at {}...", os_endpoint);
+    let os_response = client
+        .get(&os_endpoint)
+        .send()
+        .await
+        .unwrap_or_else(|e| panic!("Failed to connect to Vault at {}: {}", os_endpoint, e));
 
-    if let Err(e) = std::fs::create_dir_all(&screenshots_dir) {
-        panic!("Failed to create screenshots directory {:?}: {}", screenshots_dir, e);
+    if !os_response.status().is_success() {
+        panic!(
+            "Vault returned error status {} for endpoint {}",
+            os_response.status(),
+            os_endpoint
+        );
     }
+
+    let os: String = os_response
+        .json::<String>()
+        .await
+        .unwrap_or_else(|e| panic!("Failed to parse OS response from Vault at {}: {}", os_endpoint, e));
+
+    info!("Successfully loaded OS from Vault: {}", os);
+
+    let raw_screenshots_dir = if let Ok(dir) = std::env::var("SCREENSHOTS_DIR") {
+        PathBuf::from(dir)
+    } else if PathBuf::from("Operator").is_dir() {
+        PathBuf::from("Operator").join("screenshots")
+    } else {
+        PathBuf::from("screenshots")
+    };
+
+    if let Err(e) = std::fs::create_dir_all(&raw_screenshots_dir) {
+        panic!("Failed to create screenshots directory {:?}: {}", raw_screenshots_dir, e);
+    }
+
+    let screenshots_dir = match std::fs::canonicalize(&raw_screenshots_dir) {
+        Ok(p) => {
+            let s = p.to_string_lossy().to_string();
+            if let Some(stripped) = s.strip_prefix(r"\\?\") {
+                PathBuf::from(stripped)
+            } else {
+                p
+            }
+        }
+        Err(_) => raw_screenshots_dir,
+    };
 
     let config = OperatorConfig {
         capture_interval_secs,
         screenshots_dir,
+        os,
     };
 
     CONFIG.set(config).ok();
@@ -152,4 +193,9 @@ pub fn get_config() -> &'static OperatorConfig {
     CONFIG
         .get()
         .expect("Configuration must be initialized with init_config() before access")
+}
+
+#[allow(dead_code)]
+pub fn get_os() -> &'static str {
+    &get_config().os
 }
