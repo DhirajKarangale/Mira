@@ -3,11 +3,6 @@ use tracing::{error, info};
 
 pub const SCREENSHOT_CONSUMER_KEY: &str = "screenshot_process";
 
-/// Job payload as required by Section 4:
-/// - job_id: UUID
-/// - app_name: Name of the currently active application at capture time
-/// - timestamp: System timestamp in dd/mm/yyyyTHH:mm:ss format
-/// - image_path: Path to the saved screenshot file
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScreenshotJob {
     pub job_id: String,
@@ -15,19 +10,8 @@ pub struct ScreenshotJob {
     pub app_name: String,
     pub timestamp: String,
     pub image_path: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub width: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub height: Option<u32>,
 }
 
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-pub struct AddJobResponse {
-    pub message: String,
-}
-
-/// Dispatch the captured screenshot job to the Message Broker (which queues it into Redis Streams).
 pub async fn dispatch_screenshot_job(
     job: &ScreenshotJob,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

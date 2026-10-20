@@ -77,18 +77,11 @@ def create_app() -> FastAPI:
     app.include_router(vault_router)
 
     @app.get("/")
+    @app.get("/health")
     async def root():
         return {
-            "service": "MIRA Vault",
-            "status": "online",
-            "version": "1.0.0"
-        }
-
-    @app.get("/health")
-    async def health():
-        return {
-            "status": "healthy",
-            "service": "MIRA Vault"
+            "service": "Vault",
+            "status": "online"
         }
 
     return app

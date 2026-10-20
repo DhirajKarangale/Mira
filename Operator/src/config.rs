@@ -13,15 +13,12 @@ pub struct OperatorConfig {
 static CONFIG: OnceLock<OperatorConfig> = OnceLock::new();
 static SERVICE_URLS: OnceLock<HashMap<String, String>> = OnceLock::new();
 
-/// Structure representing response from Vault GET /config/operator
-/// Vault stores only the operator-specific parameters (CAPTURE_INTERVAL_SECS)
 #[derive(Debug, Deserialize)]
 struct VaultOperatorConfigResponse {
     #[serde(rename = "CAPTURE_INTERVAL_SECS")]
     capture_interval_secs: Option<u64>,
 }
 
-/// Find and load the global services.json file without any hardcoded fallback dictionaries
 pub fn load_service_urls() -> &'static HashMap<String, String> {
     SERVICE_URLS.get_or_init(|| {
         let candidate_paths = [
@@ -46,7 +43,6 @@ pub fn load_service_urls() -> &'static HashMap<String, String> {
     })
 }
 
-/// Get the base URL for any module by name from loaded services.json without fallback
 pub fn get_service_url(module_name: &str) -> String {
     let urls = load_service_urls();
     let key = module_name.to_lowercase();
@@ -57,7 +53,6 @@ pub fn get_service_url(module_name: &str) -> String {
         .to_string()
 }
 
-/// Get the Vault base URL strictly from services.json (or VAULT_URL env override)
 pub fn get_vault_url() -> String {
     std::env::var("VAULT_URL")
         .unwrap_or_else(|_| get_service_url("vault"))
@@ -65,7 +60,6 @@ pub fn get_vault_url() -> String {
         .to_string()
 }
 
-/// Get the Message Broker base URL strictly from services.json (or MESSAGE_BROKER_URL env override)
 pub fn get_message_broker_url() -> String {
     std::env::var("MESSAGE_BROKER_URL")
         .unwrap_or_else(|_| get_service_url("message_broker"))
@@ -73,7 +67,6 @@ pub fn get_message_broker_url() -> String {
         .to_string()
 }
 
-/// Get default operator host and port parsed strictly from services.json
 pub fn get_operator_host_and_port() -> (String, u16) {
     let op_url = get_service_url("operator");
     let clean = op_url
@@ -94,14 +87,11 @@ pub fn get_operator_host_and_port() -> (String, u16) {
     (host, port)
 }
 
-/// Fetch configuration strictly from Vault at startup, store it in memory, and provide it to callers.
-/// No fallbacks are permitted; fails fast if Vault is unreachable or configuration is missing.
 pub async fn init_config() -> &'static OperatorConfig {
     if let Some(cfg) = CONFIG.get() {
         return cfg;
     }
 
-    // Ensure global services.json is loaded
     load_service_urls();
 
     let vault_url = get_vault_url();
@@ -158,7 +148,6 @@ pub async fn init_config() -> &'static OperatorConfig {
     CONFIG.get().expect("Configuration initialized")
 }
 
-/// Retrieve the cached configuration from memory
 pub fn get_config() -> &'static OperatorConfig {
     CONFIG
         .get()

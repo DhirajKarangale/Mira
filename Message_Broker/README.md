@@ -18,7 +18,7 @@ The **Message Broker** is the centralized asynchronous communication hub connect
 Every endpoint has strictly one way to be called.
 
 ### 2.1 Service Health
-`GET /`
+`GET /` or `GET /health`
 
 - **Response:**
   ```json

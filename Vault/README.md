@@ -16,12 +16,12 @@ The **Vault** is the centralized service for secret management, configuration st
 ## 2. API Reference
 
 ### 2.1 Service Health
-`GET /`
+`GET /` or `GET /health`
 
 - **Response (`200 OK`):**
   ```json
   {
-    "service": "MIRA Vault",
+    "service": "Vault",
     "status": "online"
   }
   ```

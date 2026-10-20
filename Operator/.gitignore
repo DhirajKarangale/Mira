@@ -1,0 +1,7 @@
+target/
+*.log
+logs/
+**/logs/
+**/logs/**
+screenshots/
+*.png

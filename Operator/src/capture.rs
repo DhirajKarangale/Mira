@@ -6,11 +6,8 @@ use uuid::Uuid;
 use crate::broker_client::{ScreenshotJob, SCREENSHOT_CONSUMER_KEY};
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct CapturedScreenshot {
     pub job: ScreenshotJob,
-    pub width: u32,
-    pub height: u32,
 }
 
 #[cfg(windows)]
@@ -85,7 +82,6 @@ pub fn get_active_app_name() -> String {
             }
         }
 
-        // Fallback: window title text
         let mut title_buf = [0u16; 512];
         let title_len = GetWindowTextW(hwnd, title_buf.as_mut_ptr(), title_buf.len() as i32);
         if title_len > 0 {
@@ -157,7 +153,7 @@ fn capture_screen_native() -> Result<image::RgbaImage, Box<dyn std::error::Error
         let mut bmi: BITMAPINFO = std::mem::zeroed();
         bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
         bmi.bmiHeader.biWidth = width;
-        bmi.bmiHeader.biHeight = -height; // Negative height specifies top-down DIB
+        bmi.bmiHeader.biHeight = -height;
         bmi.bmiHeader.biPlanes = 1;
         bmi.bmiHeader.biBitCount = 32;
         bmi.bmiHeader.biCompression = BI_RGB;
@@ -173,7 +169,6 @@ fn capture_screen_native() -> Result<image::RgbaImage, Box<dyn std::error::Error
             DIB_RGB_COLORS,
         );
 
-        // Cleanup GDI objects immediately
         SelectObject(hdc_mem, old_bitmap);
         DeleteObject(hbitmap);
         DeleteDC(hdc_mem);
@@ -183,7 +178,6 @@ fn capture_screen_native() -> Result<image::RgbaImage, Box<dyn std::error::Error
             return Err("GetDIBits failed to extract image buffer".into());
         }
 
-        // Fast conversion from Windows BGRA to RGBA in-place
         for pixel in raw_pixels.chunks_exact_mut(4) {
             let b = pixel[0];
             let r = pixel[2];
@@ -199,7 +193,6 @@ fn capture_screen_native() -> Result<image::RgbaImage, Box<dyn std::error::Error
     }
 }
 
-/// Capture screen using xcap
 fn capture_screen_xcap() -> Result<image::RgbaImage, Box<dyn std::error::Error + Send + Sync>> {
     attach_to_active_desktop();
 
@@ -217,7 +210,6 @@ fn capture_screen_xcap() -> Result<image::RgbaImage, Box<dyn std::error::Error +
     Ok(image)
 }
 
-/// Capture image using primary native engine with xcap fallback
 fn capture_raw_image() -> Result<image::RgbaImage, Box<dyn std::error::Error + Send + Sync>> {
     #[cfg(windows)]
     {
@@ -232,8 +224,6 @@ fn capture_raw_image() -> Result<image::RgbaImage, Box<dyn std::error::Error + S
     capture_screen_xcap()
 }
 
-/// Silently capture the primary monitor without user notification or noise.
-/// Saves image to screenshots directory and generates the job object.
 pub fn capture_silent_screenshot() -> Result<CapturedScreenshot, Box<dyn std::error::Error + Send + Sync>> {
     let rgba_image = capture_raw_image()?;
     let width = rgba_image.width();
@@ -243,11 +233,26 @@ pub fn capture_silent_screenshot() -> Result<CapturedScreenshot, Box<dyn std::er
     let timestamp = Local::now().format("%d/%m/%YT%H:%M:%S").to_string();
     let app_name = get_active_app_name();
 
-    let config = crate::config::get_config();
-    let file_name = format!("{}.png", job_id);
-    let output_path: PathBuf = config.screenshots_dir.join(&file_name);
+    let base_app = app_name.strip_suffix(".exe").unwrap_or(&app_name);
+    let safe_app: String = base_app
+        .chars()
+        .map(|c| match c {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' | ' ' => '_',
+            _ => c,
+        })
+        .collect();
 
-    // Save image to disk silently
+    let file_timestamp = Local::now().format("%d-%m-%YT%H-%M-%S").to_string();
+    let mut file_name = format!("{}_{}.png", safe_app, file_timestamp);
+
+    let config = crate::config::get_config();
+    let mut output_path: PathBuf = config.screenshots_dir.join(&file_name);
+    if output_path.exists() {
+        let short_id = &job_id[..8];
+        file_name = format!("{}_{}_{}.png", safe_app, file_timestamp, short_id);
+        output_path = config.screenshots_dir.join(&file_name);
+    }
+
     rgba_image.save(&output_path)?;
     debug!(
         "Silent screenshot captured: {} ({}x{}) for app '{}' saved at {:?}",
@@ -265,13 +270,7 @@ pub fn capture_silent_screenshot() -> Result<CapturedScreenshot, Box<dyn std::er
         app_name,
         timestamp,
         image_path: abs_path,
-        width: Some(width),
-        height: Some(height),
     };
 
-    Ok(CapturedScreenshot {
-        job,
-        width,
-        height,
-    })
+    Ok(CapturedScreenshot { job })
 }

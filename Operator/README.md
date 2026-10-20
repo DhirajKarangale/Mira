@@ -1,20 +1,22 @@
 # Operator
 
-The **Operator** is the high-performance system automation and desktop capture service written in **Rust** using **Axum**, **Tokio**, and **GDI / xcap**.
+The **Operator** is the high-performance desktop capture and system automation service written in **Rust** using **Axum**, **Tokio**, and native **Windows GDI / xcap**.
 
 ---
 
 ## 1. What It Does
 
-- **Silent Screen Capture**: Captures desktop screen frames silently in the background at regular intervals without showing any notifications or interrupting user workflows.
+- **Silent Screen Capture**: Captures desktop screen frames silently in the background at regular intervals defined by `CAPTURE_INTERVAL_SECS` without notifications or user interruption.
 - **Active Application Detection**: Identifies the currently active foreground application executable name or window title at the exact moment of each capture.
-- **Job Generation & Queuing**: Formulates screenshot job objects with UUIDs, formatted timestamps, and image metadata, and streams them asynchronously to the **Message Broker** (`screenshot_process` consumer group) for the Memory module to process.
-- **Vault Configuration & Encrypted Logging**: Automatically pulls runtime configurations (including `CAPTURE_INTERVAL_SECS`) from Vault at startup and delivers asynchronous lifecycle and dispatch logs to Vault's encrypted log repository.
-- **Clean Background Lifecycle Management**: Exposes lightweight HTTP control APIs to initiate continuous background capture loops and cleanly terminate them.
+- **Job Generation & Queuing**: Creates screenshot job objects and streams them asynchronously to the **Message Broker** (`screenshot_process` consumer group) for downstream processing.
+- **Vault Configuration & Encrypted Logging**: Automatically pulls runtime configuration from Vault at startup and delivers asynchronous lifecycle and dispatch logs to Vault's encrypted log repository.
+- **Screenshot Cleanup**: Exposes an endpoint to delete processed screenshot files from disk.
 
 ---
 
 ## 2. API Reference
+
+Every endpoint has strictly one way to be called.
 
 ### 2.1 Service Health
 `GET /` or `GET /health`
@@ -23,15 +25,14 @@ The **Operator** is the high-performance system automation and desktop capture s
   ```json
   {
     "service": "Operator",
-    "status": "online",
-    "version": "1.0.0"
+    "status": "online"
   }
   ```
 
 ---
 
 ### 2.2 Start Screenshot Capture
-`GET /start` or `GET /capture/start`
+`GET /start`
 
 Initiates the continuous background capture loop ticking every `CAPTURE_INTERVAL_SECS`.
 
@@ -55,7 +56,7 @@ Initiates the continuous background capture loop ticking every `CAPTURE_INTERVAL
 ---
 
 ### 2.3 Stop Screenshot Capture
-`GET /stop` or `GET /capture/stop`
+`GET /stop`
 
 Cleanly signals the background capture task to terminate.
 
@@ -76,26 +77,29 @@ Cleanly signals the background capture task to terminate.
 
 ---
 
-### 2.4 Capture Service Status
-`GET /status` or `GET /capture/status`
+### 2.4 Delete Screenshot
+`POST /delete`
 
-Returns the current capture state, interval, total capture count, and metadata of the most recent job.
+Deletes the specified screenshot file from the local filesystem.
 
+- **Request Body:**
+  ```json
+  {
+    "image_path": "E:\\FullStack\\Mira\\Operator\\screenshots\\msedge_20-10-2026T13-13-45.png"
+  }
+  ```
 - **Response (`200 OK`):**
   ```json
   {
-    "is_running": true,
-    "capture_interval_secs": 10,
-    "total_captures": 14,
-    "last_job": {
-      "job_id": "786a78ce-e62d-4108-9e4e-5349fceb7e9c",
-      "consumer_key": "screenshot_process",
-      "app_name": "msedge.exe",
-      "timestamp": "20/10/2026T13:13:45",
-      "image_path": "E:\\FullStack\\Mira\\Operator\\screenshots\\786a78ce-e62d-4108-9e4e-5349fceb7e9c.png",
-      "width": 1536,
-      "height": 864
-    }
+    "status": "success",
+    "message": "Screenshot deleted successfully"
+  }
+  ```
+- **If file not found (`404 Not Found`):**
+  ```json
+  {
+    "status": "error",
+    "message": "Screenshot file not found"
   }
   ```
 
@@ -109,55 +113,34 @@ Every captured frame produces a job sent to Message Broker (`POST /jobs`):
 | :--- | :--- | :--- |
 | `job_id` | `String` (UUID v4) | Unique identifier for the capture frame. |
 | `consumer_key` | `String` | Stream routing key (`screenshot_process`). |
-| `app_name` | `String` | Active foreground process name (e.g. `chrome.exe`, `Code.exe`). |
+| `app_name` | `String` | Active foreground process name (e.g. `msedge.exe`, `Code.exe`). |
 | `timestamp` | `String` | Formatted timestamp: `dd/mm/yyyyTHH:mm:ss`. |
-| `image_path` | `String` | Absolute path to the saved PNG screenshot file. |
-| `width` | `u32` (optional) | Screen pixel width. |
-| `height` | `u32` (optional) | Screen pixel height. |
+| `image_path` | `String` | Absolute path to the saved PNG screenshot file (`AppName_timestamp.png`). |
 
----
-
-## 4. Module Architecture
-
-```text
-Operator/
-├── Cargo.toml
-├── README.md
-├── screenshots/          # Output directory for silent screenshot frames
-└── src/
-    ├── main.rs           # Entrypoint, server boot, tracing setup
-    ├── config.rs         # Vault configuration fetcher and in-memory cache
-    ├── vault_logger.rs   # Asynchronous encrypted audit logging to Vault
-    ├── broker_client.rs  # Message Broker HTTP and Redis job dispatcher
-    ├── capture.rs        # Silent screen capture engine and active window detection
-    ├── flow.rs           # Background capture loop and lifecycle manager
-    └── api.rs            # Axum HTTP routes and handlers
+**Example Job Object:**
+```json
+{
+  "job_id": "786a78ce-e62d-4108-9e4e-5349fceb7e9c",
+  "consumer_key": "screenshot_process",
+  "app_name": "msedge.exe",
+  "timestamp": "20/10/2026T13:13:45",
+  "image_path": "E:\\FullStack\\Mira\\Operator\\screenshots\\msedge_20-10-2026T13-13-45.png"
+}
 ```
 
 ---
 
-## 5. How to Run
+## 4. How to Run
 
-### Prerequisites
-- Rust 1.75+
-- MinGW / GCC or MSVC C++ toolchain
+### Install Dependencies
+Dependencies are defined in `Cargo.toml` and summarized in `dependencies.txt`.
+```bash
+cargo check
+```
 
-### Build
+### Start Server
+Run from the `Operator/` directory:
 ```bash
 cd Operator
-cargo build --release
+cargo run -- --port 8002
 ```
-
-### Run
-```bash
-# Default (port 8002):
-cargo run
-
-# Specify custom port parameter:
-cargo run -- --port 8005
-
-# Or running the binary directly:
-./target/release/operator.exe --port 8002
-./target/release/operator.exe 8002
-```
-Default listening address: `http://127.0.0.1:8002`

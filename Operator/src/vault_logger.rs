@@ -9,8 +9,6 @@ struct VaultLogPayload<'a> {
     data: &'a str,
 }
 
-/// Send a log entry to Vault's POST /logs endpoint.
-/// Spawns an asynchronous background task so it never blocks capture or request handling.
 pub fn log_event(message: impl Into<String>) {
     let msg = message.into();
     info!("[{}] {}", MODULE_NAME, msg);
@@ -30,9 +28,7 @@ pub fn log_event(message: impl Into<String>) {
             .unwrap_or_default();
 
         match client.post(&endpoint).json(&payload).send().await {
-            Ok(resp) if resp.status().is_success() => {
-                // Successfully delivered to Vault
-            }
+            Ok(resp) if resp.status().is_success() => {}
             Ok(resp) => {
                 error!(
                     "[{}] Vault log delivery failed with status {}: {}",

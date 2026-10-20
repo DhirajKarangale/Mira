@@ -48,6 +48,7 @@ def create_app() -> FastAPI:
     app.include_router(broker_router)
 
     @app.get("/")
+    @app.get("/health")
     async def root():
         return {
             "service": "Message Broker",
