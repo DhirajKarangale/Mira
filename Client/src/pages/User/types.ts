@@ -23,3 +23,12 @@ export type UserFormField = keyof UserFormState;
 export type UserFormErrors = Partial<Record<UserFormField, string>>;
 
 export type UserPageMode = "view" | "edit" | "add";
+
+export const DEFAULT_USER_DATA: UserFormState = {
+  user_name: "Dhiraj",
+  email: "dakarangale02@gmail.com",
+  phone_number: "+91 7620320595",
+  city: "Pune",
+  state: "Maharashtra",
+  country: "India",
+};

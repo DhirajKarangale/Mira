@@ -15,7 +15,13 @@ import {
 } from "lucide-react";
 import { addUserDetails, updateUserDetails } from "../api";
 import { validateField, validateUserForm, isFormValid } from "../validation";
-import type { UserDetails, UserFormState, UserFormField, UserFormErrors } from "../types";
+import {
+  DEFAULT_USER_DATA,
+  type UserDetails,
+  type UserFormState,
+  type UserFormField,
+  type UserFormErrors,
+} from "../types";
 import { cn } from "@/lib/utils";
 
 interface UserDetailsFormProps {
@@ -32,12 +38,12 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
   onCancel,
 }) => {
   const initialValues: UserFormState = {
-    user_name: initialData?.user_name ?? "",
-    email: initialData?.email ?? "",
-    phone_number: initialData?.phone_number ?? "",
-    city: initialData?.city ?? "",
-    state: initialData?.state ?? "",
-    country: initialData?.country ?? "",
+    user_name: initialData?.user_name || DEFAULT_USER_DATA.user_name,
+    email: initialData?.email || DEFAULT_USER_DATA.email,
+    phone_number: initialData?.phone_number || DEFAULT_USER_DATA.phone_number,
+    city: initialData?.city || DEFAULT_USER_DATA.city,
+    state: initialData?.state || DEFAULT_USER_DATA.state,
+    country: initialData?.country || DEFAULT_USER_DATA.country,
   };
 
   const [formData, setFormData] = useState<UserFormState>(initialValues);
