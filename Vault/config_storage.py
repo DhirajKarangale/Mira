@@ -153,6 +153,8 @@ def get_configuration(key: str) -> Dict[str, Any]:
         init_config_storage()
 
     normalized_key = key.strip().lower().replace("-", "_")
+    if normalized_key == "redis":
+        normalized_key = "message_broker"
 
     if normalized_key in _PARSED_SCHEMA:
         table_name = normalized_key
@@ -206,6 +208,8 @@ def update_configuration(table_name: str, updates: Dict[str, Any]) -> Dict[str, 
         init_config_storage()
 
     normalized_table = table_name.strip().lower().replace("-", "_")
+    if normalized_table == "redis":
+        normalized_table = "message_broker"
     if normalized_table not in _PARSED_SCHEMA:
         raise KeyError(f"Unknown configuration group '{table_name}'")
 

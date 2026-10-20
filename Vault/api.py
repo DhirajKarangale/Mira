@@ -102,6 +102,44 @@ async def update_logs_config_alias(request: LogConfigUpdateRequest):
     return await update_logs_config(request)
 
 
+class RedisConfigUpdateRequest(BaseModel):
+    REDIS_HOST: Optional[str] = None
+    REDIS_PORT: Optional[int] = Field(None, ge=1, le=65535)
+    REDIS_DB: Optional[int] = Field(None, ge=0, le=15)
+    REDIS_PASSWORD: Optional[str] = None
+    REDIS_PROTOCOL: Optional[int] = Field(None, ge=2, le=3)
+    REDIS_DECODE_RESPONSES: Optional[bool] = None
+    SERVER_HOST: Optional[str] = None
+    SERVER_RELOAD: Optional[bool] = None
+
+
+@router.post(
+    "/config/message_broker",
+    status_code=status.HTTP_200_OK
+)
+async def update_message_broker_config(request: RedisConfigUpdateRequest):
+    try:
+        updates = request.model_dump(exclude_unset=True)
+        if "REDIS_PASSWORD" in updates and updates["REDIS_PASSWORD"] == "":
+            updates["REDIS_PASSWORD"] = None
+        if not updates:
+            return config_storage.get_configuration("message_broker")
+        return config_storage.update_configuration("message_broker", updates)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to update Redis configurations: {str(e)}"}
+        )
+
+
+@router.post(
+    "/config/redis",
+    status_code=status.HTTP_200_OK
+)
+async def update_redis_config(request: RedisConfigUpdateRequest):
+    return await update_message_broker_config(request)
+
+
 class PaginatedLogsResponse(BaseModel):
     items: List[LogEntryResponse]
     total: int

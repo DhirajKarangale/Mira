@@ -1,0 +1,143 @@
+import { useState, useEffect, useCallback, type FC } from "react";
+import { useLocation, useNavigate, Routes, Route, Navigate } from "react-router-dom";
+import { Database, Sliders, Layers, RefreshCw, AlertCircle } from "lucide-react";
+import { ConsumerGroupsCard } from "./components/ConsumerGroupsCard";
+import { RedisConfigCard } from "./components/RedisConfigCard";
+import { fetchConsumerGroups } from "./api";
+import type { ConsumerGroup } from "./types";
+import { cn } from "@/lib/utils";
+
+export const RedisPage: FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Active view driven strictly by React Router URL: /history/redis/config vs /history/redis
+  const isConfigView = location.pathname.endsWith("/config");
+
+  const [groups, setGroups] = useState<ConsumerGroup[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadGroups = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchConsumerGroups();
+      setGroups(data);
+    } catch (err: any) {
+      console.error("Failed to fetch Redis consumer groups:", err);
+      setError(
+        err?.response?.data?.detail?.message ||
+          "Failed to connect to Message Broker. Ensure the service and Redis are running."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadGroups();
+  }, [loadGroups]);
+
+  return (
+    <div
+      id="history-subpage-redis"
+      className="flex flex-col h-full w-full overflow-hidden select-none bg-zinc-950/40"
+    >
+      {/* Top Header */}
+      <div className="flex-none px-6 py-4 border-b border-white/[0.06] bg-zinc-950/60 backdrop-blur-md">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 max-w-7xl mx-auto">
+          {/* Title and Badge */}
+          <div className="flex items-center gap-3.5">
+            <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-red-500/10 border border-red-500/25 text-red-400 shadow-[0_0_20px_rgba(239,68,68,0.2)]">
+              <Database className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold tracking-tight text-white">
+                  Redis
+                </h1>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-red-500/10 text-red-400 border border-red-500/20">
+                  Message Broker
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Real-time Redis stream telemetry, consumer groups, pending message counts, and Vault configuration
+              </p>
+            </div>
+          </div>
+
+          {/* Navigation Tabs (Driven strictly by React Router) */}
+          <div className="flex items-center p-1 rounded-xl bg-zinc-900/80 border border-white/[0.08] self-start sm:self-auto shadow-inner">
+            <button
+              type="button"
+              onClick={() => navigate("/history/redis")}
+              className={cn(
+                "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
+                !isConfigView
+                  ? "bg-red-600 text-white shadow-sm font-semibold shadow-red-950/60"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
+              )}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              Consumer Groups & Streams
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate("/history/redis/config")}
+              className={cn(
+                "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
+                isConfigView
+                  ? "bg-red-600 text-white shadow-sm font-semibold shadow-red-950/60"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
+              )}
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              Configuration
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content Viewport */}
+      <div className="flex-1 overflow-y-auto px-6 py-6">
+        <div className="max-w-7xl mx-auto">
+          {error && (
+            <div className="flex items-center justify-between p-4 mb-5 rounded-xl border border-red-500/30 bg-red-500/10 text-red-300 text-sm">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+                <span>{error}</span>
+              </div>
+              <button
+                type="button"
+                onClick={loadGroups}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-xs font-medium text-red-200 transition-colors cursor-pointer"
+              >
+                <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
+                Retry
+              </button>
+            </div>
+          )}
+
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <ConsumerGroupsCard
+                  groups={groups}
+                  loading={loading}
+                  onRefresh={loadGroups}
+                />
+              }
+            />
+            <Route path="config" element={<RedisConfigCard />} />
+            <Route path="*" element={<Navigate to="/history/redis" replace />} />
+          </Routes>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default RedisPage;

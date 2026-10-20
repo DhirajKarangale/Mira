@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type FC } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Terminal, Sliders } from "lucide-react";
 import { LogFiltersBar } from "./components/LogFiltersBar";
 import { LogList } from "./components/LogList";
@@ -9,9 +10,13 @@ import type { LogEntry, LogFilters } from "./types";
 import { useDebounce } from "@/hooks/useDebounce";
 import { cn } from "@/lib/utils";
 
-type LogsSubView = "logs" | "config";
-
 export const LogsPage: FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Active view driven strictly by React Router URL: /history/logs/config vs /history/logs
+  const isConfigView = location.pathname.endsWith("/config");
+
   const getTodayString = () => {
     const d = new Date();
     const year = d.getFullYear();
@@ -20,8 +25,6 @@ export const LogsPage: FC = () => {
     return `${year}-${month}-${day}`;
   };
 
-  const [activeView, setActiveView] = useState<LogsSubView>("logs");
-
   // All filters (search text, module, and date range) stored in filtersDraft
   const [filtersDraft, setFiltersDraft] = useState<LogFilters>({
     search: "",
@@ -29,13 +32,25 @@ export const LogsPage: FC = () => {
     endDate: getTodayString(),
     moduleName: "all",
   });
+  const [pageDraft, setPageDraft] = useState<number>(1);
 
-  // Debounce all filter changes together (350ms)
-  const debouncedFilters = useDebounce(filtersDraft, 350);
+  // Debounce both pagination page changes and filter changes together (300ms)
+  const debouncedQuery = useDebounce(
+    useMemo(
+      () => ({
+        page: pageDraft,
+        search: filtersDraft.search,
+        startDate: filtersDraft.startDate,
+        endDate: filtersDraft.endDate,
+        moduleName: filtersDraft.moduleName,
+      }),
+      [pageDraft, filtersDraft]
+    ),
+    300
+  );
 
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [total, setTotal] = useState<number>(0);
-  const [page, setPage] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(false);
 
   // Request counter to cancel stale in-flight responses and prevent race conditions
@@ -85,16 +100,21 @@ export const LogsPage: FC = () => {
     []
   );
 
-  // Trigger load when debounced filters or page change
+  // Trigger server-side load when not in config view and debounced query changes
   useEffect(() => {
-    if (activeView === "logs") {
-      loadLogs(page, debouncedFilters);
+    if (!isConfigView) {
+      loadLogs(debouncedQuery.page, {
+        search: debouncedQuery.search,
+        startDate: debouncedQuery.startDate,
+        endDate: debouncedQuery.endDate,
+        moduleName: debouncedQuery.moduleName,
+      });
     }
-  }, [activeView, page, debouncedFilters, loadLogs]);
+  }, [isConfigView, debouncedQuery, loadLogs]);
 
   const handleFilterChange = (partial: Partial<LogFilters>) => {
     setFiltersDraft((prev) => ({ ...prev, ...partial }));
-    setPage(1);
+    setPageDraft(1);
   };
 
   const handleResetFilters = () => {
@@ -106,12 +126,12 @@ export const LogsPage: FC = () => {
       moduleName: "all",
     };
     setFiltersDraft(defaultFilters);
-    setPage(1);
+    setPageDraft(1);
     loadLogs(1, defaultFilters);
   };
 
   const handlePageChange = (newPage: number) => {
-    setPage(newPage);
+    setPageDraft(newPage);
   };
 
   return (
@@ -119,7 +139,7 @@ export const LogsPage: FC = () => {
       id="logs-subpage-container"
       className="flex flex-col h-full w-full overflow-hidden bg-[#080c14] select-none"
     >
-      {/* Subpage Header with Navigation Tabs */}
+      {/* Subpage Header with Navigation Tabs driven by React Router */}
       <div className="flex items-center justify-between h-11 px-4 border-b border-white/[0.08] bg-zinc-950/90 shrink-0 backdrop-blur-md">
         <div className="flex items-center gap-2">
           <div className="flex items-center justify-center w-6 h-6 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-400">
@@ -133,15 +153,15 @@ export const LogsPage: FC = () => {
           </span>
         </div>
 
-        {/* View Switcher: Live Logs vs Config */}
+        {/* View Switcher: Live Logs vs Config driven by React Router */}
         <div className="flex items-center gap-1 p-0.5 rounded-lg bg-zinc-900 border border-white/10 text-xs">
           <button
             type="button"
             id="tab-btn-logs-viewer"
-            onClick={() => setActiveView("logs")}
+            onClick={() => navigate("/history/logs")}
             className={cn(
               "flex items-center gap-1.5 px-3 py-1 rounded-md transition-all font-medium cursor-pointer outline-none",
-              activeView === "logs"
+              !isConfigView
                 ? "bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.15)]"
                 : "text-zinc-400 hover:text-zinc-200"
             )}
@@ -158,10 +178,10 @@ export const LogsPage: FC = () => {
           <button
             type="button"
             id="tab-btn-logs-config"
-            onClick={() => setActiveView("config")}
+            onClick={() => navigate("/history/logs/config")}
             className={cn(
               "flex items-center gap-1.5 px-3 py-1 rounded-md transition-all font-medium cursor-pointer outline-none",
-              activeView === "config"
+              isConfigView
                 ? "bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.15)]"
                 : "text-zinc-400 hover:text-zinc-200"
             )}
@@ -172,9 +192,9 @@ export const LogsPage: FC = () => {
         </div>
       </div>
 
-      {/* Main View Area */}
-      {activeView === "config" ? (
-        <LogConfigCard onSaved={() => loadLogs(page, debouncedFilters)} />
+      {/* Main View Area driven by React Router route */}
+      {isConfigView ? (
+        <LogConfigCard onSaved={() => loadLogs(pageDraft, filtersDraft)} />
       ) : (
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {/* Top Filters Bar */}
@@ -182,7 +202,7 @@ export const LogsPage: FC = () => {
             filters={filtersDraft}
             onFilterChange={handleFilterChange}
             onResetFilters={handleResetFilters}
-            onRefresh={() => loadLogs(page, debouncedFilters)}
+            onRefresh={() => loadLogs(pageDraft, filtersDraft)}
             isFiltered={isFiltered}
             loading={loading}
           />
@@ -198,9 +218,9 @@ export const LogsPage: FC = () => {
           {/* Scrollable Logs List (shows animating circle if empty & loading) */}
           <LogList logs={logs} loading={loading} />
 
-          {/* Bottom Pagination Bar */}
+          {/* Bottom Pagination Bar with Server-Side Pagination and Debounce */}
           <LogPagination
-            page={page}
+            page={pageDraft}
             total={total}
             limit={PAGE_LIMIT}
             onPageChange={handlePageChange}

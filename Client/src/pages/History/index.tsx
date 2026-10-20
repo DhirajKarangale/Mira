@@ -1,11 +1,11 @@
-import { useState, type FC } from "react";
+import type { FC } from "react";
+import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Sidebar, type SidebarItem } from "@/components/Sidebar";
-import { Camera, MessageSquare, Terminal, Network } from "lucide-react";
-import type { HistorySubTabId } from "./types";
+import { Camera, MessageSquare, Terminal, Database } from "lucide-react";
 import { CapturedDataPage } from "./CapturedData";
 import { ChatsPage } from "./Chats";
 import { LogsPage } from "./Logs";
-import { MessageBrokerDataPage } from "./MessageBrokerData";
+import { RedisPage } from "./Redis";
 
 const HISTORY_SIDEBAR_ITEMS: readonly SidebarItem[] = [
   {
@@ -24,30 +24,19 @@ const HISTORY_SIDEBAR_ITEMS: readonly SidebarItem[] = [
     icon: Terminal,
   },
   {
-    key: "message-broker-data",
-    name: "Message Broker Data",
-    icon: Network,
+    key: "redis",
+    name: "Redis",
+    icon: Database,
   },
 ] as const;
 
 export const HistoryPage: FC = () => {
-  const [activeSubTab, setActiveSubTab] =
-    useState<HistorySubTabId>("captured-data");
+  const location = useLocation();
+  const navigate = useNavigate();
 
-  const renderActiveSubpage = () => {
-    switch (activeSubTab) {
-      case "captured-data":
-        return <CapturedDataPage />;
-      case "chats":
-        return <ChatsPage />;
-      case "logs":
-        return <LogsPage />;
-      case "message-broker-data":
-        return <MessageBrokerDataPage />;
-      default:
-        return <CapturedDataPage />;
-    }
-  };
+  // Extract active subtab from current URL e.g. /history/redis -> "redis"
+  const segments = location.pathname.split("/").filter(Boolean);
+  const activeSubTab = segments[1] || "captured-data";
 
   return (
     <div
@@ -57,19 +46,27 @@ export const HistoryPage: FC = () => {
       {/* History Sidebar for subpages */}
       <Sidebar
         items={HISTORY_SIDEBAR_ITEMS}
-        activeKey={activeSubTab}
-        onSelect={(key) => setActiveSubTab(key as HistorySubTabId)}
+        activeKey={activeSubTab === "message-broker-data" ? "redis" : activeSubTab}
+        onSelect={(key) => navigate(`/history/${key}`)}
         title="History"
         defaultCollapsed={false}
         className="border-r border-white/[0.06] bg-zinc-950/60"
       />
 
-      {/* History Subpage Viewport */}
+      {/* History Subpage Viewport Managed by React Router */}
       <div
         id="history-subpage-viewport"
         className="flex-1 relative h-full w-full overflow-hidden"
       >
-        {renderActiveSubpage()}
+        <Routes>
+          <Route path="/" element={<Navigate to="captured-data" replace />} />
+          <Route path="captured-data" element={<CapturedDataPage />} />
+          <Route path="chats" element={<ChatsPage />} />
+          <Route path="logs/*" element={<LogsPage />} />
+          <Route path="redis/*" element={<RedisPage />} />
+          <Route path="message-broker-data" element={<Navigate to="/history/redis" replace />} />
+          <Route path="*" element={<Navigate to="captured-data" replace />} />
+        </Routes>
       </div>
     </div>
   );

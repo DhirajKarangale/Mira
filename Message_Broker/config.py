@@ -32,14 +32,14 @@ def get_service_url(module_name: str) -> str:
 
 VAULT_URL: str = SERVICES["vault"]
 
-REDIS_HOST: str = ""
-REDIS_PORT: int = 0
+REDIS_HOST: str = "localhost"
+REDIS_PORT: int = 6379
 REDIS_DB: int = 0
 REDIS_PASSWORD: Optional[str] = None
 REDIS_PROTOCOL: int = 2
 REDIS_DECODE_RESPONSES: bool = True
 
-SERVER_HOST: str = ""
+SERVER_HOST: str = "127.0.0.1"
 SERVER_RELOAD: bool = False
 
 

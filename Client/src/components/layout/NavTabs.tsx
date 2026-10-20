@@ -1,4 +1,5 @@
 import type { FC } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   Sparkles,
   User,
@@ -8,13 +9,8 @@ import {
   Info,
   type LucideIcon,
 } from "lucide-react";
-import { NAV_ITEMS, type NavTabId } from "@/types/navigation";
+import { NAV_ITEMS } from "@/types/navigation";
 import { cn } from "@/lib/utils";
-
-interface NavTabsProps {
-  activeTab: NavTabId;
-  onTabChange: (tabId: NavTabId) => void;
-}
 
 const ICON_MAP: Record<string, LucideIcon> = {
   Sparkles,
@@ -25,7 +21,10 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Info,
 };
 
-export const NavTabs: FC<NavTabsProps> = ({ activeTab, onTabChange }) => {
+export const NavTabs: FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+
   return (
     <nav
       className="flex items-center gap-1 select-none"
@@ -34,7 +33,10 @@ export const NavTabs: FC<NavTabsProps> = ({ activeTab, onTabChange }) => {
       data-tauri-drag-region="false"
     >
       {NAV_ITEMS.map((item) => {
-        const isActive = activeTab === item.id;
+        const itemPath = `/${item.id}`;
+        const isActive =
+          location.pathname === itemPath ||
+          location.pathname.startsWith(`${itemPath}/`);
         const Icon = ICON_MAP[item.iconName] || Sparkles;
 
         return (
@@ -44,7 +46,7 @@ export const NavTabs: FC<NavTabsProps> = ({ activeTab, onTabChange }) => {
             role="tab"
             aria-selected={isActive}
             aria-controls={`page-content-${item.id}`}
-            onClick={() => onTabChange(item.id)}
+            onClick={() => navigate(itemPath)}
             className={cn(
               "group relative flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-150 cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-cyan-400",
               isActive

@@ -1,4 +1,4 @@
-import type { FC } from "react";
+import { useState, useEffect, type FC } from "react";
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,38 @@ export const LogPagination: FC<LogPaginationProps> = ({
 
   const canPrev = page > 1;
   const canNext = page < totalPages;
+
+  // Local state for direct page number typing
+  const [pageInput, setPageInput] = useState<string>(String(page));
+
+  useEffect(() => {
+    setPageInput(String(page));
+  }, [page]);
+
+  const handleInputChange = (val: string) => {
+    const cleaned = val.replace(/[^0-9]/g, "");
+    setPageInput(cleaned);
+    if (cleaned !== "") {
+      const num = parseInt(cleaned, 10);
+      if (num >= 1) {
+        const clamped = Math.min(totalPages, num);
+        onPageChange(clamped);
+      }
+    }
+  };
+
+  const handleInputBlur = () => {
+    if (!pageInput || pageInput.trim() === "") {
+      setPageInput(String(page));
+      return;
+    }
+    const num = parseInt(pageInput, 10);
+    const clamped = Math.min(totalPages, Math.max(1, isNaN(num) ? 1 : num));
+    setPageInput(String(clamped));
+    if (clamped !== page) {
+      onPageChange(clamped);
+    }
+  };
 
   // Build max 5 visible page numbers dynamically centered on current page
   const getPageNumbers = () => {
@@ -65,7 +97,24 @@ export const LogPagination: FC<LogPaginationProps> = ({
         <span className="text-zinc-600 mx-0.5">•</span>
 
         <span>Page</span>
-        <span className="font-semibold text-cyan-300">{page}</span>
+        <input
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          id="input-log-page-jump"
+          value={pageInput}
+          onChange={(e) => handleInputChange(e.target.value)}
+          onBlur={handleInputBlur}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              handleInputBlur();
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+          disabled={loading || totalPages <= 1}
+          className="w-9 h-6 px-1 text-center font-mono font-bold text-cyan-300 bg-zinc-900 border border-white/10 rounded focus:outline-none focus:border-cyan-500/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition-colors"
+          title="Type to jump directly to page (debounced)"
+        />
         <span>of</span>
         <span className="font-semibold text-zinc-200">{totalPages}</span>
       </div>

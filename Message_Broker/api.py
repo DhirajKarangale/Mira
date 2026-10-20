@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -82,17 +82,92 @@ async def delete_job(
         )
 
 
-@router.get("/consumer-groups/clean")
-async def clean_consumer_groups():
+class CleanConsumerGroupRequest(BaseModel):
+    group_name: Optional[str] = None
+    stream_name: Optional[str] = None
+    reset_stream: Optional[bool] = False
+
+
+@router.get("/redis/consumer-groups")
+async def get_redis_consumer_groups():
     try:
-        return await rs.clean_all_consumer_groups()
+        return await rs.get_consumer_groups_details()
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"message": str(e)}
+            detail={"message": f"Failed to retrieve consumer groups: {str(e)}"}
         )
 
 
+@router.get("/consumer-groups")
+async def list_consumer_groups(raw: bool = Query(False)):
+    if raw:
+        return cgm.get_all_consumer_groups()
+    try:
+        return await rs.get_consumer_groups_details()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to list consumer groups: {str(e)}"}
+        )
+
+
+@router.delete("/redis/consumer-groups/{group_name}")
+async def delete_consumer_group_by_path(group_name: str, stream_name: Optional[str] = Query(None)):
+    try:
+        return await rs.delete_consumer_group(group_name=group_name, stream_name=stream_name)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to delete consumer group: {str(e)}"}
+        )
+
+
+@router.delete("/redis/consumer-groups")
+async def delete_consumer_group_by_param(
+    group_name: str = Query(..., min_length=1),
+    stream_name: Optional[str] = Query(None)
+):
+    try:
+        return await rs.delete_consumer_group(group_name=group_name, stream_name=stream_name)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to delete consumer group: {str(e)}"}
+        )
+
+
+@router.post("/redis/clean")
+@router.post("/redis/clean-pending")
+async def clean_pending_messages(req: Optional[CleanConsumerGroupRequest] = None):
+    try:
+        group_name = req.group_name if req else None
+        stream_name = req.stream_name if req else None
+        reset_stream = req.reset_stream if req and req.reset_stream is not None else False
+        return await rs.clean_consumer_group(
+            group_name=group_name,
+            stream_name=stream_name,
+            reset_stream=reset_stream
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to clean messages: {str(e)}"}
+        )
+
+
+@router.post("/redis/consumer-groups/{group_name}/clean")
+async def clean_single_consumer_group(group_name: str, stream_name: Optional[str] = Query(None)):
+    try:
+        return await rs.clean_consumer_group(group_name=group_name, stream_name=stream_name)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to clean consumer group: {str(e)}"}
+        )
+
+
+@router.post("/redis/format")
 @router.get("/redis/format")
 async def format_redis():
     try:
@@ -100,10 +175,16 @@ async def format_redis():
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"message": str(e)}
+            detail={"message": f"Failed to format Redis: {str(e)}"}
         )
 
 
-@router.get("/consumer-groups")
-async def list_consumer_groups():
-    return cgm.get_all_consumer_groups()
+@router.get("/consumer-groups/clean")
+async def clean_consumer_groups_legacy():
+    try:
+        return await rs.clean_all_consumer_groups()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": str(e)}
+        )

@@ -1,17 +1,16 @@
 import type { FC } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { NavTabs } from "./NavTabs";
 import { WindowControls } from "./WindowControls";
-import type { NavTabId } from "@/types/navigation";
 import { Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface HeaderProps {
-  activeTab: NavTabId;
-  onTabChange: (tabId: NavTabId) => void;
-}
+export const Header: FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
 
-export const Header: FC<HeaderProps> = ({ activeTab, onTabChange }) => {
-  const isMiraActive = activeTab === "mira";
+  const isMiraActive =
+    location.pathname === "/" || location.pathname === "/mira";
 
   return (
     <header
@@ -27,7 +26,7 @@ export const Header: FC<HeaderProps> = ({ activeTab, onTabChange }) => {
         aria-selected={isMiraActive}
         aria-label="MIRA Client Home"
         data-tauri-drag-region="false"
-        onClick={() => onTabChange("mira")}
+        onClick={() => navigate("/mira")}
         className={cn(
           "group relative flex items-center gap-2 mr-3 px-2 py-1 rounded-md transition-all duration-150 cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-cyan-400",
           isMiraActive
@@ -80,7 +79,7 @@ export const Header: FC<HeaderProps> = ({ activeTab, onTabChange }) => {
         className="flex-1 flex items-center overflow-x-auto no-scrollbar"
         data-tauri-drag-region
       >
-        <NavTabs activeTab={activeTab} onTabChange={onTabChange} />
+        <NavTabs />
       </div>
 
       {/* Right side: Native Window Controls */}
