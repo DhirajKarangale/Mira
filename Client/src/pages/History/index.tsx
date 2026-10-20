@@ -19,14 +19,14 @@ const HISTORY_SIDEBAR_ITEMS: readonly SidebarItem[] = [
     icon: MessageSquare,
   },
   {
-    key: "logs",
-    name: "Logs",
-    icon: Terminal,
-  },
-  {
     key: "redis",
     name: "Redis",
     icon: Database,
+  },
+  {
+    key: "logs",
+    name: "Logs",
+    icon: Terminal,
   },
 ] as const;
 

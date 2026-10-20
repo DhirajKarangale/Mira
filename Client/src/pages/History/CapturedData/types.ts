@@ -3,11 +3,13 @@ export type CaptureStatus = "Started" | "Stopped";
 export interface OperatorConfigResponse {
   CAPTURE_INTERVAL_SECS?: number;
   AUTO_START?: boolean;
+  IS_CAPTURING?: boolean;
 }
 
 export interface OperatorStatusResponse {
   status: string;
   is_running: boolean;
+  is_capturing?: boolean;
   auto_start?: boolean;
   capture_interval_secs?: number;
 }

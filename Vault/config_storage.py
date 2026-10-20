@@ -161,7 +161,7 @@ def get_configuration(key: str) -> Dict[str, Any]:
     if normalized_key in _PARSED_SCHEMA:
         table_name = normalized_key
         table_spec = _PARSED_SCHEMA[table_name]
-        types = table_spec["types"]
+        types = table_spec.get("types", {})
 
         cursor = _DB_CONN.execute(f"SELECT * FROM {table_name} LIMIT 1")
         row = cursor.fetchone()
@@ -175,10 +175,16 @@ def get_configuration(key: str) -> Dict[str, Any]:
             if col_name.lower() == "id":
                 continue
 
-            col_type = types.get(col_name.lower(), "TEXT")
-            if "BOOLEAN" in col_type:
-                result[col_name] = bool(val) if val is not None else None
-            elif "INT" in col_type:
+            col_type = types.get(col_name.lower(), "")
+            if not col_type:
+                if col_name.upper().startswith(("IS_", "AUTO_", "SHOW_", "STORE_")):
+                    col_type = "BOOLEAN"
+                elif isinstance(val, int):
+                    col_type = "INTEGER"
+
+            if "BOOLEAN" in col_type.upper():
+                result[col_name] = bool(val) if val is not None else False
+            elif "INT" in col_type.upper():
                 result[col_name] = int(val) if val is not None else None
             else:
                 result[col_name] = val
@@ -216,6 +222,24 @@ def update_configuration(table_name: str, updates: Dict[str, Any]) -> Dict[str, 
         normalized_table = "user_details"
     if normalized_table not in _PARSED_SCHEMA:
         raise KeyError(f"Unknown configuration group '{table_name}'")
+
+    # Ensure all target columns exist dynamically
+    existing_info = _DB_CONN.execute(f"PRAGMA table_info({normalized_table})").fetchall()
+    existing_cols = {row[1].lower(): row[1] for row in existing_info}
+
+    for k, v in updates.items():
+        k_lower = k.lower()
+        if k_lower not in existing_cols:
+            col_type = "BOOLEAN DEFAULT 0" if isinstance(v, bool) or k.upper().startswith(("IS_", "AUTO_")) else (
+                "INTEGER DEFAULT 0" if isinstance(v, int) else "TEXT"
+            )
+            try:
+                logger.info(f"Dynamically adding column '{k}' to '{normalized_table}'")
+                _DB_CONN.execute(f"ALTER TABLE {normalized_table} ADD COLUMN {k} {col_type}")
+                _DB_CONN.commit()
+                existing_cols[k_lower] = k
+            except Exception as e:
+                logger.warning(f"Failed to add column {k} to {normalized_table}: {e}")
 
     set_clauses: List[str] = []
     values: List[Any] = []

@@ -143,6 +143,7 @@ async def update_redis_config(request: RedisConfigUpdateRequest):
 class OperatorConfigUpdateRequest(BaseModel):
     CAPTURE_INTERVAL_SECS: Optional[int] = Field(None, ge=1)
     AUTO_START: Optional[bool] = None
+    IS_CAPTURING: Optional[bool] = None
 
 
 @router.post(
@@ -163,6 +164,71 @@ async def update_operator_config(request: OperatorConfigUpdateRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": f"Failed to update Operator configurations: {str(e)}"}
+        )
+
+
+class OperatorStatusUpdateRequest(BaseModel):
+    is_capturing: Optional[bool] = None
+    status: Optional[str] = None
+    auto_start: Optional[bool] = None
+
+
+@router.get(
+    "/operator/status",
+    status_code=status.HTTP_200_OK
+)
+async def get_operator_status():
+    try:
+        config_data = config_storage.get_configuration("operator")
+        is_capturing = bool(config_data.get("IS_CAPTURING", config_data.get("is_capturing", 0)))
+        auto_start = bool(config_data.get("AUTO_START", config_data.get("auto_start", 0)))
+        interval = config_data.get("CAPTURE_INTERVAL_SECS", config_data.get("capture_interval_secs", 10))
+        return {
+            "status": "Started" if is_capturing else "Stopped",
+            "is_running": is_capturing,
+            "is_capturing": is_capturing,
+            "auto_start": auto_start,
+            "capture_interval_secs": interval,
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to retrieve operator status: {str(e)}"}
+        )
+
+
+@router.post(
+    "/operator/status",
+    status_code=status.HTTP_200_OK
+)
+async def update_operator_status(request: OperatorStatusUpdateRequest):
+    try:
+        updates = {}
+        if request.is_capturing is not None:
+            updates["IS_CAPTURING"] = 1 if request.is_capturing else 0
+        elif request.status is not None:
+            normalized = request.status.strip().lower()
+            updates["IS_CAPTURING"] = 1 if normalized in ("started", "start", "running", "true", "1") else 0
+
+        if request.auto_start is not None:
+            updates["AUTO_START"] = 1 if request.auto_start else 0
+
+        if updates:
+            config_storage.update_configuration("operator", updates)
+
+        config_data = config_storage.get_configuration("operator")
+        current_capturing = bool(config_data.get("IS_CAPTURING", config_data.get("is_capturing", 0)))
+        return {
+            "status": "Started" if current_capturing else "Stopped",
+            "is_running": current_capturing,
+            "is_capturing": current_capturing,
+            "auto_start": bool(config_data.get("AUTO_START", config_data.get("auto_start", 0))),
+            "capture_interval_secs": config_data.get("CAPTURE_INTERVAL_SECS", config_data.get("capture_interval_secs", 10)),
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to update operator status: {str(e)}"}
         )
 
 

@@ -40,9 +40,10 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
             <MonitorPlay className="w-7 h-7" />
           </div>
 
-          <div className="space-y-1.5">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
+          <div className="space-y-1.5 min-w-0">
+            {/* Header Title & Badges: Locked in single row to prevent jumpy wrapping */}
+            <div className="flex items-center gap-2 sm:gap-2.5 flex-nowrap">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white shrink-0 whitespace-nowrap">
                 Captured Data
               </h1>
 
@@ -50,7 +51,7 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
               <div
                 id="capture-status-badge"
                 className={cn(
-                  "inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border transition-all duration-200",
+                  "inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border transition-all duration-200 shrink-0 whitespace-nowrap select-none",
                   isStarted
                     ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
                     : "bg-zinc-800/80 border-white/[0.08] text-zinc-400"
@@ -58,7 +59,7 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
               >
                 {isStarted ? (
                   <>
-                    <span className="relative flex h-2 w-2">
+                    <span className="relative flex h-2 w-2 shrink-0">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
                     </span>
@@ -66,15 +67,15 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
                   </>
                 ) : (
                   <>
-                    <span className="inline-flex rounded-full h-2 w-2 bg-zinc-500" />
+                    <span className="inline-flex rounded-full h-2 w-2 bg-zinc-500 shrink-0" />
                     <span>Status: Stopped</span>
                   </>
                 )}
               </div>
 
-              {/* Vault Config tag */}
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono text-zinc-400 bg-white/[0.04] border border-white/[0.06]">
-                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+              {/* Vault Config tag - Stays locked on first row */}
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono text-zinc-400 bg-white/[0.04] border border-white/[0.06] shrink-0 whitespace-nowrap select-none">
+                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                 <span>Vault Managed</span>
               </span>
             </div>
@@ -87,7 +88,7 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
         </div>
 
         {/* Right Controls: Auto-Start Toggle Switch & Start/Stop Button */}
-        <div className="flex flex-wrap items-center gap-3 shrink-0 self-start lg:self-center">
+        <div className="flex items-center gap-3 shrink-0 self-start lg:self-center">
           {/* Sleek, Redesigned Auto-Start Switch */}
           <button
             type="button"
@@ -97,7 +98,7 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
             onClick={onToggleAutoStart}
             disabled={autoStartLoading}
             className={cn(
-              "group relative flex items-center gap-3 px-3.5 py-2 rounded-xl border transition-all duration-200 cursor-pointer select-none outline-none focus-visible:ring-2 focus-visible:ring-cyan-400",
+              "group relative flex items-center gap-3 h-[44px] px-3.5 rounded-xl border transition-all duration-200 cursor-pointer select-none outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 shrink-0",
               autoStart
                 ? "bg-cyan-500/10 border-cyan-500/35 text-cyan-200 shadow-[0_0_15px_rgba(6,182,212,0.15)] hover:border-cyan-500/50 hover:bg-cyan-500/15"
                 : "bg-zinc-850/80 border-white/[0.08] text-zinc-400 hover:border-white/[0.16] hover:bg-zinc-800/80 hover:text-zinc-200"
@@ -159,28 +160,28 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
             </div>
           </button>
 
-          {/* Start / Stop Immediate Capture Button */}
+          {/* Start / Stop Immediate Capture Button - Sleek, single-line gradient button */}
           <button
             type="button"
             id="btn-toggle-capture-status"
             onClick={onToggleStatus}
             className={cn(
-              "inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold shadow-lg transition-all duration-200 cursor-pointer active:scale-95",
+              "group relative inline-flex items-center justify-center gap-2.5 h-[44px] px-5 rounded-xl text-xs sm:text-sm font-semibold shadow-lg transition-all duration-200 cursor-pointer active:scale-95 shrink-0 select-none whitespace-nowrap outline-none focus-visible:ring-2",
               isStarted
-                ? "bg-rose-600/90 hover:bg-rose-600 text-white shadow-rose-600/25 border border-rose-400/30 hover:shadow-rose-600/40"
-                : "bg-emerald-600/90 hover:bg-emerald-600 text-white shadow-emerald-600/25 border border-emerald-400/30 hover:shadow-emerald-600/40"
+                ? "bg-gradient-to-r from-rose-500 via-rose-600 to-red-600 hover:from-rose-400 hover:to-red-500 text-white border border-rose-400/40 shadow-[0_0_20px_rgba(244,63,94,0.25)] hover:shadow-[0_0_28px_rgba(244,63,94,0.4)] focus-visible:ring-rose-400"
+                : "bg-gradient-to-r from-emerald-500 via-emerald-600 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white border border-emerald-400/40 shadow-[0_0_20px_rgba(16,185,129,0.25)] hover:shadow-[0_0_28px_rgba(16,185,129,0.4)] focus-visible:ring-emerald-400"
             )}
             title={isStarted ? "Stop screenshot capturing" : "Start screenshot capturing"}
           >
             {isStarted ? (
               <>
-                <Square className="w-4 h-4 fill-current" />
-                <span>Stop Capturing</span>
+                <Square className="w-3.5 h-3.5 fill-current shrink-0 transition-transform group-hover:scale-110" />
+                <span className="tracking-wide">Stop Capturing</span>
               </>
             ) : (
               <>
-                <Play className="w-4 h-4 fill-current" />
-                <span>Start Capturing</span>
+                <Play className="w-3.5 h-3.5 fill-current shrink-0 transition-transform group-hover:scale-110" />
+                <span className="tracking-wide">Start Capturing</span>
               </>
             )}
           </button>

@@ -19,8 +19,16 @@ const INITIAL_DEMO_RANGE: StoredDataRange = {
 };
 
 export const CapturedDataPage: FC = () => {
-  // Capturing execution status: Started vs Stopped
-  const [status, setStatus] = useState<CaptureStatus>("Stopped");
+  // Capturing execution status: Started vs Stopped (initialized synchronously from localStorage to prevent refresh flicker)
+  const [status, setStatus] = useState<CaptureStatus>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("mira_capture_status");
+      if (saved === "Started" || saved === "Stopped") {
+        return saved;
+      }
+    }
+    return "Stopped";
+  });
 
   // Auto-start configuration from Vault
   const [autoStart, setAutoStart] = useState<boolean>(false);
@@ -46,7 +54,12 @@ export const CapturedDataPage: FC = () => {
 
     try {
       const opStatus = await fetchOperatorStatus();
-      if (opStatus.is_running) {
+      if (
+        opStatus.is_running ||
+        opStatus.is_capturing ||
+        opStatus.status === "started" ||
+        opStatus.status === "Started"
+      ) {
         setStatus("Started");
       } else {
         setStatus("Stopped");
@@ -60,23 +73,18 @@ export const CapturedDataPage: FC = () => {
     loadInitialConfigs();
   }, [loadInitialConfigs]);
 
-  // Toggle capturing status: Started <-> Stopped
+  // Toggle capturing status: Started <-> Stopped with persistent backend and local sync
   const handleToggleStatus = async () => {
-    if (status === "Stopped") {
-      try {
+    const nextStatus: CaptureStatus = status === "Stopped" ? "Started" : "Stopped";
+    setStatus(nextStatus);
+    try {
+      if (nextStatus === "Started") {
         await startCapture();
-        setStatus("Started");
-      } catch {
-        // Fallback local toggle if Operator offline
-        setStatus("Started");
-      }
-    } else {
-      try {
+      } else {
         await stopCapture();
-        setStatus("Stopped");
-      } catch {
-        setStatus("Stopped");
       }
+    } catch (err) {
+      console.warn("Could not toggle capturing status:", err);
     }
   };
 
