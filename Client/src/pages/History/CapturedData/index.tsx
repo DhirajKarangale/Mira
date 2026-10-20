@@ -7,6 +7,7 @@ import {
   stopCapture,
 } from "./api";
 import { CaptureStatusHeader } from "./components/CaptureStatusHeader";
+import { CaptureIntervalCard } from "./components/CaptureIntervalCard";
 import { StoredDateRangeCard } from "./components/StoredDateRangeCard";
 import { DeleteConfirmModal } from "./components/DeleteConfirmModal";
 import type { CaptureStatus, StoredDataRange } from "./types";
@@ -21,6 +22,9 @@ const INITIAL_DEMO_RANGE: StoredDataRange = {
 export const CapturedDataPage: FC = () => {
   // Capturing execution status: Started vs Stopped (determined by Operator live status)
   const [status, setStatus] = useState<CaptureStatus>("Stopped");
+
+  // Capture interval in seconds from Vault (default 10s)
+  const [intervalSecs, setIntervalSecs] = useState<number>(10);
 
   // Auto-start configuration from Vault
   const [autoStart, setAutoStart] = useState<boolean>(false);
@@ -46,6 +50,9 @@ export const CapturedDataPage: FC = () => {
         (typeof opStatus.status === "string" && opStatus.status.toLowerCase() === "started")
       );
       setStatus(isCapturing ? "Started" : "Stopped");
+      if (typeof opStatus.capture_interval_secs === "number" && opStatus.capture_interval_secs >= 1) {
+        setIntervalSecs((prev) => prev || opStatus.capture_interval_secs!);
+      }
     } catch {
       setStatus("Stopped");
     }
@@ -57,6 +64,9 @@ export const CapturedDataPage: FC = () => {
       const vaultConfig = await fetchOperatorConfig();
       if (typeof vaultConfig.AUTO_START === "boolean") {
         setAutoStart(vaultConfig.AUTO_START);
+      }
+      if (typeof vaultConfig.CAPTURE_INTERVAL_SECS === "number") {
+        setIntervalSecs(vaultConfig.CAPTURE_INTERVAL_SECS);
       }
     } catch (err) {
       console.warn("Could not fetch operator configuration from Vault:", err);
@@ -121,6 +131,12 @@ export const CapturedDataPage: FC = () => {
     }
   };
 
+  // Handle capture interval update in Vault and sync with Operator
+  const handleUpdateInterval = async (newSecs: number) => {
+    await updateOperatorConfig({ CAPTURE_INTERVAL_SECS: newSecs });
+    setIntervalSecs(newSecs);
+  };
+
   // Handle deletion of all captured data (called after 3s in-modal processing)
   const handleExecuteDelete = () => {
     setStoredRange({
@@ -148,6 +164,13 @@ export const CapturedDataPage: FC = () => {
           onToggleAutoStart={handleToggleAutoStart}
         />
 
+        {/* Capture Interval Configuration Card */}
+        <CaptureIntervalCard
+          intervalSecs={intervalSecs}
+          onUpdateInterval={handleUpdateInterval}
+          isCapturing={status === "Started"}
+        />
+
         {/* Stored Captured Data Range (Clean non-repetitive showcase + Delete All button) */}
         <StoredDateRangeCard
           dataRange={storedRange}
@@ -156,10 +179,10 @@ export const CapturedDataPage: FC = () => {
         />
 
         {/* Subtle footer info */}
-        <div className="pt-4 pb-6 text-center text-xs text-zinc-500 font-mono flex items-center justify-center gap-2">
+        <div className="pt-4 pb-6 text-center text-xs text-zinc-500 font-mono flex items-center justify-center gap-2 flex-wrap">
           <span>Operator Engine</span>
           <span>•</span>
-          <span>Local Encrypted Storage</span>
+          <span>Interval: {intervalSecs}s</span>
           <span>•</span>
           <span>Vault Auto-Start: {autoStart ? "Enabled (10s delay)" : "Disabled"}</span>
           <span>•</span>

@@ -10,13 +10,50 @@ export async function fetchOperatorConfig(): Promise<OperatorConfigResponse> {
 }
 
 /**
- * Update Operator configuration in Vault (e.g. toggle AUTO_START).
+ * Update Operator configuration in Vault (e.g. toggle AUTO_START or CAPTURE_INTERVAL_SECS).
  */
 export async function updateOperatorConfig(
   updates: Partial<OperatorConfigResponse>
 ): Promise<OperatorConfigResponse> {
   const response = await vaultApi.post<OperatorConfigResponse>("/config/operator", updates);
+  if (typeof updates.CAPTURE_INTERVAL_SECS === "number") {
+    syncOperatorInterval(updates.CAPTURE_INTERVAL_SECS).catch(() => {});
+  }
   return response.data;
+}
+
+/**
+ * Synchronize live capture interval with Operator service directly.
+ */
+export async function syncOperatorInterval(seconds: number): Promise<void> {
+  try {
+    await operatorApi.post("/interval", { capture_interval_secs: seconds });
+    return;
+  } catch {
+    // fallback to direct browser fetch
+  }
+
+  const currentHost =
+    typeof window !== "undefined" && window.location.hostname
+      ? window.location.hostname
+      : "127.0.0.1";
+
+  for (const url of [
+    `http://${currentHost}:8002/interval`,
+    "http://127.0.0.1:8002/interval",
+    "http://localhost:8002/interval",
+  ]) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ capture_interval_secs: seconds }),
+      });
+      if (res.ok) return;
+    } catch {
+      // try next
+    }
+  }
 }
 
 /**

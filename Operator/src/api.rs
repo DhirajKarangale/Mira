@@ -21,6 +21,12 @@ pub struct DeleteScreenshotRequest {
     pub image_path: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct IntervalRequest {
+    pub capture_interval_secs: Option<u64>,
+    pub interval_secs: Option<u64>,
+}
+
 pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/", get(root_handler))
@@ -28,6 +34,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/status", get(status_handler).post(status_handler))
         .route("/start", get(start_capture_handler).post(start_capture_handler))
         .route("/stop", get(stop_capture_handler).post(stop_capture_handler))
+        .route("/interval", get(get_interval_handler).post(update_interval_handler))
+        .route("/config", get(get_interval_handler).post(update_interval_handler))
         .route("/delete", post(delete_screenshot_handler))
         .with_state(state)
 }
@@ -42,10 +50,47 @@ async fn root_handler() -> impl IntoResponse {
     )
 }
 
+async fn get_interval_handler() -> impl IntoResponse {
+    let interval = crate::config::get_capture_interval_secs();
+    (
+        StatusCode::OK,
+        Json(json!({
+            "capture_interval_secs": interval,
+            "status": "ok"
+        })),
+    )
+}
+
+async fn update_interval_handler(Json(payload): Json<IntervalRequest>) -> impl IntoResponse {
+    let secs = payload.capture_interval_secs.or(payload.interval_secs);
+    if let Some(s) = secs {
+        if s >= 1 && s <= 3600 {
+            crate::config::set_capture_interval_secs(s);
+            info!("Operator capture interval updated to {}s via API", s);
+            crate::vault_logger::log_event(format!("Capture interval updated to {}s", s));
+            return (
+                StatusCode::OK,
+                Json(json!({
+                    "capture_interval_secs": s,
+                    "status": "updated",
+                    "message": format!("Capture interval updated to {}s", s)
+                })),
+            );
+        }
+    }
+    (
+        StatusCode::BAD_REQUEST,
+        Json(json!({
+            "status": "error",
+            "message": "Invalid capture_interval_secs, must be between 1 and 3600 seconds"
+        })),
+    )
+}
+
 async fn status_handler(State(state): State<AppState>) -> impl IntoResponse {
     let local = crate::local_state::load_local_state();
     let running = state.manager.is_running() || local.is_capturing;
-    let interval = crate::config::get_config().capture_interval_secs;
+    let interval = crate::config::get_capture_interval_secs();
     let auto_start = crate::config::get_config().auto_start;
     (
         StatusCode::OK,
@@ -61,7 +106,7 @@ async fn status_handler(State(state): State<AppState>) -> impl IntoResponse {
 }
 
 async fn start_capture_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let interval = crate::config::get_config().capture_interval_secs;
+    let interval = crate::config::get_capture_interval_secs();
     match state.manager.start_capture().await {
         Ok(true) => (
             StatusCode::OK,

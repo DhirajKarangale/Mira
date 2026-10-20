@@ -141,7 +141,7 @@ async def update_redis_config(request: RedisConfigUpdateRequest):
 
 
 class OperatorConfigUpdateRequest(BaseModel):
-    CAPTURE_INTERVAL_SECS: Optional[int] = Field(None, ge=1)
+    CAPTURE_INTERVAL_SECS: Optional[int] = Field(None, ge=1, le=3600)
     AUTO_START: Optional[bool] = None
 
 

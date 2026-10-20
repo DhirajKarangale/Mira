@@ -34,7 +34,7 @@ impl CaptureManager {
             return Ok(false);
         }
 
-        let interval_secs = crate::config::get_config().capture_interval_secs;
+        let interval_secs = crate::config::refresh_capture_interval_from_vault().await;
         let (tx, mut rx) = watch::channel(false);
         *sender_guard = Some(tx);
         self.is_running.store(true, Ordering::SeqCst);
@@ -52,7 +52,8 @@ impl CaptureManager {
         crate::local_state::save_local_state(true);
 
         tokio::spawn(async move {
-            let mut ticker = tokio::time::interval(Duration::from_secs(interval_secs));
+            let mut current_interval = interval_secs;
+            let mut ticker = tokio::time::interval(Duration::from_secs(current_interval));
             ticker.tick().await;
 
             loop {
@@ -66,6 +67,18 @@ impl CaptureManager {
                     _ = ticker.tick() => {
                         if !running_flag.load(Ordering::SeqCst) {
                             break;
+                        }
+
+                        // Seamless dynamic interval adjustment
+                        let latest_interval = crate::config::get_capture_interval_secs();
+                        if latest_interval >= 1 && latest_interval != current_interval {
+                            info!(
+                                "Capture interval dynamically changed from {}s to {}s. Updating ticker.",
+                                current_interval, latest_interval
+                            );
+                            current_interval = latest_interval;
+                            ticker = tokio::time::interval(Duration::from_secs(current_interval));
+                            ticker.tick().await;
                         }
 
                         let capture_result = tokio::task::spawn_blocking(capture_silent_screenshot).await;
