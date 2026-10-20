@@ -43,6 +43,7 @@ All inter-module data transfers route through the central **Message Broker**. Al
 3. **Capture Pipeline:** Operator runs as a Rust web service, captures screenshots and OS events, and transfers raw capture data directly to the Message Broker.
 4. **Image Processing & Storage:** Memory consumes raw screenshots from the Message Broker, executes the image processing pipeline (frame comparison, perceptual hashing, LRU OCR caching, and OCR text extraction), and publishes extracted records to Redis Streams via Message Broker for later database persistence (Qdrant & SQLite).
 5. **AI Interaction:** Client submits user queries through the Message Broker to Engine. Engine requests contextual history from Memory via the Message Broker, calls AI models, and routes answers back to Client via the Message Broker.
+6. **Service Discovery:** Global `services.json` defines base URLs and ports for all modules. Each module loads `services.json` at startup to dynamically resolve inter-service endpoints without hardcoded addresses.
 
 ---
 

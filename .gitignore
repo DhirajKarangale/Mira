@@ -12,3 +12,6 @@ target/
 logs/
 **/logs/
 **/logs/**
+screenshots/
+**/screenshots/
+**/screenshots/**

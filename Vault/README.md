@@ -7,7 +7,7 @@ The **Vault** is the centralized service for secret management, configuration st
 ## 1. What It Provides
 
 - **Secrets**: Automatically derives and keeps a master 256-bit encryption key internal in memory.
-- **Configurations**: Stores module configurations in encrypted SQL tables (`logs`, `message_broker`).
+- **Configurations**: Stores module configurations in encrypted SQL tables (`logs`, `message_broker`, `operator`).
 - **Encrypted Logging**: Ingests module logs via HTTP and writes them to daily encrypted JSONL files (`dd-mm-yyyy.jsonl`).
 - **Retention**: Automatically cleans up logs older than configured retention period or with invalid names.
 

@@ -1,19 +1,45 @@
 from __future__ import annotations
 
+import json
 import os
+from pathlib import Path
 from typing import Any, Dict, Optional
 import requests
 
-VAULT_URL = os.getenv("VAULT_URL", "http://127.0.0.1:8001")
 
-REDIS_HOST: str = "localhost"
-REDIS_PORT: int = 6379
+def load_services_json() -> Dict[str, str]:
+    candidate_paths = [
+        Path(os.getenv("SERVICES_JSON_PATH", "")),
+        Path(__file__).resolve().parent.parent / "services.json",
+        Path.cwd() / "services.json",
+    ]
+    for p in candidate_paths:
+        if p and p.exists() and p.is_file():
+            with open(p, "r", encoding="utf-8") as f:
+                return json.load(f)
+    raise FileNotFoundError("services.json was not found in project workspace")
+
+
+SERVICES: Dict[str, str] = load_services_json()
+
+
+def get_service_url(module_name: str) -> str:
+    key = module_name.lower().replace("-", "_")
+    if key not in SERVICES:
+        raise KeyError(f"Module '{module_name}' not defined in services.json")
+    return SERVICES[key]
+
+
+VAULT_URL: str = SERVICES["vault"]
+
+REDIS_HOST: str = ""
+REDIS_PORT: int = 0
 REDIS_DB: int = 0
 REDIS_PASSWORD: Optional[str] = None
 REDIS_PROTOCOL: int = 2
 REDIS_DECODE_RESPONSES: bool = True
 
-SERVER_HOST: str = "127.0.0.1"
+SERVER_HOST: str = ""
 SERVER_RELOAD: bool = False
 
 
@@ -43,25 +69,11 @@ def fetch_config(vault_base_url: Optional[str] = None) -> Dict[str, Any]:
     url = (vault_base_url or VAULT_URL).rstrip("/")
     endpoint = f"{url}/config/message_broker"
 
-    try:
-        response = requests.get(endpoint, timeout=2.0)
-        if response.status_code == 200:
-            remote_cfg = response.json()
-            apply_config_dict(remote_cfg)
-            return remote_cfg
-    except Exception:
-        pass
-
-    return {
-        "REDIS_HOST": REDIS_HOST,
-        "REDIS_PORT": REDIS_PORT,
-        "REDIS_DB": REDIS_DB,
-        "REDIS_PASSWORD": REDIS_PASSWORD,
-        "REDIS_PROTOCOL": REDIS_PROTOCOL,
-        "REDIS_DECODE_RESPONSES": REDIS_DECODE_RESPONSES,
-        "SERVER_HOST": SERVER_HOST,
-        "SERVER_RELOAD": SERVER_RELOAD,
-    }
+    response = requests.get(endpoint, timeout=3.0)
+    response.raise_for_status()
+    remote_cfg = response.json()
+    apply_config_dict(remote_cfg)
+    return remote_cfg
 
 
 fetch_and_store_config = fetch_config

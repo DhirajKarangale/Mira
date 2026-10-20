@@ -63,19 +63,16 @@ app = create_app()
 def start_app() -> None:
     config.fetch_and_store_config()
 
-    host = config.SERVER_HOST
-    port = int(os.getenv("PORT", "8000"))
+    mb_url = config.SERVICES["message_broker"]
+    clean = mb_url.replace("http://", "").replace("https://", "").rstrip("/")
+    default_host, default_port = clean.split(":")
+
+    host = config.SERVER_HOST or default_host
+    port = int(os.getenv("PORT", default_port))
     reload = config.SERVER_RELOAD
 
     log(f"Starting Message Broker server on http://{host}:{port}")
-
-    try:
-        asyncio.run(init_redis_connection())
-    except Exception as e:
-        log(f"Cannot start server: Redis is not reachable on {config.REDIS_HOST}:{config.REDIS_PORT} ({e})")
-        sys.exit(1)
-
-    uvicorn.run(app, host=host, port=port, reload=reload)
+    uvicorn.run("app:app", host=host, port=port, reload=reload)
 
 
 if __name__ == "__main__":
