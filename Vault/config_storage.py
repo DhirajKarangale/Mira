@@ -155,6 +155,8 @@ def get_configuration(key: str) -> Dict[str, Any]:
     normalized_key = key.strip().lower().replace("-", "_")
     if normalized_key == "redis":
         normalized_key = "message_broker"
+    elif normalized_key in ("user", "users"):
+        normalized_key = "user_details"
 
     if normalized_key in _PARSED_SCHEMA:
         table_name = normalized_key
@@ -210,6 +212,8 @@ def update_configuration(table_name: str, updates: Dict[str, Any]) -> Dict[str, 
     normalized_table = table_name.strip().lower().replace("-", "_")
     if normalized_table == "redis":
         normalized_table = "message_broker"
+    elif normalized_table in ("user", "users"):
+        normalized_table = "user_details"
     if normalized_table not in _PARSED_SCHEMA:
         raise KeyError(f"Unknown configuration group '{table_name}'")
 
@@ -223,9 +227,18 @@ def update_configuration(table_name: str, updates: Dict[str, Any]) -> Dict[str, 
         else:
             values.append(v)
 
+    cursor = _DB_CONN.execute(f"SELECT id FROM {normalized_table} LIMIT 1")
+    row = cursor.fetchone()
+    if not row:
+        _DB_CONN.execute(f"INSERT INTO {normalized_table} DEFAULT VALUES")
+        _DB_CONN.commit()
+        row_id = _DB_CONN.execute(f"SELECT id FROM {normalized_table} LIMIT 1").fetchone()[0]
+    else:
+        row_id = row[0]
+
     if set_clauses:
-        sql = f"UPDATE {normalized_table} SET {', '.join(set_clauses)} WHERE id = 1"
-        _DB_CONN.execute(sql, values)
+        sql = f"UPDATE {normalized_table} SET {', '.join(set_clauses)} WHERE id = ?"
+        _DB_CONN.execute(sql, [*values, row_id])
         _DB_CONN.commit()
         save_config_storage()
 

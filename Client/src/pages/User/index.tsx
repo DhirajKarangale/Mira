@@ -1,0 +1,154 @@
+import { useState, useEffect, useCallback, type FC } from "react";
+import { Loader2, AlertCircle, CheckCircle2, X } from "lucide-react";
+import { fetchUserDetails } from "./api";
+import { UserHero } from "./components/UserHero";
+import { UserDetailsView } from "./components/UserDetailsView";
+import { UserDetailsForm } from "./components/UserDetailsForm";
+import type { UserDetails, UserPageMode } from "./types";
+
+interface FeedbackState {
+  type: "success" | "error";
+  message: string;
+}
+
+export const UserPage: FC = () => {
+  const [details, setDetails] = useState<UserDetails | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [mode, setMode] = useState<UserPageMode>("view");
+  const [feedback, setFeedback] = useState<FeedbackState | null>(null);
+
+  const loadData = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
+    try {
+      const data = await fetchUserDetails();
+      setDetails(data);
+
+      // If no details exist at all, remain in view mode so empty state with Add CTA is shown
+      if (!data.exists && mode === "edit") {
+        setMode("add");
+      }
+    } catch (err: any) {
+      console.error("Failed to load user details from Vault:", err);
+      setFeedback({
+        type: "error",
+        message:
+          err?.response?.data?.detail?.message ||
+          err?.message ||
+          "Could not retrieve user details from Vault.",
+      });
+    } finally {
+      if (!quiet) setLoading(false);
+    }
+  }, [mode]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleSaveSuccess = (updated: UserDetails) => {
+    setDetails(updated);
+    setMode("view");
+    setFeedback({
+      type: "success",
+      message:
+        updated.message ||
+        (mode === "add"
+          ? "User details created and stored securely in Vault!"
+          : "User details updated successfully in Vault!"),
+    });
+
+    // Auto-dismiss success notification after 5 seconds
+    setTimeout(() => {
+      setFeedback((prev) => (prev?.type === "success" ? null : prev));
+    }, 5000);
+  };
+
+  const hasDetails =
+    Boolean(details?.exists) ||
+    Boolean(
+      details &&
+        (details.user_name ||
+          details.email ||
+          details.phone_number ||
+          details.city ||
+          details.state ||
+          details.country)
+    );
+
+  return (
+    <div
+      id="page-content-user"
+      className="h-full w-full overflow-y-auto select-none bg-gradient-to-b from-[#080c14] via-[#090e18] to-[#04070d] text-zinc-100"
+    >
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-6">
+        {/* Hero Header with Vault status and sync button */}
+        <UserHero
+          mode={mode}
+          loading={loading}
+          onRefresh={() => loadData(false)}
+          hasDetails={hasDetails}
+        />
+
+        {/* Feedback Alert Toast / Banner */}
+        {feedback && (
+          <div
+            id="user-page-feedback-banner"
+            className={`flex items-start justify-between gap-3 p-4 rounded-xl border backdrop-blur-md transition-all animate-in fade-in ${
+              feedback.type === "success"
+                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
+                : "bg-rose-500/10 border-rose-500/20 text-rose-300"
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              {feedback.type === "success" ? (
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+              ) : (
+                <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
+              )}
+              <span className="text-sm font-medium">{feedback.message}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFeedback(null)}
+              className="p-1 rounded-lg hover:bg-white/[0.06] text-zinc-400 hover:text-white transition-all cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Content Body: Loading, View, or Form */}
+        {loading ? (
+          <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-16 flex flex-col items-center justify-center gap-3 backdrop-blur-xl">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+            <p className="text-sm text-zinc-400 font-mono">Synchronizing with Vault...</p>
+          </div>
+        ) : mode === "view" ? (
+          <UserDetailsView
+            details={details}
+            onEdit={() => setMode("edit")}
+            onAdd={() => setMode("add")}
+          />
+        ) : (
+          <UserDetailsForm
+            initialData={details}
+            mode={mode}
+            onSaveSuccess={handleSaveSuccess}
+            onCancel={() => setMode("view")}
+          />
+        )}
+
+        {/* Subtle footer info */}
+        <div className="pt-6 pb-4 text-center text-xs text-zinc-500 font-mono flex items-center justify-center gap-2">
+          <span>MIRA Vault Engine</span>
+          <span>•</span>
+          <span>Encrypted Profile Storage</span>
+          <span>•</span>
+          <span>SQLite / AES-256</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default UserPage;

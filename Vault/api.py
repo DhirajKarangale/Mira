@@ -140,6 +140,94 @@ async def update_redis_config(request: RedisConfigUpdateRequest):
     return await update_message_broker_config(request)
 
 
+class UserDetailsRequest(BaseModel):
+    user_name: str = Field(..., min_length=1)
+    email: str = Field(..., min_length=3)
+    phone_number: str = Field(..., min_length=1)
+    city: str = Field(..., min_length=1)
+    state: str = Field(..., min_length=1)
+    country: str = Field(..., min_length=1)
+
+
+class UserDetailsUpdateRequest(BaseModel):
+    user_name: Optional[str] = None
+    email: Optional[str] = None
+    phone_number: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    country: Optional[str] = None
+
+
+@router.get("/user", status_code=status.HTTP_200_OK)
+@router.get("/user/details", status_code=status.HTTP_200_OK)
+async def get_user_details():
+    try:
+        data = config_storage.get_configuration("user_details")
+        has_data = any(v is not None and str(v).strip() != "" for v in data.values())
+        return {
+            **data,
+            "exists": has_data
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to retrieve user details: {str(e)}"}
+        )
+
+
+@router.post("/user", status_code=status.HTTP_200_OK)
+@router.post("/user/details", status_code=status.HTTP_200_OK)
+async def add_or_set_user_details(request: UserDetailsRequest):
+    try:
+        updates = {
+            "user_name": request.user_name.strip(),
+            "email": request.email.strip(),
+            "phone_number": request.phone_number.strip(),
+            "city": request.city.strip(),
+            "state": request.state.strip(),
+            "country": request.country.strip(),
+        }
+        updated = config_storage.update_configuration("user_details", updates)
+        return {
+            **updated,
+            "exists": True,
+            "message": "User details saved successfully"
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to save user details: {str(e)}"}
+        )
+
+
+@router.put("/user", status_code=status.HTTP_200_OK)
+@router.put("/user/details", status_code=status.HTTP_200_OK)
+async def update_user_details(request: UserDetailsUpdateRequest):
+    try:
+        raw_updates = request.model_dump(exclude_unset=True)
+        updates = {
+            k: v.strip() if isinstance(v, str) else v
+            for k, v in raw_updates.items()
+            if v is not None
+        }
+        if not updates:
+            data = config_storage.get_configuration("user_details")
+            return {**data, "exists": any(v is not None and str(v).strip() != "" for v in data.values())}
+
+        updated = config_storage.update_configuration("user_details", updates)
+        return {
+            **updated,
+            "exists": True,
+            "message": "User details updated successfully"
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to update user details: {str(e)}"}
+        )
+
+
+
 class PaginatedLogsResponse(BaseModel):
     items: List[LogEntryResponse]
     total: int
