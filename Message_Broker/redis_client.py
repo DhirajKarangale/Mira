@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import logging
 from typing import Optional
 import redis.asyncio as aioredis
 import config
-
-logger = logging.getLogger("mira.redis_client")
+from vault_logger import log
 
 _redis_client: Optional[aioredis.Redis] = None
 
@@ -28,10 +26,10 @@ async def init_redis_connection() -> bool:
     client = get_redis_client()
     try:
         pong = await client.ping()
-        logger.info(f"Connected to Redis at {config.REDIS_HOST}:{config.REDIS_PORT}")
+        log(f"Connected to Redis at {config.REDIS_HOST}:{config.REDIS_PORT}")
         return bool(pong)
     except Exception as e:
-        logger.error(f"Failed to connect to Redis at {config.REDIS_HOST}:{config.REDIS_PORT}: {e}")
+        log(f"Failed to connect to Redis at {config.REDIS_HOST}:{config.REDIS_PORT}: {e}")
         raise e
 
 
@@ -44,6 +42,6 @@ async def close_redis_connection() -> None:
             else:
                 await _redis_client.close()
         except Exception as e:
-            logger.warning(f"Error closing Redis connection: {e}")
+            log(f"Error closing Redis connection: {e}")
         finally:
             _redis_client = None

@@ -124,6 +124,7 @@ All inter-module data transfers route through the central **Message Broker**. Al
   * Serves configurations to all modules at startup and broadcasts configuration sync events via the Message Broker.
 * **Technology:**
   * **Language:** Python
+  * **Web Framework:** FastAPI, Uvicorn
   * **Encrypted Database:** SQLite + SQLCipher (`sqlcipher3`)
   * **Key Storage:** OS Credential Store (via Python `keyring`)
-  * **Cryptography & Encryption:** `cryptography` (ChaCha20-Poly1305 / AES-GCM)
+  * **Cryptography & Encryption:** XChaCha20-Poly1305 (`pynacl`), `cryptography` (ChaCha20-Poly1305 / AES-GCM)

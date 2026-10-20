@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import json
-import logging
 from typing import Any, Dict, List
 
 import redis.exceptions
 
 from redis_client import get_redis_client
 import consumer_group_manager as cgm
-
-logger = logging.getLogger("mira.redis_service")
+from vault_logger import log
 
 
 async def ensure_consumer_group(stream_name: str, group_name: str) -> None:
@@ -18,7 +16,7 @@ async def ensure_consumer_group(stream_name: str, group_name: str) -> None:
         await client.xgroup_create(stream_name, group_name, id="0", mkstream=True)
     except redis.exceptions.ResponseError as e:
         if "BUSYGROUP" not in str(e):
-            logger.warning(f"Error ensuring consumer group {group_name} on {stream_name}: {e}")
+            log(f"Error ensuring consumer group {group_name} on {stream_name}: {e}")
 
 
 async def clean_all_consumer_groups() -> Dict[str, str]:
@@ -31,7 +29,7 @@ async def clean_all_consumer_groups() -> Dict[str, str]:
                 await client.delete(f"{stream_name}:job_ids")
                 await client.xgroup_create(stream_name, group, id="0", mkstream=True)
             except Exception as e:
-                logger.error(f"Error cleaning {group}: {e}")
+                log(f"Error cleaning {group}: {e}")
 
     return {"message": "successfully cleaned all consumer groups"}
 

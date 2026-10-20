@@ -4,3 +4,5 @@ __pycache__/
 .venv/
 env/
 target/
+.pytest_cache/
+*.tmp

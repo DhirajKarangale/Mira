@@ -1,6 +1,6 @@
-# MIRA Message Broker
+# Message Broker
 
-The **MIRA Message Broker** is the centralized asynchronous communication hub connecting all MIRA modules using **Redis Streams**, Consumer Groups, and **FastAPI**.
+The **Message Broker** is the centralized asynchronous communication hub connecting all MIRA modules using **Redis Streams**, Consumer Groups, and **FastAPI**.
 
 ---
 
@@ -23,7 +23,7 @@ Every endpoint has strictly one way to be called.
 - **Response:**
   ```json
   {
-    "service": "MIRA Message Broker",
+    "service": "Message Broker",
     "status": "online"
   }
   ```

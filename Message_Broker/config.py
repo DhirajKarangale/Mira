@@ -1,3 +1,5 @@
+import os
+
 REDIS_HOST = "localhost"
 REDIS_PORT = 6379
 REDIS_DB = 0
@@ -8,3 +10,5 @@ REDIS_DECODE_RESPONSES = True
 SERVER_HOST = "127.0.0.1"
 SERVER_PORT = 8000
 SERVER_RELOAD = False
+
+VAULT_URL = os.getenv("VAULT_URL", "http://127.0.0.1:8001")
