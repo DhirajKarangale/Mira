@@ -140,6 +140,32 @@ async def update_redis_config(request: RedisConfigUpdateRequest):
     return await update_message_broker_config(request)
 
 
+class OperatorConfigUpdateRequest(BaseModel):
+    CAPTURE_INTERVAL_SECS: Optional[int] = Field(None, ge=1)
+    AUTO_START: Optional[bool] = None
+
+
+@router.post(
+    "/config/operator",
+    status_code=status.HTTP_200_OK
+)
+@router.put(
+    "/config/operator",
+    status_code=status.HTTP_200_OK
+)
+async def update_operator_config(request: OperatorConfigUpdateRequest):
+    try:
+        updates = request.model_dump(exclude_unset=True)
+        if not updates:
+            return config_storage.get_configuration("operator")
+        return config_storage.update_configuration("operator", updates)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to update Operator configurations: {str(e)}"}
+        )
+
+
 class UserDetailsRequest(BaseModel):
     user_name: str = Field(..., min_length=1)
     email: str = Field(..., min_length=3)

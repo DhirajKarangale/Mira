@@ -90,6 +90,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ));
 
     let manager = CaptureManager::new();
+
+    if cfg.auto_start {
+        info!("AUTO_START is enabled in Vault config. Scheduling screenshot capture with a 10-second delay...");
+        let auto_manager = manager.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+            info!("10-second startup delay elapsed: auto-starting screenshot capture...");
+            match auto_manager.start_capture().await {
+                Ok(true) => info!("Auto-start screenshot capture loop initiated successfully."),
+                Ok(false) => info!("Auto-start capture: loop is already running."),
+                Err(err) => tracing::error!("Failed to auto-start screenshot capture: {}", err),
+            }
+        });
+    }
+
     let state = AppState { manager };
 
     let cors = CorsLayer::new()

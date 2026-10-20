@@ -2,7 +2,6 @@ export type NavTabId =
   | "mira"
   | "user"
   | "llm-configs"
-  | "screen-capturing"
   | "history"
   | "about";
 
@@ -25,12 +24,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: "LLM Configs",
     description: "Model parameters, providers, and reasoning settings",
     iconName: "Cpu",
-  },
-  {
-    id: "screen-capturing",
-    label: "Screen Capturing",
-    description: "Capture intervals, display monitors, and OCR controls",
-    iconName: "Monitor",
   },
   {
     id: "history",

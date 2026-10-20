@@ -9,6 +9,7 @@ pub struct OperatorConfig {
     pub capture_interval_secs: u64,
     pub screenshots_dir: PathBuf,
     pub os: String,
+    pub auto_start: bool,
 }
 
 static CONFIG: OnceLock<OperatorConfig> = OnceLock::new();
@@ -18,6 +19,8 @@ static SERVICE_URLS: OnceLock<HashMap<String, String>> = OnceLock::new();
 struct VaultOperatorConfigResponse {
     #[serde(rename = "CAPTURE_INTERVAL_SECS")]
     capture_interval_secs: Option<u64>,
+    #[serde(rename = "AUTO_START")]
+    auto_start: Option<bool>,
 }
 
 pub fn load_service_urls() -> &'static HashMap<String, String> {
@@ -127,9 +130,11 @@ pub async fn init_config() -> &'static OperatorConfig {
         .capture_interval_secs
         .expect("CAPTURE_INTERVAL_SECS is missing from Vault operator configuration table");
 
+    let auto_start = vault_data.auto_start.unwrap_or(false);
+
     info!(
-        "Successfully loaded configuration from Vault: CAPTURE_INTERVAL_SECS={}",
-        capture_interval_secs
+        "Successfully loaded configuration from Vault: CAPTURE_INTERVAL_SECS={}, AUTO_START={}",
+        capture_interval_secs, auto_start
     );
 
     let os_endpoint = format!("{}/os", vault_url);
@@ -183,6 +188,7 @@ pub async fn init_config() -> &'static OperatorConfig {
         capture_interval_secs,
         screenshots_dir,
         os,
+        auto_start,
     };
 
     CONFIG.set(config).ok();

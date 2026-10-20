@@ -1,7 +1,7 @@
 import type { FC } from "react";
 import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Sidebar, type SidebarItem } from "@/components/Sidebar";
-import { Camera, MessageSquare, Terminal, Database } from "lucide-react";
+import { MonitorPlay, MessageSquare, Terminal, Database } from "lucide-react";
 import { CapturedDataPage } from "./CapturedData";
 import { ChatsPage } from "./Chats";
 import { LogsPage } from "./Logs";
@@ -11,7 +11,7 @@ const HISTORY_SIDEBAR_ITEMS: readonly SidebarItem[] = [
   {
     key: "captured-data",
     name: "Captured Data",
-    icon: Camera,
+    icon: MonitorPlay,
   },
   {
     key: "chats",

@@ -4,7 +4,6 @@ import {
   MiraPage,
   UserPage,
   LlmConfigsPage,
-  ScreenCapturingPage,
   HistoryPage,
   AboutPage,
 } from "@/pages";
@@ -27,7 +26,7 @@ export function App() {
           <Route path="/mira" element={<MiraPage />} />
           <Route path="/user" element={<UserPage />} />
           <Route path="/llm-configs" element={<LlmConfigsPage />} />
-          <Route path="/screen-capturing" element={<ScreenCapturingPage />} />
+          <Route path="/screen-capturing" element={<Navigate to="/history/captured-data" replace />} />
           <Route path="/history/*" element={<HistoryPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="*" element={<Navigate to="/mira" replace />} />
