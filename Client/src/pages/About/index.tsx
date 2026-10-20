@@ -1,9 +1,11 @@
 import type { FC } from "react";
 import { ProfileHero } from "./components/ProfileHero";
 import { AboutSection } from "./components/AboutSection";
+import { MiraSection } from "./components/MiraSection";
 import { AchievementsSection } from "./components/AchievementsSection";
 import { TechStackSection } from "./components/TechStackSection";
 import { LinksSection } from "./components/LinksSection";
+import { ContactSection } from "./components/ContactSection";
 
 export const AboutPage: FC = () => {
   return (
@@ -18,6 +20,9 @@ export const AboutPage: FC = () => {
         {/* Narrative About Me Section */}
         <AboutSection />
 
+        {/* Dedicated MIRA Architecture & Microservices Section */}
+        <MiraSection />
+
         {/* Achievements & Recognitions Grid */}
         <AchievementsSection />
 
@@ -26,6 +31,9 @@ export const AboutPage: FC = () => {
 
         {/* External Connect & Social Links */}
         <LinksSection />
+
+        {/* Feedback, Suggestions, Collaborations & Bug Reports Section */}
+        <ContactSection />
 
         {/* Bottom subtle copyright / branding footer */}
         <div className="pt-4 pb-8 text-center text-xs text-zinc-500 font-mono flex items-center justify-center gap-2">
