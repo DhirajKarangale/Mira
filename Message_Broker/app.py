@@ -15,6 +15,13 @@ from vault_logger import log
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Fetch configuration from Vault on startup and store locally
+    try:
+        config.fetch_and_store_config()
+        log("Fetched and updated Message Broker configuration from Vault.")
+    except Exception as e:
+        log(f"Using local Message Broker configuration fallback: {e}")
+
     log("Initializing Redis connection on startup...")
     await init_redis_connection()
     log("Redis connection established.")
@@ -54,6 +61,9 @@ app = create_app()
 
 
 def start_app() -> None:
+    # Fetch and apply latest configuration from Vault before launching server
+    config.fetch_and_store_config()
+
     host = config.SERVER_HOST
     port = config.SERVER_PORT
     reload = config.SERVER_RELOAD

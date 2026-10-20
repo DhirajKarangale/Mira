@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
+import config_storage
 import log_manager
 
 router = APIRouter(prefix="", tags=["Vault"])
@@ -35,7 +36,8 @@ class LogEntryResponse(BaseModel):
 async def create_log(request: LogCreateRequest):
     """
     Accepts a module name and log data string.
-    Prints the log to the terminal, appends it to the current day's encrypted log file,
+    Prints the log to the terminal (if enabled in Logs configuration),
+    appends it to the current day's encrypted log file (if enabled in Logs configuration),
     and returns only the message 'Log added successfully'.
     """
     try:
@@ -136,6 +138,54 @@ async def get_logs(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": f"Failed to retrieve logs: {str(e)}"}
+        )
+
+
+@router.get(
+    "/config/{key}",
+    status_code=status.HTTP_200_OK,
+    summary="Get configuration by key or group"
+)
+async def get_config_by_path(key: str):
+    """
+    Accepts a configuration key (e.g. 'logs', 'message_broker')
+    and returns the corresponding configuration as JSON.
+    """
+    try:
+        return config_storage.get_configuration(key)
+    except KeyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": str(e)}
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to retrieve configuration: {str(e)}"}
+        )
+
+
+@router.get(
+    "/config",
+    status_code=status.HTTP_200_OK,
+    summary="Get configuration via query parameter"
+)
+async def get_config_by_query(key: str = Query(..., min_length=1, description="Configuration key or group name")):
+    """
+    Accepts a configuration key via query parameter (e.g. ?key=logs)
+    and returns the corresponding configuration as JSON.
+    """
+    try:
+        return config_storage.get_configuration(key)
+    except KeyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": str(e)}
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to retrieve configuration: {str(e)}"}
         )
 
 

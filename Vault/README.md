@@ -1,6 +1,6 @@
 # MIRA — Vault Module
 
-The **Vault** module serves as the centralized, secure storage and logging backbone for MIRA. It manages cryptographic secrets in the OS credential store and provides an authenticated, encrypted logging service using **XChaCha20-Poly1305**.
+The **Vault** module serves as the centralized, secure storage, configuration management, and logging backbone for MIRA. It manages cryptographic secrets in the OS credential store, synchronizes SQL configuration tables encrypted with **XChaCha20-Poly1305**, and provides an authenticated, encrypted logging service.
 
 ---
 
@@ -15,20 +15,29 @@ The **Vault** module serves as the centralized, secure storage and logging backb
   ```
 - **Strictly Internal Key Security:** The encryption key is kept strictly internal to the Vault module in memory. No API endpoint or external functionality exposes or returns the encryption key.
 
+### Configuration Management
+- **Central SQL Schema (`schema.sql`):** Defines separate SQL tables for different configuration groups (`logs`, `message_broker`).
+- **Dynamic Schema Synchronization:** On startup, Vault inspects existing SQLite tables:
+  - Automatically creates any missing tables defined in `schema.sql`.
+  - Automatically adds any missing columns (`ALTER TABLE ADD COLUMN`).
+  - Automatically drops any obsolete/removed columns (`ALTER TABLE DROP COLUMN`).
+  - Populates default configuration values if the table is empty.
+- **Encrypted Tables at Rest:** The entire configuration database is encrypted using **XChaCha20-Poly1305** and stored as `config.db.enc` in the system directory.
+- **Get Config API:** Exposes `GET /config/{key}` and `GET /config?key={key}` returning the configuration group (e.g. `logs`, `message_broker`) as typed JSON.
+
 ### Encrypted Log Management
 - **Dedicated System Logs Directory:** Automatically creates a `logs/` directory inside the system directory (`Vault/system/logs` by default).
 - **Date-based JSONL Files:** Daily log files are formatted as `dd-mm-yyyy.jsonl` (e.g., `20-10-2026.jsonl`).
-- **Retention & Validation Policy on Startup:**
-  - Scans `logs/` on server startup.
-  - Automatically deletes any files that do not conform to the required date format.
-  - Automatically deletes log files older than the configurable retention period (`LOG_RETENTION_DAYS`, default: 30 days).
+- **Configurable Retention Policy:** Uses `retention_period` from the encrypted SQL Logs configuration (default: 30 days) to delete expired files on startup.
+- **Fine-Grained Logging Controls:**
+  - `show_logs_<module_name>`: Controls whether incoming logs for a module are printed to the terminal.
+  - `store_logs_<module_name>`: Controls whether incoming logs for a module are written to the daily encrypted log file.
 - **XChaCha20-Poly1305 AEAD Encryption:** Every daily log file is encrypted using XChaCha20-Poly1305 with the derived internal key and a fresh 24-byte random nonce per write.
 - **Sequential Record ID & Formatting:**
   - `id`: Sequential integer starting at `1` for each daily file.
-  - `module_name`: Name of the emitting module (e.g. `message_broker`, `operator`, `engine`, `memory`).
+  - `module_name`: Name of the emitting module.
   - `timestamp`: System timestamp in `dd/mm/yyyyTHH:mm:ss` format.
   - `data`: Log message string.
-- **Terminal Streaming:** For every log ingestion request, the log is formatted and printed directly to the terminal stdout and logger.
 
 ---
 
@@ -37,10 +46,12 @@ The **Vault** module serves as the centralized, secure storage and logging backb
 ```text
 Vault/
 ├── __init__.py           # Package exports (encrypt_log_data, decrypt_log_data)
+├── schema.sql            # Central SQL schema definition for all configuration groups
 ├── config.py             # Configuration parameters & environment variables
+├── config_storage.py     # SQL table manager, schema synchronizer & XChaCha20-Poly1305 database encryption
 ├── crypto.py             # Credential store, key derivation & internal XChaCha20-Poly1305 cipher
 ├── log_manager.py        # Log rotation, retention cleaner, atomic encrypted writer & query engine
-├── api.py                # FastAPI routes (POST /logs, GET /logs, POST /retention/cleanup)
+├── api.py                # FastAPI routes (POST /logs, GET /logs, GET /config/{key}, POST /retention/cleanup)
 ├── app.py                # Web server application entrypoint & lifespan lifecycle
 ├── requirements.txt      # Dependencies
 ├── tests/
@@ -50,22 +61,35 @@ Vault/
 
 ---
 
-## 3. Configuration
+## 3. Configuration Groups
 
-Configurable via environment variables or in `config.py`:
+### Logs Configuration (`logs`)
+| Field | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `retention_period` | INTEGER | `30` | Retention duration in days |
+| `show_logs_operator` | BOOLEAN | `true` | Print operator logs to terminal |
+| `show_logs_engine` | BOOLEAN | `true` | Print engine logs to terminal |
+| `show_logs_memory` | BOOLEAN | `true` | Print memory logs to terminal |
+| `show_logs_client` | BOOLEAN | `true` | Print client logs to terminal |
+| `show_logs_message_broker` | BOOLEAN | `true` | Print message_broker logs to terminal |
+| `store_logs_operator` | BOOLEAN | `true` | Save operator logs to encrypted file |
+| `store_logs_engine` | BOOLEAN | `true` | Save engine logs to encrypted file |
+| `store_logs_memory` | BOOLEAN | `true` | Save memory logs to encrypted file |
+| `store_logs_client` | BOOLEAN | `true` | Save client logs to encrypted file |
+| `store_logs_message_broker`| BOOLEAN | `true` | Save message_broker logs to encrypted file |
 
-| Variable | Default Value | Description |
-| :--- | :--- | :--- |
-| `VAULT_HOST` | `127.0.0.1` | Host address for web server |
-| `VAULT_PORT` | `8001` | Port for Vault web server |
-| `VAULT_RELOAD` | `false` | Enable/disable auto-reload |
-| `MIRA_SYSTEM_DIR` | `<Vault_dir>/system` | Base system directory |
-| `MIRA_LOGS_DIR` | `<system_dir>/logs` | Directory for encrypted log files |
-| `LOG_RETENTION_DAYS` | `30` | Number of days to retain logs before cleanup |
-| `MIRA_KEYRING_SERVICE` | `MIRA_VAULT` | Service name in OS credential store |
-| `MIRA_KEYRING_KEY_NAME`| `master_encryption_key` | Key name in OS credential store |
-| `MIRA_KEY_PREFIX` | `MIRA_VAULT_PREFIX_SEC_` | Hardcoded prefix for key derivation |
-| `MIRA_KEY_SUFFIX` | `_MIRA_VAULT_SUFFIX_KEY` | Hardcoded suffix for key derivation |
+### Message Broker Configuration (`message_broker`)
+| Field | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `REDIS_HOST` | TEXT | `"localhost"` | Redis server hostname |
+| `REDIS_PORT` | INTEGER | `6379` | Redis server port |
+| `REDIS_DB` | INTEGER | `0` | Redis database index |
+| `REDIS_PASSWORD` | TEXT | `null` | Redis password |
+| `REDIS_PROTOCOL` | INTEGER | `2` | Redis connection protocol |
+| `REDIS_DECODE_RESPONSES` | BOOLEAN | `true` | Decode Redis responses to strings |
+| `SERVER_HOST` | TEXT | `"127.0.0.1"` | Message Broker bind host |
+| `SERVER_PORT` | INTEGER | `8000` | Message Broker bind port |
+| `SERVER_RELOAD` | BOOLEAN | `false` | Enable/disable auto-reload |
 
 ---
 
@@ -81,7 +105,6 @@ Configurable via environment variables or in `config.py`:
     "data": "Connected to Redis at localhost:6379"
   }
   ```
-  *(Note: `data` must strictly be a string)*
 * **Response Body:**
   ```json
   {
@@ -96,26 +119,43 @@ Configurable via environment variables or in `config.py`:
   - `module_name` *(optional)*: Filter logs by module name. Defaults to `"all"`.
   - `start_date` *(optional)*: Start date in `dd-mm-yyyy` format. Defaults to today's date.
   - `end_date` *(optional)*: End date in `dd-mm-yyyy` format. Defaults to today's date.
-  - `date` *(optional)*: Shortcut for single day query.
   - `limit` *(optional)*: Maximum number of recent log entries to return.
-* **Default Behavior:**
-  When no parameters are provided, returns all logs (`module_name="all"`) for today.
+
+### 3. Get Configuration
+* **Method:** `GET /config/{key}` or `GET /config?key={key}`
+* **Status:** `200 OK`
+* **Example Request:** `GET /config/logs`
 * **Response Body:**
   ```json
-  [
-    {
-      "id": 1,
-      "module_name": "message_broker",
-      "timestamp": "20/10/2026T11:22:02",
-      "data": "Connected to Redis at localhost:6379"
-    }
-  ]
+  {
+    "retention_period": 30,
+    "show_logs_operator": true,
+    "show_logs_engine": true,
+    "show_logs_memory": true,
+    "show_logs_client": true,
+    "show_logs_message_broker": true,
+    "store_logs_operator": true,
+    "store_logs_engine": true,
+    "store_logs_memory": true,
+    "store_logs_client": true,
+    "store_logs_message_broker": true
+  }
   ```
-
-### 3. Trigger Retention Cleanup
-* **Method:** `POST /retention/cleanup`
-* **Status:** `200 OK`
-* Scans the logs folder and deletes invalid files and expired files older than `LOG_RETENTION_DAYS`.
+* **Example Request:** `GET /config/message_broker`
+* **Response Body:**
+  ```json
+  {
+    "REDIS_HOST": "localhost",
+    "REDIS_PORT": 6379,
+    "REDIS_DB": 0,
+    "REDIS_PASSWORD": null,
+    "REDIS_PROTOCOL": 2,
+    "REDIS_DECODE_RESPONSES": true,
+    "SERVER_HOST": "127.0.0.1",
+    "SERVER_PORT": 8000,
+    "SERVER_RELOAD": false
+  }
+  ```
 
 ---
 

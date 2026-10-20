@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 
 import config
 from crypto import decrypt_log_data, encrypt_log_data
+import config_storage
 
 logger = logging.getLogger("mira.vault.log_manager")
 
@@ -21,13 +22,35 @@ _LOG_LOCK = asyncio.Lock()
 LOG_FILENAME_REGEX = re.compile(r"^(\d{2})-(\d{2})-(\d{4})\.jsonl$")
 
 
+def get_logs_config() -> Dict[str, Any]:
+    """
+    Retrieves the Logs configuration directly from Vault's encrypted SQL storage.
+    """
+    try:
+        return config_storage.get_configuration("logs")
+    except Exception as e:
+        logger.error(f"Error reading logs config from encrypted SQL storage ({e}), using defaults.")
+        return {
+            "retention_period": 30,
+            "show_logs_operator": True,
+            "show_logs_engine": True,
+            "show_logs_memory": True,
+            "show_logs_client": True,
+            "show_logs_message_broker": True,
+            "store_logs_operator": True,
+            "store_logs_engine": True,
+            "store_logs_memory": True,
+            "store_logs_client": True,
+            "store_logs_message_broker": True,
+        }
+
+
 def init_logs_directory() -> Path:
     """
     Creates the logs directory inside the system directory if it does not already exist.
     """
     logs_dir = config.LOGS_DIR
     logs_dir.mkdir(parents=True, exist_ok=True)
-    logger.info(f"Log directory initialized at: {logs_dir.resolve()}")
     return logs_dir
 
 
@@ -55,14 +78,16 @@ def clean_expired_and_invalid_logs(
     """
     Scans the logs directory on startup and deletes files that:
     1. Do not follow the required 'dd-mm-yyyy.jsonl' date format.
-    2. Whose dates are older than the configurable retention period (LOG_RETENTION_DAYS).
+    2. Whose dates are older than the retention period specified in the encrypted SQL configuration.
     """
     init_logs_directory()
 
+    if retention_days is None:
+        cfg = get_logs_config()
+        retention_days = cfg.get("retention_period", 30)
+
     if today is None:
         today = datetime.now().date()
-    if retention_days is None:
-        retention_days = config.LOG_RETENTION_DAYS
 
     deleted_invalid: List[str] = []
     deleted_expired: List[str] = []
@@ -157,18 +182,23 @@ def read_logs_from_file(filepath: Path) -> List[Dict[str, Any]]:
 
 async def append_log(module_name: str, data: str) -> Dict[str, Any]:
     """
-    Appends a new log entry to the current day's log file:
-    1. Generates timestamp in 'dd/mm/yyyyTHH:mm:ss' format.
-    2. Prints log to the terminal.
-    3. Reads existing encrypted daily logs.
-    4. Computes sequential id starting at 1.
-    5. Appends log entry, re-encrypts using XChaCha20-Poly1305 and writes to disk.
+    Appends a new log entry to the current day's log file according to
+    the encrypted SQL Logs configuration (show_logs_<module> and store_logs_<module>):
+    1. Checks show_logs_<module_name> to control terminal output.
+    2. Checks store_logs_<module_name> to control file logging.
     """
     init_logs_directory()
 
     now = datetime.now()
     timestamp_str = now.strftime(config.LOG_TIMESTAMP_FORMAT)
     filepath = get_log_filepath(now.date())
+
+    cfg = get_logs_config()
+    mod_key = module_name.strip().lower().replace("-", "_")
+
+    # Check configuration flags from encrypted SQL (default to True if not explicitly specified)
+    show_logs = cfg.get(f"show_logs_{mod_key}", True)
+    store_logs = cfg.get(f"store_logs_{mod_key}", True)
 
     async with _LOG_LOCK:
         # 1. Read existing logs if file exists
@@ -194,24 +224,25 @@ async def append_log(module_name: str, data: str) -> Dict[str, Any]:
             "data": data,
         }
 
-        # 4. Print the log to the terminal
-        terminal_msg = (
-            f"[VAULT LOG] [{new_entry['timestamp']}] "
-            f"[{new_entry['module_name']}] #{new_entry['id']}: "
-            f"{new_entry['data']}"
-        )
-        print(terminal_msg, flush=True)
-        logger.info(terminal_msg)
+        # 4. Print to terminal if enabled in encrypted SQL Logs configuration
+        if show_logs:
+            terminal_msg = (
+                f"[VAULT LOG] [{new_entry['timestamp']}] "
+                f"[{new_entry['module_name']}] #{new_entry['id']}: "
+                f"{new_entry['data']}"
+            )
+            print(terminal_msg, flush=True)
+            logger.info(terminal_msg)
 
-        # 5. Append and encrypt
-        existing_logs.append(new_entry)
-        serialized_json = json.dumps(existing_logs, indent=2, ensure_ascii=False).encode("utf-8")
-        encrypted_payload = encrypt_log_data(serialized_json)
+        # 5. Append and encrypt to daily log file if enabled in encrypted SQL Logs configuration
+        if store_logs:
+            existing_logs.append(new_entry)
+            serialized_json = json.dumps(existing_logs, indent=2, ensure_ascii=False).encode("utf-8")
+            encrypted_payload = encrypt_log_data(serialized_json)
 
-        # 6. Write to temporary file and replace atomically
-        temp_filepath = filepath.with_suffix(".tmp")
-        temp_filepath.write_bytes(encrypted_payload)
-        temp_filepath.replace(filepath)
+            temp_filepath = filepath.with_suffix(".tmp")
+            temp_filepath.write_bytes(encrypted_payload)
+            temp_filepath.replace(filepath)
 
         return new_entry
 

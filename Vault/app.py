@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import config
 from api import router as vault_router
 import crypto
+import config_storage
 import log_manager
 
 logging.basicConfig(
@@ -25,7 +26,6 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing MIRA Vault module on startup...")
 
     # 1. Key Generation & Retrieval:
-    # Check OS credential store, generate if absent, derive final key and keep in memory.
     try:
         crypto.init_encryption_key()
         logger.info(
@@ -35,8 +35,15 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize encryption key: {e}")
         sys.exit(1)
 
-    # 2. Log Management Initialization:
-    # Ensure logs directory exists inside system directory, and clean invalid/expired logs.
+    # 2. SQL Configuration Storage & Schema Synchronization:
+    try:
+        config_storage.init_config_storage()
+        logger.info("SQL configuration storage initialized, synchronized, and encrypted.")
+    except Exception as e:
+        logger.error(f"Failed to initialize SQL configuration storage: {e}")
+        sys.exit(1)
+
+    # 3. Log Management Initialization:
     try:
         log_manager.init_logs_directory()
         cleanup_stats = log_manager.clean_expired_and_invalid_logs()
@@ -57,7 +64,7 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(
         title="MIRA Vault",
-        description="Centralized Vault Module for Encrypted Logs and Secret Key Management",
+        description="Centralized Vault Module for Encrypted Logs, Configuration, and Secrets",
         version="1.0.0",
         lifespan=lifespan
     )
