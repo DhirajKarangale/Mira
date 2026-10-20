@@ -6,7 +6,7 @@ import logging
 import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import config
 from crypto import decrypt_log_data, encrypt_log_data
@@ -207,8 +207,10 @@ async def get_logs(
     module_name: str = "all",
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
-    limit: Optional[int] = None
-) -> List[Dict[str, Any]]:
+    search: Optional[str] = None,
+    limit: Optional[int] = None,
+    offset: int = 0,
+) -> Tuple[List[Dict[str, Any]], int]:
     init_logs_directory()
 
     today = datetime.now().date()
@@ -220,23 +222,34 @@ async def get_logs(
     elif end_date is not None and start_date is None:
         start_date = end_date
 
+    # Gracefully normalize if dates are reversed
     if start_date > end_date:
-        raise ValueError(f"start_date ({start_date}) cannot be after end_date ({end_date})")
+        start_date, end_date = end_date, start_date
 
     collected_logs: List[Dict[str, Any]] = []
 
-    async with _LOG_LOCK:
-        curr_date = start_date
-        while curr_date <= end_date:
-            filepath = get_log_filepath(curr_date)
-            if filepath.exists():
-                try:
-                    daily_logs = read_logs_from_file(filepath)
-                    collected_logs.extend(daily_logs)
-                except Exception as e:
-                    logger.error(f"Failed to read logs for {curr_date}: {e}")
-            curr_date += timedelta(days=1)
+    # Find matching log files directly from directory (instantaneous, never hangs on large date ranges)
+    matching_files: List[Tuple[date, Path]] = []
+    if config.LOGS_DIR.exists():
+        for item in config.LOGS_DIR.iterdir():
+            if not item.is_file():
+                continue
+            file_date = parse_log_filename(item.name)
+            if file_date is not None and start_date <= file_date <= end_date:
+                matching_files.append((file_date, item))
 
+    # Sort matching files newest date first
+    matching_files.sort(key=lambda x: x[0], reverse=True)
+
+    async with _LOG_LOCK:
+        for f_date, filepath in matching_files:
+            try:
+                daily_logs = read_logs_from_file(filepath)
+                collected_logs.extend(daily_logs)
+            except Exception as e:
+                logger.error(f"Failed to read logs for {f_date}: {e}")
+
+    # 1. Filter by module_name
     if module_name and module_name.strip().lower() != "all":
         target = module_name.strip().lower()
         collected_logs = [
@@ -244,7 +257,29 @@ async def get_logs(
             if log.get("module_name", "").lower() == target
         ]
 
-    if limit is not None and limit > 0:
-        collected_logs = collected_logs[-limit:]
+    # 2. Filter by search query across log content
+    if search and search.strip():
+        search_term = search.strip().lower()
+        collected_logs = [
+            log for log in collected_logs
+            if search_term in str(log.get("data", "")).lower()
+        ]
 
-    return collected_logs
+    # 3. Sort returning most recent logs first
+    collected_logs.sort(
+        key=lambda x: (x.get("timestamp", ""), x.get("id", 0)),
+        reverse=True
+    )
+
+    total_count = len(collected_logs)
+
+    # 4. Pagination
+    if offset < 0:
+        offset = 0
+
+    if limit is not None and limit > 0:
+        paged_logs = collected_logs[offset : offset + limit]
+    else:
+        paged_logs = collected_logs[offset:]
+
+    return paged_logs, total_count

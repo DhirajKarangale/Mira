@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, date
+import logging
 import platform
 import sys
-from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Query, status
+from typing import Any, Dict, List, Optional, Union
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
 import config_storage
@@ -48,66 +49,138 @@ async def create_log(request: LogCreateRequest):
         )
 
 
+def parse_flexible_date(date_str: Optional[str]) -> Optional[date]:
+    if not date_str or not isinstance(date_str, str):
+        return None
+    cleaned = date_str.strip()
+    if not cleaned:
+        return None
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(cleaned, fmt).date()
+        except ValueError:
+            pass
+    return None
+
+
+class LogConfigUpdateRequest(BaseModel):
+    retention_period: Optional[int] = Field(None, ge=1, le=365)
+    show_logs_operator: Optional[bool] = None
+    show_logs_engine: Optional[bool] = None
+    show_logs_memory: Optional[bool] = None
+    show_logs_client: Optional[bool] = None
+    show_logs_message_broker: Optional[bool] = None
+    store_logs_operator: Optional[bool] = None
+    store_logs_engine: Optional[bool] = None
+    store_logs_memory: Optional[bool] = None
+    store_logs_client: Optional[bool] = None
+    store_logs_message_broker: Optional[bool] = None
+
+
+@router.post(
+    "/config/logs",
+    status_code=status.HTTP_200_OK
+)
+async def update_logs_config(request: LogConfigUpdateRequest):
+    try:
+        updates = {k: v for k, v in request.model_dump().items() if v is not None}
+        if not updates:
+            return config_storage.get_configuration("logs")
+        return config_storage.update_configuration("logs", updates)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to update log configurations: {str(e)}"}
+        )
+
+
+@router.post(
+    "/logs/config",
+    status_code=status.HTTP_200_OK
+)
+async def update_logs_config_alias(request: LogConfigUpdateRequest):
+    return await update_logs_config(request)
+
+
+class PaginatedLogsResponse(BaseModel):
+    items: List[LogEntryResponse]
+    total: int
+    page: int
+    limit: int
+
+
 @router.get(
     "/logs",
-    response_model=List[LogEntryResponse],
+    response_model=Union[List[LogEntryResponse], PaginatedLogsResponse],
     status_code=status.HTTP_200_OK
 )
 async def get_logs(
+    response: Response,
     module_name: str = Query("all"),
-    start_date: Optional[str] = Query(None, pattern=r"^\d{2}-\d{2}-\d{4}$"),
-    end_date: Optional[str] = Query(None, pattern=r"^\d{2}-\d{2}-\d{4}$"),
-    date: Optional[str] = Query(None, pattern=r"^\d{2}-\d{2}-\d{4}$"),
-    limit: Optional[int] = Query(None, ge=1, le=1000)
+    search: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    date: Optional[str] = Query(None),
+    limit: Optional[int] = Query(50, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    page: Optional[int] = Query(None, ge=1),
+    envelope: bool = Query(False),
 ):
     parsed_start = None
     parsed_end = None
 
     if date:
-        try:
-            parsed_start = datetime.strptime(date, "%d-%m-%Y").date()
-            parsed_end = parsed_start
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"message": f"Invalid date format: '{date}'. Use dd-mm-yyyy."}
-            )
+        parsed_start = parse_flexible_date(date)
+        parsed_end = parsed_start
 
     if start_date:
-        try:
-            parsed_start = datetime.strptime(start_date, "%d-%m-%Y").date()
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"message": f"Invalid start_date format: '{start_date}'. Use dd-mm-yyyy."}
-            )
+        parsed_start = parse_flexible_date(start_date)
 
     if end_date:
-        try:
-            parsed_end = datetime.strptime(end_date, "%d-%m-%Y").date()
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"message": f"Invalid end_date format: '{end_date}'. Use dd-mm-yyyy."}
-            )
+        parsed_end = parse_flexible_date(end_date)
+
+    # Gracefully normalize start and end dates
+    if parsed_start and parsed_end and parsed_start > parsed_end:
+        parsed_start, parsed_end = parsed_end, parsed_start
+
+    if page is not None and page >= 1:
+        effective_limit = limit or 50
+        offset = (page - 1) * effective_limit
 
     try:
-        return await log_manager.get_logs(
+        logs, total_count = await log_manager.get_logs(
             module_name=module_name,
             start_date=parsed_start,
             end_date=parsed_end,
-            limit=limit
+            search=search,
+            limit=limit,
+            offset=offset
         )
-    except ValueError as ve:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"message": str(ve)}
-        )
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["X-Limit"] = str(limit or 50)
+        response.headers["X-Offset"] = str(offset)
+
+        if envelope:
+            computed_page = page if page is not None else (offset // (limit or 50) + 1)
+            return {
+                "items": logs,
+                "total": total_count,
+                "page": computed_page,
+                "limit": limit or 50,
+            }
+
+        return logs
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"message": f"Failed to retrieve logs: {str(e)}"}
-        )
+        logger = logging.getLogger("mira.vault.api")
+        logger.error(f"Error in get_logs: {e}")
+        if envelope:
+            return {
+                "items": [],
+                "total": 0,
+                "page": page or 1,
+                "limit": limit or 50,
+            }
+        return []
 
 
 @router.get(

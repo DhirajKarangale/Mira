@@ -12,6 +12,8 @@ target/
 logs/
 **/logs/
 **/logs/**
+!Client/src/**/Logs/
+!Client/src/**/Logs/**
 screenshots/
 **/screenshots/
 **/screenshots/**
