@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import re
 import sqlite3
@@ -12,7 +11,6 @@ from crypto import decrypt_log_data, encrypt_log_data
 
 logger = logging.getLogger("mira.vault.config_storage")
 
-# Active in-memory SQLite connection holding the decrypted schema & data
 _DB_CONN: Optional[sqlite3.Connection] = None
 _PARSED_SCHEMA: Dict[str, Dict[str, Any]] = {}
 
@@ -31,9 +29,6 @@ def get_encrypted_db_path() -> Path:
 
 
 def parse_schema_file(schema_path: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
-    """
-    Parses central SQL schema file into table definitions, column names, and types.
-    """
     if schema_path is None:
         schema_path = get_schema_file_path()
 
@@ -77,13 +72,6 @@ def init_config_storage(
     schema_path: Optional[Path] = None,
     enc_db_path: Optional[Path] = None
 ) -> None:
-    """
-    Initializes SQL configuration storage:
-    1. Decrypts and loads existing SQLite database if present; otherwise creates in-memory DB.
-    2. Synchronizes schema against central SQL schema file: creates missing tables,
-       adds missing columns, and drops removed columns.
-    3. Re-encrypts all configuration tables using XChaCha20-Poly1305 and the Vault key.
-    """
     global _DB_CONN, _PARSED_SCHEMA
 
     config.SYSTEM_DIR.mkdir(parents=True, exist_ok=True)
@@ -93,7 +81,6 @@ def init_config_storage(
     _PARSED_SCHEMA = parse_schema_file(schema_path)
     _DB_CONN = sqlite3.connect(":memory:", check_same_thread=False)
 
-    # 1. Load existing encrypted database from disk if present
     if enc_db_path.exists():
         try:
             encrypted_bytes = enc_db_path.read_bytes()
@@ -104,9 +91,7 @@ def init_config_storage(
         except Exception as e:
             logger.error(f"Failed to decrypt existing config database ({e}), starting clean.")
 
-    # 2. Synchronize existing schemas and tables
     for table_name, table_spec in _PARSED_SCHEMA.items():
-        # Check if table exists
         exists = _DB_CONN.execute(
             "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?",
             (table_name,)
@@ -118,19 +103,16 @@ def init_config_storage(
             _DB_CONN.execute(f"INSERT INTO {table_name} DEFAULT VALUES")
             _DB_CONN.commit()
         else:
-            # Synchronize columns
             existing_info = _DB_CONN.execute(f"PRAGMA table_info({table_name})").fetchall()
             existing_cols = {row[1].lower(): row[1] for row in existing_info}
             target_cols = table_spec["columns"]
 
-            # Add missing columns
             for col_key, (col_name, col_def) in target_cols.items():
                 if col_key not in existing_cols:
                     logger.info(f"Adding missing column '{col_name}' to table '{table_name}'")
                     _DB_CONN.execute(f"ALTER TABLE {table_name} ADD COLUMN {col_def}")
                     _DB_CONN.commit()
 
-            # Drop extra columns (preserve 'id')
             for col_key, col_name in existing_cols.items():
                 if col_key not in target_cols and col_key != "id":
                     logger.info(f"Dropping obsolete column '{col_name}' from table '{table_name}'")
@@ -140,20 +122,15 @@ def init_config_storage(
                     except Exception as e:
                         logger.error(f"Failed to drop column '{col_name}' from '{table_name}': {e}")
 
-            # Ensure default row exists
             count = _DB_CONN.execute(f"SELECT count(*) FROM {table_name}").fetchone()[0]
             if count == 0:
                 _DB_CONN.execute(f"INSERT INTO {table_name} DEFAULT VALUES")
                 _DB_CONN.commit()
 
-    # 3. Encrypt and save to disk
     save_config_storage(enc_db_path)
 
 
 def save_config_storage(enc_db_path: Optional[Path] = None) -> None:
-    """
-    Serializes the in-memory SQLite database and encrypts it with XChaCha20-Poly1305.
-    """
     global _DB_CONN
     if _DB_CONN is None:
         return
@@ -171,17 +148,12 @@ def save_config_storage(enc_db_path: Optional[Path] = None) -> None:
 
 
 def get_configuration(key: str) -> Dict[str, Any]:
-    """
-    Retrieves configuration by group/key name (e.g. 'logs', 'message_broker')
-    or individual setting key. Returns configuration as a JSON-serializable dictionary.
-    """
     global _DB_CONN, _PARSED_SCHEMA
     if _DB_CONN is None:
         init_config_storage()
 
     normalized_key = key.strip().lower().replace("-", "_")
 
-    # 1. Match table name (configuration group)
     if normalized_key in _PARSED_SCHEMA:
         table_name = normalized_key
         table_spec = _PARSED_SCHEMA[table_name]
@@ -209,7 +181,6 @@ def get_configuration(key: str) -> Dict[str, Any]:
 
         return result
 
-    # 2. Match individual setting column across all tables
     for table_name, table_spec in _PARSED_SCHEMA.items():
         if normalized_key in table_spec["columns"]:
             actual_col_name = table_spec["columns"][normalized_key][0]
@@ -230,9 +201,6 @@ def get_configuration(key: str) -> Dict[str, Any]:
 
 
 def update_configuration(table_name: str, updates: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Updates configuration values in the specified table, commits, and re-encrypts the database.
-    """
     global _DB_CONN
     if _DB_CONN is None:
         init_config_storage()

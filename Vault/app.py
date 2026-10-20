@@ -25,7 +25,6 @@ logger = logging.getLogger("mira.vault.app")
 async def lifespan(app: FastAPI):
     logger.info("Initializing MIRA Vault module on startup...")
 
-    # 1. Key Generation & Retrieval:
     try:
         crypto.init_encryption_key()
         logger.info(
@@ -35,7 +34,6 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize encryption key: {e}")
         sys.exit(1)
 
-    # 2. SQL Configuration Storage & Schema Synchronization:
     try:
         config_storage.init_config_storage()
         logger.info("SQL configuration storage initialized, synchronized, and encrypted.")
@@ -43,7 +41,6 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize SQL configuration storage: {e}")
         sys.exit(1)
 
-    # 3. Log Management Initialization:
     try:
         log_manager.init_logs_directory()
         cleanup_stats = log_manager.clean_expired_and_invalid_logs()

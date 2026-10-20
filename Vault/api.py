@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
@@ -12,34 +12,27 @@ router = APIRouter(prefix="", tags=["Vault"])
 
 
 class LogCreateRequest(BaseModel):
-    module_name: str = Field(..., min_length=1, description="Name of the module producing the log")
-    data: str = Field(..., description="Log message string (strictly string)")
+    module_name: str = Field(..., min_length=1)
+    data: str = Field(...)
 
 
 class LogCreateResponse(BaseModel):
-    message: str = Field("Log added successfully", description="Status message")
+    message: str = Field("Log added successfully")
 
 
 class LogEntryResponse(BaseModel):
-    id: int = Field(..., description="Sequential count starting at 1 for each daily file")
-    module_name: str = Field(..., description="Name of the module")
-    timestamp: str = Field(..., description="System timestamp in dd/mm/yyyyTHH:mm:ss format")
-    data: str = Field(..., description="Log message string")
+    id: int = Field(...)
+    module_name: str = Field(...)
+    timestamp: str = Field(...)
+    data: str = Field(...)
 
 
 @router.post(
     "/logs",
     response_model=LogCreateResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Ingest a log entry"
+    status_code=status.HTTP_201_CREATED
 )
 async def create_log(request: LogCreateRequest):
-    """
-    Accepts a module name and log data string.
-    Prints the log to the terminal (if enabled in Logs configuration),
-    appends it to the current day's encrypted log file (if enabled in Logs configuration),
-    and returns only the message 'Log added successfully'.
-    """
     try:
         await log_manager.append_log(
             module_name=request.module_name,
@@ -56,44 +49,18 @@ async def create_log(request: LogCreateRequest):
 @router.get(
     "/logs",
     response_model=List[LogEntryResponse],
-    status_code=status.HTTP_200_OK,
-    summary="Retrieve logs with module_name and date range filters"
+    status_code=status.HTTP_200_OK
 )
 async def get_logs(
-    module_name: str = Query(
-        "all",
-        description="Filter logs by module name. Defaults to 'all'"
-    ),
-    start_date: Optional[str] = Query(
-        None,
-        description="Start date in dd-mm-yyyy format (defaults to today)",
-        pattern=r"^\d{2}-\d{2}-\d{4}$"
-    ),
-    end_date: Optional[str] = Query(
-        None,
-        description="End date in dd-mm-yyyy format (defaults to today)",
-        pattern=r"^\d{2}-\d{2}-\d{4}$"
-    ),
-    date: Optional[str] = Query(
-        None,
-        description="Single date shortcut in dd-mm-yyyy format",
-        pattern=r"^\d{2}-\d{2}-\d{4}$"
-    ),
-    limit: Optional[int] = Query(
-        None,
-        ge=1,
-        le=1000,
-        description="Maximum number of log entries to return"
-    )
+    module_name: str = Query("all"),
+    start_date: Optional[str] = Query(None, pattern=r"^\d{2}-\d{2}-\d{4}$"),
+    end_date: Optional[str] = Query(None, pattern=r"^\d{2}-\d{2}-\d{4}$"),
+    date: Optional[str] = Query(None, pattern=r"^\d{2}-\d{2}-\d{4}$"),
+    limit: Optional[int] = Query(None, ge=1, le=1000)
 ):
-    """
-    Decrypts and returns logs within a date range and module_name filter.
-    Defaults module_name to 'all' and date range to today when not provided.
-    """
     parsed_start = None
     parsed_end = None
 
-    # Support single 'date' query parameter as a convenience shortcut
     if date:
         try:
             parsed_start = datetime.strptime(date, "%d-%m-%Y").date()
@@ -143,14 +110,9 @@ async def get_logs(
 
 @router.get(
     "/config/{key}",
-    status_code=status.HTTP_200_OK,
-    summary="Get configuration by key or group"
+    status_code=status.HTTP_200_OK
 )
 async def get_config_by_path(key: str):
-    """
-    Accepts a configuration key (e.g. 'logs', 'message_broker')
-    and returns the corresponding configuration as JSON.
-    """
     try:
         return config_storage.get_configuration(key)
     except KeyError as e:
@@ -167,14 +129,9 @@ async def get_config_by_path(key: str):
 
 @router.get(
     "/config",
-    status_code=status.HTTP_200_OK,
-    summary="Get configuration via query parameter"
+    status_code=status.HTTP_200_OK
 )
-async def get_config_by_query(key: str = Query(..., min_length=1, description="Configuration key or group name")):
-    """
-    Accepts a configuration key via query parameter (e.g. ?key=logs)
-    and returns the corresponding configuration as JSON.
-    """
+async def get_config_by_query(key: str = Query(..., min_length=1)):
     try:
         return config_storage.get_configuration(key)
     except KeyError as e:
@@ -191,13 +148,9 @@ async def get_config_by_query(key: str = Query(..., min_length=1, description="C
 
 @router.post(
     "/retention/cleanup",
-    status_code=status.HTTP_200_OK,
-    summary="Trigger log retention cleanup"
+    status_code=status.HTTP_200_OK
 )
 async def trigger_cleanup():
-    """
-    Manually triggers a retention cleanup scan of the logs directory.
-    """
     try:
         return log_manager.clean_expired_and_invalid_logs()
     except Exception as e:

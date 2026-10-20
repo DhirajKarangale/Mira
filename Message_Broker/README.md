@@ -173,6 +173,14 @@ Returns the list of all registered consumer group names.
 
 ## 3. How to Run
 
+### Install Dependencies
 ```bash
+pip install -r requirements.txt
+```
+
+### Start Server
+Run from the `Message_Broker/` directory:
+```bash
+cd Message_Broker
 uvicorn app:app --host 127.0.0.1 --port 8000
 ```

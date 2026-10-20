@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -15,17 +14,12 @@ import config_storage
 
 logger = logging.getLogger("mira.vault.log_manager")
 
-# Lock to ensure thread-safe/async-safe concurrent log writes
 _LOG_LOCK = asyncio.Lock()
 
-# Regex to match log filenames like '20-10-2026.jsonl'
 LOG_FILENAME_REGEX = re.compile(r"^(\d{2})-(\d{2})-(\d{4})\.jsonl$")
 
 
 def get_logs_config() -> Dict[str, Any]:
-    """
-    Retrieves the Logs configuration directly from Vault's encrypted SQL storage.
-    """
     try:
         return config_storage.get_configuration("logs")
     except Exception as e:
@@ -46,19 +40,12 @@ def get_logs_config() -> Dict[str, Any]:
 
 
 def init_logs_directory() -> Path:
-    """
-    Creates the logs directory inside the system directory if it does not already exist.
-    """
     logs_dir = config.LOGS_DIR
     logs_dir.mkdir(parents=True, exist_ok=True)
     return logs_dir
 
 
 def parse_log_filename(filename: str) -> Optional[date]:
-    """
-    Validates whether a filename strictly follows the required 'dd-mm-yyyy.jsonl' date format
-    and represents a valid calendar date. Returns date object if valid, None otherwise.
-    """
     match = LOG_FILENAME_REGEX.match(filename)
     if not match:
         return None
@@ -75,11 +62,6 @@ def clean_expired_and_invalid_logs(
     today: Optional[date] = None,
     retention_days: Optional[int] = None
 ) -> Dict[str, Any]:
-    """
-    Scans the logs directory on startup and deletes files that:
-    1. Do not follow the required 'dd-mm-yyyy.jsonl' date format.
-    2. Whose dates are older than the retention period specified in the encrypted SQL configuration.
-    """
     init_logs_directory()
 
     if retention_days is None:
@@ -104,7 +86,6 @@ def clean_expired_and_invalid_logs(
         file_date = parse_log_filename(item.name)
 
         if file_date is None:
-            # File does not follow the required date format
             try:
                 item.unlink()
                 deleted_invalid.append(item.name)
@@ -115,7 +96,6 @@ def clean_expired_and_invalid_logs(
                 logger.error(f"Failed to delete invalid file '{item.name}': {e}")
             continue
 
-        # File follows required date format; check age against retention
         age_in_days = (today - file_date).days
         if age_in_days > retention_days:
             try:
@@ -131,14 +111,10 @@ def clean_expired_and_invalid_logs(
 
     result = {
         "status": "success",
-        "logs_directory": str(config.LOGS_DIR.resolve()),
         "retention_days": retention_days,
         "deleted_invalid_count": len(deleted_invalid),
         "deleted_expired_count": len(deleted_expired),
         "retained_count": len(retained_files),
-        "deleted_invalid": deleted_invalid,
-        "deleted_expired": deleted_expired,
-        "retained_files": retained_files,
     }
     logger.info(
         f"Log cleanup finished: {len(deleted_invalid)} invalid deleted, {len(deleted_expired)} expired deleted, {len(retained_files)} retained."
@@ -147,10 +123,6 @@ def clean_expired_and_invalid_logs(
 
 
 def get_log_filepath(target_date: Optional[date] = None) -> Path:
-    """
-    Returns the file path for a given date in 'dd-mm-yyyy.jsonl' format.
-    Defaults to current system date.
-    """
     if target_date is None:
         target_date = datetime.now().date()
     filename = target_date.strftime(config.LOG_FILENAME_FORMAT)
@@ -158,10 +130,6 @@ def get_log_filepath(target_date: Optional[date] = None) -> Path:
 
 
 def read_logs_from_file(filepath: Path) -> List[Dict[str, Any]]:
-    """
-    Reads and decrypts the JSON log file using XChaCha20-Poly1305.
-    Returns the deserialized array of log objects.
-    """
     if not filepath.exists():
         return []
 
@@ -181,12 +149,6 @@ def read_logs_from_file(filepath: Path) -> List[Dict[str, Any]]:
 
 
 async def append_log(module_name: str, data: str) -> Dict[str, Any]:
-    """
-    Appends a new log entry to the current day's log file according to
-    the encrypted SQL Logs configuration (show_logs_<module> and store_logs_<module>):
-    1. Checks show_logs_<module_name> to control terminal output.
-    2. Checks store_logs_<module_name> to control file logging.
-    """
     init_logs_directory()
 
     now = datetime.now()
@@ -196,12 +158,10 @@ async def append_log(module_name: str, data: str) -> Dict[str, Any]:
     cfg = get_logs_config()
     mod_key = module_name.strip().lower().replace("-", "_")
 
-    # Check configuration flags from encrypted SQL (default to True if not explicitly specified)
     show_logs = cfg.get(f"show_logs_{mod_key}", True)
     store_logs = cfg.get(f"store_logs_{mod_key}", True)
 
     async with _LOG_LOCK:
-        # 1. Read existing logs if file exists
         existing_logs: List[Dict[str, Any]] = []
         if filepath.exists():
             try:
@@ -210,13 +170,11 @@ async def append_log(module_name: str, data: str) -> Dict[str, Any]:
                 logger.error(f"Could not read existing logs from '{filepath.name}', starting fresh: {e}")
                 existing_logs = []
 
-        # 2. Sequential count starting at 1 for each daily file
         if existing_logs:
             next_id = max(item.get("id", 0) for item in existing_logs) + 1
         else:
             next_id = 1
 
-        # 3. Create log object
         new_entry: Dict[str, Any] = {
             "id": next_id,
             "module_name": module_name,
@@ -224,7 +182,6 @@ async def append_log(module_name: str, data: str) -> Dict[str, Any]:
             "data": data,
         }
 
-        # 4. Print to terminal if enabled in encrypted SQL Logs configuration
         if show_logs:
             terminal_msg = (
                 f"[VAULT LOG] [{new_entry['timestamp']}] "
@@ -234,7 +191,6 @@ async def append_log(module_name: str, data: str) -> Dict[str, Any]:
             print(terminal_msg, flush=True)
             logger.info(terminal_msg)
 
-        # 5. Append and encrypt to daily log file if enabled in encrypted SQL Logs configuration
         if store_logs:
             existing_logs.append(new_entry)
             serialized_json = json.dumps(existing_logs, indent=2, ensure_ascii=False).encode("utf-8")
@@ -253,10 +209,6 @@ async def get_logs(
     end_date: Optional[date] = None,
     limit: Optional[int] = None
 ) -> List[Dict[str, Any]]:
-    """
-    Retrieves and decrypts logs for a given date range and module_name filter.
-    Defaults module_name to 'all' and date range to today when not provided.
-    """
     init_logs_directory()
 
     today = datetime.now().date()
@@ -285,7 +237,6 @@ async def get_logs(
                     logger.error(f"Failed to read logs for {curr_date}: {e}")
             curr_date += timedelta(days=1)
 
-    # Filter by module_name if not 'all'
     if module_name and module_name.strip().lower() != "all":
         target = module_name.strip().lower()
         collected_logs = [

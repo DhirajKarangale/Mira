@@ -29,10 +29,6 @@ def get_all_consumer_groups() -> List[str]:
     return list(groups.values())
 
 
-def get_all_consumer_mappings() -> Dict[str, str]:
-    return dict(_load_consumer_groups())
-
-
 def get_stream_for_consumer_key(consumer_key: str) -> Optional[str]:
     if consumer_key not in _load_consumer_groups():
         return None

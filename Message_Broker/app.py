@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+import os
 import sys
 import uvicorn
 from fastapi import FastAPI
@@ -15,7 +16,6 @@ from vault_logger import log
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Fetch configuration from Vault on startup and store locally
     try:
         config.fetch_and_store_config()
         log("Fetched and updated Message Broker configuration from Vault.")
@@ -61,11 +61,10 @@ app = create_app()
 
 
 def start_app() -> None:
-    # Fetch and apply latest configuration from Vault before launching server
     config.fetch_and_store_config()
 
     host = config.SERVER_HOST
-    port = config.SERVER_PORT
+    port = int(os.getenv("PORT", "8000"))
     reload = config.SERVER_RELOAD
 
     log(f"Starting Message Broker server on http://{host}:{port}")
