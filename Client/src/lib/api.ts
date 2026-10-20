@@ -23,7 +23,6 @@ export function createServiceClient(
     baseURL,
     timeout: 15000,
     headers: {
-      "Content-Type": "application/json",
       Accept: "application/json",
     },
     ...config,

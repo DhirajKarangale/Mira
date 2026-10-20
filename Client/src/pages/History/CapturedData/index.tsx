@@ -33,6 +33,24 @@ export const CapturedDataPage: FC = () => {
   // Modal state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  // Toggle in-progress state to prevent double-clicks
+  const [isToggling, setIsToggling] = useState<boolean>(false);
+
+  // Poll Operator status to keep frontend live and reactive to Operator state changes
+  const syncOperatorStatus = useCallback(async () => {
+    try {
+      const opStatus = await fetchOperatorStatus();
+      const isCapturing = Boolean(
+        opStatus.is_running ||
+        opStatus.is_capturing ||
+        (typeof opStatus.status === "string" && opStatus.status.toLowerCase() === "started")
+      );
+      setStatus(isCapturing ? "Started" : "Stopped");
+    } catch {
+      setStatus("Stopped");
+    }
+  }, []);
+
   // Load initial operator configurations from Vault & Operator status directly from Operator service
   const loadInitialConfigs = useCallback(async () => {
     try {
@@ -43,44 +61,48 @@ export const CapturedDataPage: FC = () => {
     } catch (err) {
       console.warn("Could not fetch operator configuration from Vault:", err);
     }
-
-    try {
-      const opStatus = await fetchOperatorStatus();
-      if (
-        opStatus.is_running ||
-        opStatus.status === "started" ||
-        opStatus.status === "Started"
-      ) {
-        setStatus("Started");
-      } else {
-        setStatus("Stopped");
-      }
-    } catch {
-      setStatus("Stopped");
-    }
-  }, []);
+    await syncOperatorStatus();
+  }, [syncOperatorStatus]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       localStorage.removeItem("mira_capture_status");
     }
     loadInitialConfigs();
-  }, [loadInitialConfigs]);
+
+    // Heartbeat: sync status from Operator every 2.5s so changes are immediately visible
+    const timer = setInterval(() => {
+      syncOperatorStatus();
+    }, 2500);
+
+    return () => clearInterval(timer);
+  }, [loadInitialConfigs, syncOperatorStatus]);
 
   // Toggle capturing status: Started <-> Stopped directly via Operator service
   const handleToggleStatus = async () => {
-    const nextStatus: CaptureStatus = status === "Stopped" ? "Started" : "Stopped";
+    if (isToggling) return;
+    setIsToggling(true);
+
+    const isCurrentlyStarted = status === "Started";
+    const nextStatus: CaptureStatus = isCurrentlyStarted ? "Stopped" : "Started";
     setStatus(nextStatus);
+
     try {
       if (nextStatus === "Started") {
         await startCapture();
       } else {
         await stopCapture();
       }
+      // Re-verify immediately from Operator with a small buffer for process state transition
+      setTimeout(() => {
+        syncOperatorStatus();
+      }, 300);
     } catch (err) {
       console.warn("Could not toggle capturing status:", err);
-      // Revert if Operator request failed
-      setStatus(status);
+      // Re-sync with actual Operator state on error
+      await syncOperatorStatus();
+    } finally {
+      setIsToggling(false);
     }
   };
 
@@ -119,6 +141,7 @@ export const CapturedDataPage: FC = () => {
         {/* Capturing Status Header with Started/Stopped Badge, Start/Stop Button, and Auto-Start Toggle */}
         <CaptureStatusHeader
           status={status}
+          statusLoading={isToggling}
           autoStart={autoStart}
           autoStartLoading={autoStartLoading}
           onToggleStatus={handleToggleStatus}

@@ -43,7 +43,8 @@ async fn root_handler() -> impl IntoResponse {
 }
 
 async fn status_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let running = state.manager.is_running();
+    let local = crate::local_state::load_local_state();
+    let running = state.manager.is_running() || local.is_capturing;
     let interval = crate::config::get_config().capture_interval_secs;
     let auto_start = crate::config::get_config().auto_start;
     (

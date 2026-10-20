@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 
 interface CaptureStatusHeaderProps {
   status: CaptureStatus;
+  statusLoading?: boolean;
   autoStart: boolean;
   autoStartLoading: boolean;
   onToggleStatus: () => void;
@@ -20,6 +21,7 @@ interface CaptureStatusHeaderProps {
 
 export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
   status,
+  statusLoading = false,
   autoStart,
   autoStartLoading,
   onToggleStatus,
@@ -51,7 +53,7 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
               <div
                 id="capture-status-badge"
                 className={cn(
-                  "inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border transition-all duration-200 shrink-0 whitespace-nowrap select-none",
+                  "inline-flex items-center justify-center gap-2 w-[128px] h-[26px] px-2.5 rounded-full text-xs font-semibold border transition-all duration-200 shrink-0 whitespace-nowrap select-none",
                   isStarted
                     ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
                     : "bg-zinc-800/80 border-white/[0.08] text-zinc-400"
@@ -98,7 +100,7 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
             onClick={onToggleAutoStart}
             disabled={autoStartLoading}
             className={cn(
-              "group relative flex items-center gap-3 h-[44px] px-3.5 rounded-xl border transition-all duration-200 cursor-pointer select-none outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 shrink-0",
+              "group relative flex items-center justify-between gap-2.5 h-[44px] w-[212px] px-3.5 rounded-xl border transition-all duration-200 cursor-pointer select-none outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 shrink-0",
               autoStart
                 ? "bg-cyan-500/10 border-cyan-500/35 text-cyan-200 shadow-[0_0_15px_rgba(6,182,212,0.15)] hover:border-cyan-500/50 hover:bg-cyan-500/15"
                 : "bg-zinc-850/80 border-white/[0.08] text-zinc-400 hover:border-white/[0.16] hover:bg-zinc-800/80 hover:text-zinc-200"
@@ -109,10 +111,10 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
                 : "Auto-start is disabled. Click to turn on (starts 10s after server launch)."
             }
           >
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <div
                 className={cn(
-                  "p-1.5 rounded-lg border transition-colors",
+                  "p-1.5 rounded-lg border transition-colors shrink-0",
                   autoStart
                     ? "bg-cyan-500/20 border-cyan-500/40 text-cyan-300"
                     : "bg-zinc-800 border-white/[0.06] text-zinc-500 group-hover:text-zinc-300"
@@ -120,12 +122,12 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
               >
                 <Power className="w-3.5 h-3.5" />
               </div>
-              <div className="flex flex-col text-left">
+              <div className="flex flex-col text-left min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-semibold text-zinc-200">Auto Start</span>
+                  <span className="text-xs font-semibold text-zinc-200 whitespace-nowrap">Auto Start</span>
                   <span
                     className={cn(
-                      "text-[9px] font-mono px-1.5 py-0.2 rounded font-bold uppercase tracking-wider",
+                      "text-[9px] font-mono w-7 text-center py-0.2 rounded font-bold uppercase tracking-wider shrink-0",
                       autoStart
                         ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
                         : "bg-zinc-800 text-zinc-500 border border-white/5"
@@ -134,7 +136,7 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
                     {autoStart ? "ON" : "OFF"}
                   </span>
                 </div>
-                <span className="text-[10px] text-zinc-400 font-mono">
+                <span className="text-[10px] text-zinc-400 font-mono w-[100px] whitespace-nowrap">
                   {autoStart ? "10s delay on boot" : "Manual trigger"}
                 </span>
               </div>
@@ -143,7 +145,7 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
             {/* Modern sliding toggle switch track */}
             <div
               className={cn(
-                "relative w-9 h-5 rounded-full transition-colors duration-200 p-0.5 ml-1.5 shrink-0",
+                "relative w-9 h-5 rounded-full transition-colors duration-200 p-0.5 shrink-0",
                 autoStart ? "bg-cyan-500 shadow-inner" : "bg-zinc-700/80"
               )}
             >
@@ -165,15 +167,22 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
             type="button"
             id="btn-toggle-capture-status"
             onClick={onToggleStatus}
+            disabled={statusLoading}
             className={cn(
-              "group relative inline-flex items-center justify-center gap-2.5 h-[44px] px-5 rounded-xl text-xs sm:text-sm font-semibold shadow-lg transition-all duration-200 cursor-pointer active:scale-95 shrink-0 select-none whitespace-nowrap outline-none focus-visible:ring-2",
+              "group relative inline-flex items-center justify-center gap-2.5 h-[44px] w-[160px] px-4 rounded-xl text-xs sm:text-sm font-semibold shadow-lg transition-all duration-200 cursor-pointer active:scale-95 shrink-0 select-none whitespace-nowrap outline-none focus-visible:ring-2",
+              statusLoading && "opacity-75 cursor-not-allowed pointer-events-none",
               isStarted
                 ? "bg-gradient-to-r from-rose-500 via-rose-600 to-red-600 hover:from-rose-400 hover:to-red-500 text-white border border-rose-400/40 shadow-[0_0_20px_rgba(244,63,94,0.25)] hover:shadow-[0_0_28px_rgba(244,63,94,0.4)] focus-visible:ring-rose-400"
                 : "bg-gradient-to-r from-emerald-500 via-emerald-600 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white border border-emerald-400/40 shadow-[0_0_20px_rgba(16,185,129,0.25)] hover:shadow-[0_0_28px_rgba(16,185,129,0.4)] focus-visible:ring-emerald-400"
             )}
             title={isStarted ? "Stop screenshot capturing" : "Start screenshot capturing"}
           >
-            {isStarted ? (
+            {statusLoading ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                <span className="tracking-wide">Updating...</span>
+              </>
+            ) : isStarted ? (
               <>
                 <Square className="w-3.5 h-3.5 fill-current shrink-0 transition-transform group-hover:scale-110" />
                 <span className="tracking-wide">Stop Capturing</span>

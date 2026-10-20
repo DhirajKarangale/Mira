@@ -4,7 +4,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -279,8 +278,8 @@ export const LogDateRangePicker: FC<LogDateRangePickerProps> = ({
           disabled
             ? "bg-zinc-900/50 border-white/5 text-zinc-500 cursor-not-allowed"
             : isOpen
-            ? "bg-zinc-900 border-cyan-400 text-white shadow-[0_0_12px_rgba(6,182,212,0.25)] cursor-pointer"
-            : "bg-zinc-900/90 hover:bg-zinc-800/90 border-white/10 text-zinc-200 hover:border-cyan-500/40 cursor-pointer"
+              ? "bg-zinc-900 border-cyan-400 text-white shadow-[0_0_12px_rgba(6,182,212,0.25)] cursor-pointer"
+              : "bg-zinc-900/90 hover:bg-zinc-800/90 border-white/10 text-zinc-200 hover:border-cyan-500/40 cursor-pointer"
         )}
       >
         <CalendarIcon className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
@@ -395,7 +394,7 @@ export const LogDateRangePicker: FC<LogDateRangePickerProps> = ({
                     item.isCurrentMonth && "text-zinc-300",
                     inRange && "bg-cyan-950/50 text-cyan-200 rounded-none",
                     (isStart || isEnd) &&
-                      "bg-cyan-500 text-zinc-950 font-bold shadow-[0_0_10px_rgba(6,182,212,0.4)] z-10",
+                    "bg-cyan-500 text-zinc-950 font-bold shadow-[0_0_10px_rgba(6,182,212,0.4)] z-10",
                     isStart && rangeEnd > rangeStart && "rounded-r-none",
                     isEnd && rangeEnd > rangeStart && "rounded-l-none",
                     !isStart && !isEnd && !inRange && "hover:bg-white/10 hover:text-white"
@@ -417,17 +416,6 @@ export const LogDateRangePicker: FC<LogDateRangePickerProps> = ({
                 ? "Click end date to finish..."
                 : `${formatReadable(rangeStart)} — ${formatReadable(rangeEnd)}`}
             </span>
-            <button
-              type="button"
-              onClick={() => {
-                onChange({ startDate: rangeStart, endDate: rangeEnd });
-                setIsOpen(false);
-              }}
-              className="flex items-center gap-1 px-2.5 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-zinc-950 font-bold text-[11px] transition-colors cursor-pointer"
-            >
-              <Check className="w-3 h-3" />
-              <span>Apply</span>
-            </button>
           </div>
         </div>
       )}

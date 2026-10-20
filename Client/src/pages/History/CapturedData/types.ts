@@ -8,6 +8,7 @@ export interface OperatorConfigResponse {
 export interface OperatorStatusResponse {
   status: string;
   is_running: boolean;
+  is_capturing?: boolean;
   auto_start?: boolean;
   capture_interval_secs?: number;
 }
