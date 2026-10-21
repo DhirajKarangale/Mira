@@ -40,8 +40,11 @@ fn parse_server_port() -> u16 {
         }
     }
 
-    let (_, port) = config::get_operator_host_and_port();
-    port
+    if let Some((_, port)) = config::get_operator_host_and_port() {
+        return port;
+    }
+
+    panic!("Operator port not specified! Set via --port CLI arg, PORT env var, or services.json");
 }
 
 fn parse_server_host() -> String {
@@ -63,8 +66,11 @@ fn parse_server_host() -> String {
         return h;
     }
 
-    let (host, _) = config::get_operator_host_and_port();
-    host
+    if let Some((host, _)) = config::get_operator_host_and_port() {
+        return host;
+    }
+
+    "127.0.0.1".to_string()
 }
 
 #[tokio::main]

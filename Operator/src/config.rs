@@ -95,7 +95,7 @@ pub fn get_message_broker_url() -> String {
         .unwrap_or_default()
 }
 
-pub fn get_operator_host_and_port() -> (String, u16) {
+pub fn get_operator_host_and_port() -> Option<(String, u16)> {
     if let Some(op_url) = get_service_url("operator") {
         let clean = op_url
             .trim_start_matches("http://")
@@ -105,11 +105,11 @@ pub fn get_operator_host_and_port() -> (String, u16) {
         let parts: Vec<&str> = clean.split(':').collect();
         if parts.len() == 2 {
             if let Ok(port) = parts[1].parse::<u16>() {
-                return (parts[0].to_string(), port);
+                return Some((parts[0].to_string(), port));
             }
         }
     }
-    ("127.0.0.1".to_string(), 1002)
+    None
 }
 
 pub async fn init_config() -> &'static OperatorConfig {

@@ -8,8 +8,11 @@ from typing import Any, Dict, List, Optional, Union
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
+import config
 import config_storage
 import log_manager
+
+logger = logging.getLogger("mira.vault.api")
 
 router = APIRouter(prefix="", tags=["Vault"])
 

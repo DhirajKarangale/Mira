@@ -66,8 +66,25 @@ REDIS_PASSWORD: Optional[str] = None
 REDIS_PROTOCOL: int = 2
 REDIS_DECODE_RESPONSES: bool = True
 
-SERVER_HOST: str = "127.0.0.1"
-SERVER_RELOAD: bool = False
+_mb_url = os.getenv("MESSAGE_BROKER_URL", SERVICES.get("message_broker", ""))
+_parsed_mb_host: Optional[str] = None
+_parsed_mb_port: Optional[int] = None
+
+if _mb_url:
+    _clean_mb = _mb_url.replace("http://", "").replace("https://", "").rstrip("/")
+    if ":" in _clean_mb:
+        _parts = _clean_mb.split(":")
+        _parsed_mb_host = _parts[0]
+        _parsed_mb_port = int(_parts[1]) if _parts[1].isdigit() else None
+    else:
+        _parsed_mb_host = _clean_mb
+
+_env_mb_host = os.getenv("HOST", os.getenv("SERVER_HOST"))
+_env_mb_port = os.getenv("PORT")
+
+SERVER_HOST: str = _env_mb_host or _parsed_mb_host or "127.0.0.1"
+SERVER_PORT: Optional[int] = int(_env_mb_port) if _env_mb_port and _env_mb_port.isdigit() else _parsed_mb_port
+SERVER_RELOAD: bool = os.getenv("SERVER_RELOAD", "false").lower() in ("true", "1", "yes")
 
 
 def apply_config_dict(cfg: Dict[str, Any]) -> None:

@@ -54,17 +54,23 @@ def get_service_url(module_name: str, default: Optional[str] = None) -> Optional
 
 
 _vault_url = os.getenv("VAULT_URL", SERVICES.get("vault", ""))
+_parsed_host: Optional[str] = None
+_parsed_port: Optional[int] = None
+
 if _vault_url:
     _clean_url = _vault_url.replace("http://", "").replace("https://", "").rstrip("/")
     if ":" in _clean_url:
-        _host, _port_str = _clean_url.split(":")
+        _parts = _clean_url.split(":")
+        _parsed_host = _parts[0]
+        _parsed_port = int(_parts[1]) if _parts[1].isdigit() else None
     else:
-        _host, _port_str = "127.0.0.1", "1000"
-else:
-    _host, _port_str = "127.0.0.1", "1000"
+        _parsed_host = _clean_url
 
-SERVER_HOST: str = os.getenv("VAULT_HOST", _host)
-SERVER_PORT: int = int(os.getenv("VAULT_PORT", _port_str))
+_env_host = os.getenv("VAULT_HOST", os.getenv("HOST"))
+_env_port = os.getenv("VAULT_PORT", os.getenv("PORT"))
+
+SERVER_HOST: str = _env_host or _parsed_host or "127.0.0.1"
+SERVER_PORT: Optional[int] = int(_env_port) if _env_port and _env_port.isdigit() else _parsed_port
 SERVER_RELOAD: bool = os.getenv("VAULT_RELOAD", "false").lower() in ("true", "1", "yes")
 
 VAULT_DIR: Path = Path(__file__).resolve().parent

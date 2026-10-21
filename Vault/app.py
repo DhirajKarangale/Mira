@@ -93,6 +93,8 @@ app = create_app()
 def start_app() -> None:
     host = config.SERVER_HOST
     port = config.SERVER_PORT
+    if not port:
+        raise RuntimeError("Vault port not specified! Set via PORT/VAULT_PORT env var, --port, or services.json")
     reload = config.SERVER_RELOAD
 
     logger.info(f"Starting MIRA Vault web server on http://{host}:{port}")

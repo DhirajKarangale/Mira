@@ -66,18 +66,10 @@ def start_app() -> None:
     except Exception:
         pass
 
-    mb_url = config.get_service_url("message_broker")
-    if mb_url:
-        clean = mb_url.replace("http://", "").replace("https://", "").rstrip("/")
-        if ":" in clean:
-            default_host, default_port = clean.split(":")
-        else:
-            default_host, default_port = "127.0.0.1", "1001"
-    else:
-        default_host, default_port = "127.0.0.1", "1001"
-
-    host = config.SERVER_HOST or default_host
-    port = int(os.getenv("PORT", default_port))
+    host = config.SERVER_HOST
+    port = config.SERVER_PORT
+    if not port:
+        raise RuntimeError("Message Broker port not specified! Set via PORT env var, --port, or services.json")
     reload = config.SERVER_RELOAD
 
     log(f"Starting Message Broker server on http://{host}:{port}")

@@ -9,9 +9,9 @@ import fs from "node:fs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const host = process.env.TAURI_DEV_HOST;
 
-// Dynamically read services.json from project root if available
 let servicesConfig: Record<string, string> = {};
-let clientPort = 8005;
+let clientPort: number | undefined;
+let clientHost: string | undefined = process.env.TAURI_DEV_HOST || process.env.HOST;
 
 try {
   const servicesPath = path.resolve(__dirname, "../services.json");
@@ -21,10 +21,11 @@ try {
     if (servicesConfig.client) {
       const parsed = new URL(servicesConfig.client);
       if (parsed.port) clientPort = Number(parsed.port);
+      if (parsed.hostname && !clientHost) clientHost = parsed.hostname;
     }
   }
 } catch {
-  // fallback to defaults
+  // ignore
 }
 
 if (process.env.PORT) clientPort = Number(process.env.PORT);
@@ -46,16 +47,16 @@ export default defineConfig(() => ({
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {
     port: clientPort,
-    strictPort: true,
-    host: host || false,
+    strictPort: !!clientPort,
+    host: clientHost || false,
     fs: {
       allow: [".."],
     },
-    hmr: host
+    hmr: clientHost
       ? {
           protocol: "ws",
-          host,
-          port: clientPort + 1,
+          host: clientHost,
+          port: clientPort ? clientPort + 1 : undefined,
         }
       : undefined,
     watch: {

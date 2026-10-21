@@ -11,6 +11,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import webbrowser
 from pathlib import Path
 from typing import Any, Dict, List, Set, Tuple
 
@@ -52,7 +53,7 @@ MODULE_REGISTRY: List[Dict[str, Any]] = [
         "name": "Vault",
         "description": "Encrypted configuration, audit logs, and secrets storage",
         "dir": ROOT_DIR / "Vault",
-        "default_port": 1000,
+        "default_port": 9001,
         "default_host": "127.0.0.1",
         "order": 1,
         "health_path": "/health",
@@ -66,7 +67,7 @@ MODULE_REGISTRY: List[Dict[str, Any]] = [
         "name": "Message Broker",
         "description": "Redis Streams message broker and job queue hub",
         "dir": ROOT_DIR / "Message_Broker",
-        "default_port": 1001,
+        "default_port": 9002,
         "default_host": "127.0.0.1",
         "order": 2,
         "health_path": "/health",
@@ -80,7 +81,7 @@ MODULE_REGISTRY: List[Dict[str, Any]] = [
         "name": "Operator",
         "description": "Rust OS automation, active app tracking, and silent capture",
         "dir": ROOT_DIR / "Operator",
-        "default_port": 1002,
+        "default_port": 9003,
         "default_host": "127.0.0.1",
         "order": 3,
         "health_path": "/health",
@@ -94,7 +95,7 @@ MODULE_REGISTRY: List[Dict[str, Any]] = [
         "name": "Client",
         "description": "Tauri v2 + React 19 desktop user interface",
         "dir": ROOT_DIR / "Client",
-        "default_port": 1003,
+        "default_port": 9004,
         "default_host": "127.0.0.1",
         "order": 4,
         "health_path": "/",
@@ -108,7 +109,7 @@ MODULE_REGISTRY: List[Dict[str, Any]] = [
         "name": "Memory",
         "description": "Image processing, OCR extraction, and Qdrant vector retrieval",
         "dir": ROOT_DIR / "Memory",
-        "default_port": 1004,
+        "default_port": 9005,
         "default_host": "127.0.0.1",
         "order": 5,
         "health_path": "/health",
@@ -122,7 +123,7 @@ MODULE_REGISTRY: List[Dict[str, Any]] = [
         "name": "Engine",
         "description": "LLM orchestration, LangChain/LangGraph workflow coordinator",
         "dir": ROOT_DIR / "Engine",
-        "default_port": 1005,
+        "default_port": 9006,
         "default_host": "127.0.0.1",
         "order": 6,
         "health_path": "/health",
@@ -218,39 +219,9 @@ def load_services_json() -> Dict[str, str]:
 
 
 def update_services_json(url_map: Dict[str, str]) -> None:
-    existing = load_services_json()
-    existing.update(url_map)
     with open(SERVICES_JSON_PATH, "w", encoding="utf-8") as f:
-        json.dump(existing, f, indent=2)
+        json.dump(url_map, f, indent=2)
     log_sys(f"Updated global service discovery registry -> {color(str(SERVICES_JSON_PATH), CYAN)}")
-
-
-def broadcast_services_to_running_modules(allocations: Dict[str, Any], url_map: Dict[str, str]) -> None:
-    payload = json.dumps(url_map).encode("utf-8")
-    for mod_id in ("vault", "message_broker", "operator"):
-        if mod_id not in allocations:
-            continue
-        mod_url = allocations[mod_id]["url"]
-        mod_name = allocations[mod_id]["module"]["name"]
-        target_endpoint = f"{mod_url}/services"
-        transmitted = False
-        for _ in range(5):
-            try:
-                req = urllib.request.Request(
-                    target_endpoint,
-                    data=payload,
-                    headers={"Content-Type": "application/json", "Accept": "application/json"},
-                    method="POST",
-                )
-                with urllib.request.urlopen(req, timeout=2.0) as resp:
-                    if resp.status == 200:
-                        log_sys(f"Transmitted active base URLs to {mod_name} -> {color('OK', GREEN)}")
-                        transmitted = True
-                        break
-            except Exception:
-                time.sleep(0.4)
-        if not transmitted:
-            log_sys(f"{color('WARNING:', YELLOW)} Could not transmit runtime base URLs to {mod_name}")
 
 
 def update_client_configs(url_map: Dict[str, str], client_port: int) -> None:
@@ -594,6 +565,11 @@ def main() -> None:
         help="Skip starting the frontend Client module"
     )
     parser.add_argument(
+        "--no-open",
+        action="store_true",
+        help="Do not automatically open the Client UI in the default browser"
+    )
+    parser.add_argument(
         "--check",
         action="store_true",
         help="Check port availability and print allocation plan without launching"
@@ -645,11 +621,11 @@ def main() -> None:
     allocations = allocate_all_ports(active_modules)
 
     url_map: Dict[str, str] = {}
-    existing_services = load_services_json()
-    url_map.update(existing_services)
-
     for mod_id, alloc in allocations.items():
         url_map[mod_id] = alloc["url"]
+    for mod in MODULE_REGISTRY:
+        if mod["id"] not in url_map:
+            url_map[mod["id"]] = f"http://{mod['default_host']}:{mod['default_port']}"
 
     print("\n" + "=" * 82)
     print(f"{'Module':<18} {'Default Port':<14} {'Assigned Port':<15} {'Assigned Base URL':<28} {'Status':<10}")
@@ -673,10 +649,10 @@ def main() -> None:
         log_sys(f"{color('Port availability inspection complete.', GREEN)} Exiting (--check mode).")
         return
 
-    log_sys("Broadcasting updated base URLs across modules...")
+    log_sys("Updating services.json with resolved module base URLs...")
     update_services_json(url_map)
 
-    client_port = allocations.get("client", {}).get("port", 1003)
+    client_port = allocations.get("client", {}).get("port", 9004)
     update_client_configs(url_map, client_port)
 
     runner = ProcessRunner()
@@ -699,8 +675,6 @@ def main() -> None:
             runner.shutdown()
             sys.exit(1)
 
-    log_sys("Transmitting active runtime base URLs to modules...")
-    broadcast_services_to_running_modules(allocations, url_map)
 
     print("\n" + "=" * 82)
     log_sys(f"{color('ALL MIRA MODULES ARE ONLINE AND SYNCHRONIZED!', GREEN + BOLD)}")
@@ -710,6 +684,14 @@ def main() -> None:
     log_sys(f"Operator Engine:  {color(url_map.get('operator', ''), CYAN)}")
     log_sys(f"Press {color('Ctrl+C', YELLOW + BOLD)} at any time to gracefully shut down all modules.")
     print("=" * 82 + "\n")
+
+    client_url = url_map.get("client")
+    if client_url and not args.no_client and not args.no_open:
+        log_sys(f"Auto-launching Client UI in default browser -> {color(client_url, CYAN)}")
+        try:
+            webbrowser.open(client_url)
+        except Exception as e:
+            log_sys(f"Notice: Could not auto-open browser ({e})")
 
     try:
         while True:
