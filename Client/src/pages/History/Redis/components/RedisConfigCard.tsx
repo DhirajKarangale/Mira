@@ -13,7 +13,7 @@ import {
   Minus,
   Plus,
 } from "lucide-react";
-import { fetchRedisConfig, updateRedisConfig } from "../api";
+import { useRedisConfigQuery, useUpdateRedisConfigMutation } from "../queries";
 import type { RedisConfig } from "../types";
 import { cn } from "@/lib/utils";
 
@@ -29,41 +29,28 @@ const DEFAULT_CONFIG: RedisConfig = {
 };
 
 export const RedisConfigCard: FC = () => {
-  const [config, setConfig] = useState<RedisConfig>(DEFAULT_CONFIG);
-  const [draft, setDraft] = useState<RedisConfig>(DEFAULT_CONFIG);
+  const { data: config = DEFAULT_CONFIG, isLoading: loading, refetch } = useRedisConfigQuery();
+  const updateMutation = useUpdateRedisConfigMutation();
+
+  const [draft, setDraft] = useState<RedisConfig>(config);
   const [portInput, setPortInput] = useState<string>("6379");
   const [dbInput, setDbInput] = useState<string>("0");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{
     type: "success" | "error";
     text: string;
   } | null>(null);
 
-  const loadConfig = async () => {
-    setLoading(true);
-    setStatusMessage(null);
-    try {
-      const data = await fetchRedisConfig();
-      setConfig(data);
-      setDraft(data);
-      setPortInput(String(data.REDIS_PORT ?? 6379));
-      setDbInput(String(data.REDIS_DB ?? 0));
-    } catch (err: any) {
-      console.error("Failed to load Redis config from Vault:", err);
-      setStatusMessage({
-        type: "error",
-        text: err?.response?.data?.detail?.message || "Failed to load configurations from Vault.",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Synchronize draft when config updates from Vault
   useEffect(() => {
-    loadConfig();
-  }, []);
+    if (config) {
+      setDraft(config);
+      setPortInput(String(config.REDIS_PORT ?? 6379));
+      setDbInput(String(config.REDIS_DB ?? 0));
+    }
+  }, [config]);
+
+  const saving = updateMutation.isPending;
 
   const hasChanges = JSON.stringify(config) !== JSON.stringify(draft);
 
@@ -154,7 +141,6 @@ export const RedisConfigCard: FC = () => {
 
   const handleSave = async () => {
     if (!hasChanges || saving) return;
-    setSaving(true);
     setStatusMessage(null);
 
     // Ensure port and db are strictly clamped before save
@@ -173,8 +159,7 @@ export const RedisConfigCard: FC = () => {
         SERVER_RELOAD: Boolean(draft.SERVER_RELOAD),
       };
 
-      const updated = await updateRedisConfig(payload);
-      setConfig(updated);
+      const updated = await updateMutation.mutateAsync(payload);
       setDraft(updated);
       setPortInput(String(updated.REDIS_PORT ?? 6379));
       setDbInput(String(updated.REDIS_DB ?? 0));
@@ -192,8 +177,6 @@ export const RedisConfigCard: FC = () => {
         type: "error",
         text: err?.response?.data?.detail?.message || "Failed to update configurations in Vault.",
       });
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -592,7 +575,7 @@ export const RedisConfigCard: FC = () => {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={loadConfig}
+                onClick={() => refetch()}
                 disabled={loading || saving}
                 className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium text-zinc-400 hover:text-zinc-200 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.08] transition-colors cursor-pointer disabled:cursor-not-allowed"
               >

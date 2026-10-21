@@ -1,10 +1,9 @@
-import { useState, useEffect, useCallback, type FC } from "react";
+import { type FC } from "react";
 import { useLocation, useNavigate, Routes, Route, Navigate } from "react-router-dom";
 import { Database, Sliders, Layers, RefreshCw, AlertCircle } from "lucide-react";
 import { ConsumerGroupsCard } from "./components/ConsumerGroupsCard";
 import { RedisConfigCard } from "./components/RedisConfigCard";
-import { fetchConsumerGroups } from "./api";
-import type { ConsumerGroup } from "./types";
+import { useConsumerGroupsQuery } from "./queries";
 import { cn } from "@/lib/utils";
 
 export const RedisPage: FC = () => {
@@ -14,30 +13,19 @@ export const RedisPage: FC = () => {
   // Active view driven strictly by React Router URL: /history/redis/config vs /history/redis
   const isConfigView = location.pathname.endsWith("/config");
 
-  const [groups, setGroups] = useState<ConsumerGroup[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    data: groups = [],
+    isLoading,
+    isFetching,
+    error,
+    refetch,
+  } = useConsumerGroupsQuery();
 
-  const loadGroups = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await fetchConsumerGroups();
-      setGroups(data);
-    } catch (err: any) {
-      console.error("Failed to fetch Redis consumer groups:", err);
-      setError(
-        err?.response?.data?.detail?.message ||
-          "Failed to connect to Message Broker. Ensure the service and Redis are running."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadGroups();
-  }, [loadGroups]);
+  const errorMessage = error
+    ? (error as any)?.response?.data?.detail?.message ||
+      error.message ||
+      "Failed to connect to Message Broker. Ensure the service and Redis are running."
+    : null;
 
   return (
     <div
@@ -103,18 +91,18 @@ export const RedisPage: FC = () => {
       {/* Main Content Viewport */}
       <div className="flex-1 overflow-y-auto px-6 py-6">
         <div className="max-w-7xl mx-auto">
-          {error && (
+          {errorMessage && (
             <div className="flex items-center justify-between p-4 mb-5 rounded-xl border border-red-500/30 bg-red-500/10 text-red-300 text-sm">
               <div className="flex items-center gap-3">
                 <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
-                <span>{error}</span>
+                <span>{errorMessage}</span>
               </div>
               <button
                 type="button"
-                onClick={loadGroups}
+                onClick={() => refetch()}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-xs font-medium text-red-200 transition-colors cursor-pointer"
               >
-                <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
+                <RefreshCw className={cn("w-3.5 h-3.5", isFetching && "animate-spin")} />
                 Retry
               </button>
             </div>
@@ -126,8 +114,10 @@ export const RedisPage: FC = () => {
               element={
                 <ConsumerGroupsCard
                   groups={groups}
-                  loading={loading}
-                  onRefresh={loadGroups}
+                  loading={isLoading || isFetching}
+                  onRefresh={() => {
+                    refetch();
+                  }}
                 />
               }
             />

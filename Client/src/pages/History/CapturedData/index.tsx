@@ -1,11 +1,10 @@
-import { useState, useEffect, useCallback, type FC } from "react";
+import { useState, useMemo, type FC } from "react";
 import {
-  fetchOperatorConfig,
-  updateOperatorConfig,
-  fetchOperatorStatus,
-  startCapture,
-  stopCapture,
-} from "./api";
+  useOperatorConfigQuery,
+  useOperatorStatusQuery,
+  useUpdateOperatorConfigMutation,
+  useToggleCaptureMutation,
+} from "./queries";
 import { CaptureStatusHeader } from "./components/CaptureStatusHeader";
 import { CaptureIntervalCard } from "./components/CaptureIntervalCard";
 import { StoredDateRangeCard } from "./components/StoredDateRangeCard";
@@ -20,15 +19,41 @@ const INITIAL_DEMO_RANGE: StoredDataRange = {
 };
 
 export const CapturedDataPage: FC = () => {
-  // Capturing execution status: Started vs Stopped (determined by Operator live status)
-  const [status, setStatus] = useState<CaptureStatus>("Stopped");
+  // Query Vault configuration for Operator (CAPTURE_INTERVAL_SECS, AUTO_START)
+  const { data: vaultConfig } = useOperatorConfigQuery();
 
-  // Capture interval in seconds from Vault (default 10s)
-  const [intervalSecs, setIntervalSecs] = useState<number>(10);
+  // Query Operator live status from cache (staleTime 15m, manual on-demand refresh)
+  const { data: operatorStatus, isFetching: statusFetching, refetch: refetchStatus } = useOperatorStatusQuery();
 
-  // Auto-start configuration from Vault
-  const [autoStart, setAutoStart] = useState<boolean>(false);
-  const [autoStartLoading, setAutoStartLoading] = useState<boolean>(false);
+  // Mutations for config updates and start/stop toggling
+  const updateConfigMutation = useUpdateOperatorConfigMutation();
+  const toggleCaptureMutation = useToggleCaptureMutation();
+
+  // Derive active capturing execution status
+  const status: CaptureStatus = useMemo(() => {
+    if (!operatorStatus) return "Stopped";
+    const isStarted = Boolean(
+      operatorStatus.is_running ||
+      operatorStatus.is_capturing ||
+      (typeof operatorStatus.status === "string" && operatorStatus.status.toLowerCase() === "started")
+    );
+    return isStarted ? "Started" : "Stopped";
+  }, [operatorStatus]);
+
+  // Derive capture interval: prefer Vault config, fallback to Operator live status, default to 10s
+  const intervalSecs = useMemo(() => {
+    if (typeof vaultConfig?.CAPTURE_INTERVAL_SECS === "number") {
+      return vaultConfig.CAPTURE_INTERVAL_SECS;
+    }
+    if (typeof operatorStatus?.capture_interval_secs === "number" && operatorStatus.capture_interval_secs >= 1) {
+      return operatorStatus.capture_interval_secs;
+    }
+    return 10;
+  }, [vaultConfig, operatorStatus]);
+
+  // Derive autoStart setting from Vault
+  const autoStart = Boolean(vaultConfig?.AUTO_START);
+  const autoStartLoading = updateConfigMutation.isPending;
 
   // Stored captured data date range & days count (dummy for now)
   const [storedRange, setStoredRange] = useState<StoredDataRange>(INITIAL_DEMO_RANGE);
@@ -37,104 +62,22 @@ export const CapturedDataPage: FC = () => {
   // Modal state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  // Toggle in-progress state to prevent double-clicks
-  const [isToggling, setIsToggling] = useState<boolean>(false);
-
-  // Poll Operator status to keep frontend live and reactive to Operator state changes
-  const syncOperatorStatus = useCallback(async () => {
-    try {
-      const opStatus = await fetchOperatorStatus();
-      const isCapturing = Boolean(
-        opStatus.is_running ||
-        opStatus.is_capturing ||
-        (typeof opStatus.status === "string" && opStatus.status.toLowerCase() === "started")
-      );
-      setStatus(isCapturing ? "Started" : "Stopped");
-      if (typeof opStatus.capture_interval_secs === "number" && opStatus.capture_interval_secs >= 1) {
-        setIntervalSecs((prev) => prev || opStatus.capture_interval_secs!);
-      }
-    } catch {
-      setStatus("Stopped");
-    }
-  }, []);
-
-  // Load initial operator configurations from Vault & Operator status directly from Operator service
-  const loadInitialConfigs = useCallback(async () => {
-    try {
-      const vaultConfig = await fetchOperatorConfig();
-      if (typeof vaultConfig.AUTO_START === "boolean") {
-        setAutoStart(vaultConfig.AUTO_START);
-      }
-      if (typeof vaultConfig.CAPTURE_INTERVAL_SECS === "number") {
-        setIntervalSecs(vaultConfig.CAPTURE_INTERVAL_SECS);
-      }
-    } catch (err) {
-      console.warn("Could not fetch operator configuration from Vault:", err);
-    }
-    await syncOperatorStatus();
-  }, [syncOperatorStatus]);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("mira_capture_status");
-    }
-    loadInitialConfigs();
-
-    // Heartbeat: sync status from Operator every 2.5s so changes are immediately visible
-    const timer = setInterval(() => {
-      syncOperatorStatus();
-    }, 2500);
-
-    return () => clearInterval(timer);
-  }, [loadInitialConfigs, syncOperatorStatus]);
-
-  // Toggle capturing status: Started <-> Stopped directly via Operator service
+  // Toggle capturing status: Started <-> Stopped directly via Operator mutation
   const handleToggleStatus = async () => {
-    if (isToggling) return;
-    setIsToggling(true);
-
+    if (toggleCaptureMutation.isPending) return;
     const isCurrentlyStarted = status === "Started";
     const nextStatus: CaptureStatus = isCurrentlyStarted ? "Stopped" : "Started";
-    setStatus(nextStatus);
-
-    try {
-      if (nextStatus === "Started") {
-        await startCapture();
-      } else {
-        await stopCapture();
-      }
-      // Re-verify immediately from Operator with a small buffer for process state transition
-      setTimeout(() => {
-        syncOperatorStatus();
-      }, 300);
-    } catch (err) {
-      console.warn("Could not toggle capturing status:", err);
-      // Re-sync with actual Operator state on error
-      await syncOperatorStatus();
-    } finally {
-      setIsToggling(false);
-    }
+    await toggleCaptureMutation.mutateAsync(nextStatus);
   };
 
   // Toggle Auto-Start setting in Vault silently
   const handleToggleAutoStart = async () => {
-    const nextVal = !autoStart;
-    setAutoStartLoading(true);
-    try {
-      await updateOperatorConfig({ AUTO_START: nextVal });
-      setAutoStart(nextVal);
-    } catch (err: any) {
-      console.error("Failed to update auto start config in Vault:", err);
-      setAutoStart(nextVal);
-    } finally {
-      setAutoStartLoading(false);
-    }
+    await updateConfigMutation.mutateAsync({ AUTO_START: !autoStart });
   };
 
   // Handle capture interval update in Vault and sync with Operator
   const handleUpdateInterval = async (newSecs: number) => {
-    await updateOperatorConfig({ CAPTURE_INTERVAL_SECS: newSecs });
-    setIntervalSecs(newSecs);
+    await updateConfigMutation.mutateAsync({ CAPTURE_INTERVAL_SECS: newSecs });
   };
 
   // Handle deletion of all captured data (called after 3s in-modal processing)
@@ -157,11 +100,15 @@ export const CapturedDataPage: FC = () => {
         {/* Capturing Status Header with Started/Stopped Badge, Start/Stop Button, and Auto-Start Toggle */}
         <CaptureStatusHeader
           status={status}
-          statusLoading={isToggling}
+          statusLoading={toggleCaptureMutation.isPending}
           autoStart={autoStart}
           autoStartLoading={autoStartLoading}
           onToggleStatus={handleToggleStatus}
           onToggleAutoStart={handleToggleAutoStart}
+          onRefresh={() => {
+            refetchStatus();
+          }}
+          refreshing={statusFetching}
         />
 
         {/* Capture Interval Configuration Card */}

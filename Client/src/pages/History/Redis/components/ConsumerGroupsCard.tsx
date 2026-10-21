@@ -16,10 +16,10 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import {
-  deleteConsumerGroup,
-  cleanPendingMessages,
-  formatRedis,
-} from "../api";
+  useDeleteConsumerGroupMutation,
+  useCleanPendingMessagesMutation,
+  useFormatRedisMutation,
+} from "../queries";
 import { ConfirmModal } from "./ConfirmModal";
 import type { ConsumerGroup, CleanResult, FormatResult } from "../types";
 import { cn } from "@/lib/utils";
@@ -37,7 +37,14 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedGroup, setCopiedGroup] = useState<string | null>(null);
-  const [actionLoading, setActionLoading] = useState(false);
+
+  // Mutations
+  const deleteMutation = useDeleteConsumerGroupMutation();
+  const cleanMutation = useCleanPendingMessagesMutation();
+  const formatMutation = useFormatRedisMutation();
+
+  const actionLoading =
+    deleteMutation.isPending || cleanMutation.isPending || formatMutation.isPending;
 
   // Modals state
   const [deleteTarget, setDeleteTarget] = useState<ConsumerGroup | null>(null);
@@ -90,90 +97,77 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
   // Handle Delete
   const handleConfirmDelete = async () => {
     if (!deleteTarget) return;
-    setActionLoading(true);
     try {
-      const res = await deleteConsumerGroup(deleteTarget.group_name, deleteTarget.stream_name);
+      const res = await deleteMutation.mutateAsync({
+        groupName: deleteTarget.group_name,
+        streamName: deleteTarget.stream_name,
+      });
       showFeedback("success", res.message || `Deleted consumer group ${deleteTarget.group_name}`);
       setDeleteTarget(null);
-      await onRefresh();
     } catch (err: any) {
       console.error("Delete failed:", err);
       showFeedback(
         "error",
         err?.response?.data?.detail?.message || `Failed to delete ${deleteTarget.group_name}`
       );
-    } finally {
-      setActionLoading(false);
     }
   };
 
   // Handle Clean Single
   const handleConfirmCleanSingle = async () => {
     if (!cleanTarget) return;
-    setActionLoading(true);
     try {
-      const res: CleanResult = await cleanPendingMessages(
-        cleanTarget.group_name,
-        cleanTarget.stream_name
-      );
+      const res: CleanResult = await cleanMutation.mutateAsync({
+        groupName: cleanTarget.group_name,
+        streamName: cleanTarget.stream_name,
+      });
       showFeedback(
         "success",
         res.message || `Cleaned pending messages for ${cleanTarget.group_name}`
       );
       setCleanTarget(null);
-      await onRefresh();
     } catch (err: any) {
       console.error("Clean failed:", err);
       showFeedback(
         "error",
         err?.response?.data?.detail?.message || `Failed to clean ${cleanTarget.group_name}`
       );
-    } finally {
-      setActionLoading(false);
     }
   };
 
   // Handle Clean All
   const handleConfirmCleanAll = async () => {
-    setActionLoading(true);
     try {
-      const res: CleanResult = await cleanPendingMessages();
+      const res: CleanResult = await cleanMutation.mutateAsync({});
       showFeedback(
         "success",
         res.message || "Cleaned pending and unprocessed messages across all consumer groups."
       );
       setIsCleanAllOpen(false);
-      await onRefresh();
     } catch (err: any) {
       console.error("Clean all failed:", err);
       showFeedback(
         "error",
         err?.response?.data?.detail?.message || "Failed to clean all pending messages."
       );
-    } finally {
-      setActionLoading(false);
     }
   };
 
   // Handle Format Redis
   const handleConfirmFormat = async () => {
-    setActionLoading(true);
     try {
-      const res: FormatResult = await formatRedis();
+      const res: FormatResult = await formatMutation.mutateAsync();
       showFeedback(
         "success",
         res.message || "All Redis streams and related data have been cleared successfully."
       );
       setIsFormatOpen(false);
-      await onRefresh();
     } catch (err: any) {
       console.error("Format Redis failed:", err);
       showFeedback(
         "error",
         err?.response?.data?.detail?.message || "Failed to format Redis streams."
       );
-    } finally {
-      setActionLoading(false);
     }
   };
 

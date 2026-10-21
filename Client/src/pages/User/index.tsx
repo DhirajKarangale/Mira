@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, type FC } from "react";
+import { useState, type FC } from "react";
 import { Loader2, AlertCircle, CheckCircle2, X } from "lucide-react";
-import { fetchUserDetails } from "./api";
+import { useUserDetailsQuery } from "./queries";
 import { UserHero } from "./components/UserHero";
 import { UserDetailsView } from "./components/UserDetailsView";
 import { UserDetailsForm } from "./components/UserDetailsForm";
@@ -12,41 +12,18 @@ interface FeedbackState {
 }
 
 export const UserPage: FC = () => {
-  const [details, setDetails] = useState<UserDetails | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: details = null, isLoading, isFetching, refetch, error } = useUserDetailsQuery();
   const [mode, setMode] = useState<UserPageMode>("view");
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
 
-  const loadData = useCallback(async (quiet = false) => {
-    if (!quiet) setLoading(true);
-    try {
-      const data = await fetchUserDetails();
-      setDetails(data);
-
-      // If no details exist at all, remain in view mode so empty state with Add CTA is shown
-      if (!data.exists && mode === "edit") {
-        setMode("add");
-      }
-    } catch (err: any) {
-      console.error("Failed to load user details from Vault:", err);
-      setFeedback({
-        type: "error",
-        message:
-          err?.response?.data?.detail?.message ||
-          err?.message ||
-          "Could not retrieve user details from Vault.",
-      });
-    } finally {
-      if (!quiet) setLoading(false);
-    }
-  }, [mode]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  // If query errored, display feedback banner
+  const queryErrorMessage = error
+    ? (error as any)?.response?.data?.detail?.message ||
+      error.message ||
+      "Could not retrieve user details from Vault."
+    : null;
 
   const handleSaveSuccess = (updated: UserDetails) => {
-    setDetails(updated);
     setMode("view");
     setFeedback({
       type: "success",
@@ -84,28 +61,30 @@ export const UserPage: FC = () => {
         {/* Hero Header with Vault status and sync button */}
         <UserHero
           mode={mode}
-          loading={loading}
-          onRefresh={() => loadData(false)}
+          loading={isLoading || isFetching}
+          onRefresh={() => refetch()}
           hasDetails={hasDetails}
         />
 
         {/* Feedback Alert Toast / Banner */}
-        {feedback && (
+        {(feedback || queryErrorMessage) && (
           <div
             id="user-page-feedback-banner"
             className={`flex items-start justify-between gap-3 p-4 rounded-xl border backdrop-blur-md transition-all animate-in fade-in ${
-              feedback.type === "success"
+              (feedback?.type || "error") === "success"
                 ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
                 : "bg-rose-500/10 border-rose-500/20 text-rose-300"
             }`}
           >
             <div className="flex items-center gap-2.5">
-              {feedback.type === "success" ? (
+              {(feedback?.type || "error") === "success" ? (
                 <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
               ) : (
                 <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
               )}
-              <span className="text-sm font-medium">{feedback.message}</span>
+              <span className="text-sm font-medium">
+                {feedback?.message || queryErrorMessage}
+              </span>
             </div>
             <button
               type="button"
@@ -118,7 +97,7 @@ export const UserPage: FC = () => {
         )}
 
         {/* Content Body: Loading, View, or Form */}
-        {loading ? (
+        {isLoading ? (
           <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-16 flex flex-col items-center justify-center gap-3 backdrop-blur-xl">
             <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
             <p className="text-sm text-zinc-400 font-mono">Synchronizing with Vault...</p>

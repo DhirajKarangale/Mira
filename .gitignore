@@ -17,3 +17,4 @@ logs/
 screenshots/
 **/screenshots/
 **/screenshots/**
+.antigravity.json

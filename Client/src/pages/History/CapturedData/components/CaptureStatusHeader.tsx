@@ -6,6 +6,7 @@ import {
   Power,
   ShieldCheck,
   Loader2,
+  RotateCcw,
 } from "lucide-react";
 import type { CaptureStatus } from "../types";
 import { cn } from "@/lib/utils";
@@ -17,6 +18,8 @@ interface CaptureStatusHeaderProps {
   autoStartLoading: boolean;
   onToggleStatus: () => void;
   onToggleAutoStart: () => void;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }
 
 export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
@@ -26,6 +29,8 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
   autoStartLoading,
   onToggleStatus,
   onToggleAutoStart,
+  onRefresh,
+  refreshing = false,
 }) => {
   const isStarted = status === "Started";
 
@@ -80,6 +85,20 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
                 <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                 <span>Vault Managed</span>
               </span>
+
+              {/* Explicit Refresh Status Button */}
+              {onRefresh && (
+                <button
+                  type="button"
+                  id="btn-refresh-capture-status"
+                  onClick={onRefresh}
+                  disabled={refreshing}
+                  className="inline-flex items-center justify-center w-7 h-7 rounded-lg border border-white/[0.08] hover:border-white/[0.2] bg-white/[0.03] hover:bg-white/[0.08] text-zinc-400 hover:text-white transition-all cursor-pointer select-none outline-none disabled:opacity-50"
+                  title="Check live Operator status now"
+                >
+                  <RotateCcw className={cn("w-3 h-3", refreshing && "animate-spin")} />
+                </button>
+              )}
             </div>
 
             <p className="text-xs sm:text-sm text-zinc-400 max-w-2xl leading-relaxed">

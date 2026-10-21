@@ -13,7 +13,7 @@ import {
   Loader2,
   RotateCcw,
 } from "lucide-react";
-import { addUserDetails, updateUserDetails } from "../api";
+import { useSaveUserDetailsMutation } from "../queries";
 import { validateField, validateUserForm, isFormValid } from "../validation";
 import {
   DEFAULT_USER_DATA,
@@ -37,6 +37,7 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
   onSaveSuccess,
   onCancel,
 }) => {
+  const saveMutation = useSaveUserDetailsMutation();
   const initialValues: UserFormState = {
     user_name: initialData?.user_name || DEFAULT_USER_DATA.user_name,
     email: initialData?.email || DEFAULT_USER_DATA.email,
@@ -58,9 +59,9 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
   const [errors, setErrors] = useState<UserFormErrors>(() =>
     mode === "edit" ? validateUserForm(initialValues) : {}
   );
-  const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  const submitting = saveMutation.isPending;
   const formIsValid = isFormValid(errors, formData);
 
   const handleChange = (field: UserFormField) => (e: ChangeEvent<HTMLInputElement>) => {
@@ -125,16 +126,13 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
       return;
     }
 
-    setSubmitting(true);
     setSubmitError(null);
 
     try {
-      let result: UserDetails;
-      if (mode === "add") {
-        result = await addUserDetails(formData);
-      } else {
-        result = await updateUserDetails(formData);
-      }
+      const result = await saveMutation.mutateAsync({
+        isAdd: mode === "add",
+        data: formData,
+      });
       onSaveSuccess(result);
     } catch (err: any) {
       console.error("Failed to save user details to Vault:", err);
@@ -144,8 +142,6 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
         err?.message ||
         "Failed to save user details to Vault. Please try again.";
       setSubmitError(typeof message === "string" ? message : JSON.stringify(message));
-    } finally {
-      setSubmitting(false);
     }
   };
 

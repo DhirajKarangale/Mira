@@ -1,12 +1,12 @@
-import { useState, useEffect, useCallback, useMemo, useRef, type FC } from "react";
+import { useState, useMemo, type FC } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Terminal, Sliders } from "lucide-react";
 import { LogFiltersBar } from "./components/LogFiltersBar";
 import { LogList } from "./components/LogList";
 import { LogPagination } from "./components/LogPagination";
 import { LogConfigCard } from "./components/LogConfigCard";
-import { fetchLogs } from "./api";
-import type { LogEntry, LogFilters } from "./types";
+import { useLogsQuery } from "./queries";
+import type { LogFilters } from "./types";
 import { useDebounce } from "@/hooks/useDebounce";
 import { cn } from "@/lib/utils";
 
@@ -49,14 +49,28 @@ export const LogsPage: FC = () => {
     300
   );
 
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [total, setTotal] = useState<number>(0);
-  const [loading, setLoading] = useState<boolean>(false);
-
-  // Request counter to cancel stale in-flight responses and prevent race conditions
-  const requestIdRef = useRef<number>(0);
-
   const PAGE_LIMIT = 50;
+
+  // React Query hook for logs: cached, deduplicated, and background-synced
+  const {
+    data: logsResponse,
+    isLoading,
+    isFetching,
+    refetch,
+  } = useLogsQuery(
+    {
+      search: debouncedQuery.search,
+      startDate: debouncedQuery.startDate,
+      endDate: debouncedQuery.endDate,
+      moduleName: debouncedQuery.moduleName,
+    },
+    debouncedQuery.page,
+    PAGE_LIMIT
+  );
+
+  const logs = logsResponse?.logs ?? [];
+  const total = logsResponse?.total ?? 0;
+  const loading = isLoading || isFetching;
 
   // Check if current draft filters differ from defaults (controls filter button dot immediately)
   const isFiltered = useMemo(() => {
@@ -69,49 +83,6 @@ export const LogsPage: FC = () => {
     );
   }, [filtersDraft]);
 
-  const loadLogs = useCallback(
-    async (currentPage: number, activeFilters: LogFilters) => {
-      if (!activeFilters.startDate || !activeFilters.endDate) {
-        return;
-      }
-
-      const currentReqId = ++requestIdRef.current;
-      setLoading(true);
-
-      try {
-        const data = await fetchLogs(activeFilters, currentPage, PAGE_LIMIT);
-        // Only commit if this is still the most recent request
-        if (currentReqId === requestIdRef.current) {
-          setLogs(data.logs);
-          setTotal(data.total);
-        }
-      } catch (err: any) {
-        if (currentReqId === requestIdRef.current) {
-          console.error("[Vault] Failed to retrieve logs:", err);
-          setLogs([]);
-          setTotal(0);
-        }
-      } finally {
-        if (currentReqId === requestIdRef.current) {
-          setLoading(false);
-        }
-      }
-    },
-    []
-  );
-
-  // Trigger server-side load when not in config view and debounced query changes
-  useEffect(() => {
-    if (!isConfigView) {
-      loadLogs(debouncedQuery.page, {
-        search: debouncedQuery.search,
-        startDate: debouncedQuery.startDate,
-        endDate: debouncedQuery.endDate,
-        moduleName: debouncedQuery.moduleName,
-      });
-    }
-  }, [isConfigView, debouncedQuery, loadLogs]);
-
   const handleFilterChange = (partial: Partial<LogFilters>) => {
     setFiltersDraft((prev) => ({ ...prev, ...partial }));
     setPageDraft(1);
@@ -119,15 +90,13 @@ export const LogsPage: FC = () => {
 
   const handleResetFilters = () => {
     const today = getTodayString();
-    const defaultFilters: LogFilters = {
+    setFiltersDraft({
       search: "",
       startDate: today,
       endDate: today,
       moduleName: "all",
-    };
-    setFiltersDraft(defaultFilters);
+    });
     setPageDraft(1);
-    loadLogs(1, defaultFilters);
   };
 
   const handlePageChange = (newPage: number) => {
@@ -194,7 +163,7 @@ export const LogsPage: FC = () => {
 
       {/* Main View Area driven by React Router route */}
       {isConfigView ? (
-        <LogConfigCard onSaved={() => loadLogs(pageDraft, filtersDraft)} />
+        <LogConfigCard onSaved={() => refetch()} />
       ) : (
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {/* Top Filters Bar */}
@@ -202,7 +171,7 @@ export const LogsPage: FC = () => {
             filters={filtersDraft}
             onFilterChange={handleFilterChange}
             onResetFilters={handleResetFilters}
-            onRefresh={() => loadLogs(pageDraft, filtersDraft)}
+            onRefresh={() => refetch()}
             isFiltered={isFiltered}
             loading={loading}
           />

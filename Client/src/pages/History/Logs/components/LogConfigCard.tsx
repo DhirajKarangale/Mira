@@ -15,7 +15,7 @@ import {
   Minus,
   Plus,
 } from "lucide-react";
-import { fetchLogConfig, saveLogConfig } from "../api";
+import { useLogConfigQuery, useSaveLogConfigMutation } from "../queries";
 import type { LogConfig } from "../types";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -70,36 +70,25 @@ const MODULE_DEFINITIONS = [
 const PRESET_DAYS = [7, 14, 30, 60, 90, 180, 365];
 
 export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
-  const [config, setConfig] = useState<LogConfig | null>(null);
-  const [originalConfig, setOriginalConfig] = useState<LogConfig | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [saving, setSaving] = useState<boolean>(false);
+  const { data: serverConfig, isLoading: loading, refetch: reloadConfig } = useLogConfigQuery();
+  const saveMutation = useSaveLogConfigMutation();
+
+  const [config, setConfig] = useState<LogConfig | null>(serverConfig ?? null);
+  const [originalConfig, setOriginalConfig] = useState<LogConfig | null>(serverConfig ?? null);
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
     message: string;
   } | null>(null);
 
-  const loadConfig = async () => {
-    try {
-      setLoading(true);
-      setFeedback(null);
-      const data = await fetchLogConfig();
-      setConfig(data);
-      setOriginalConfig(data);
-    } catch (err: unknown) {
-      const errMsg =
-        err instanceof Error
-          ? err.message
-          : "Failed to load log configurations from Vault";
-      setFeedback({ type: "error", message: errMsg });
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Synchronize draft state when serverConfig resolves or updates
   useEffect(() => {
-    loadConfig();
-  }, []);
+    if (serverConfig) {
+      setConfig(serverConfig);
+      setOriginalConfig(serverConfig);
+    }
+  }, [serverConfig]);
+
+  const saving = saveMutation.isPending;
 
   const handleToggle = (key: keyof LogConfig) => {
     if (!config) return;
@@ -181,9 +170,8 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
   const handleSave = async () => {
     if (!config) return;
     try {
-      setSaving(true);
       setFeedback(null);
-      const updated = await saveLogConfig(config);
+      const updated = await saveMutation.mutateAsync(config);
       setConfig(updated);
       setOriginalConfig(updated);
       setFeedback({
@@ -196,8 +184,6 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
       const errMsg =
         err instanceof Error ? err.message : "Failed to update log configurations";
       setFeedback({ type: "error", message: errMsg });
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -226,7 +212,7 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
       <div className="p-6 text-center text-zinc-400">
         <AlertCircle className="w-8 h-8 text-rose-400 mx-auto mb-2" />
         <p className="text-sm">Unable to connect to Vault configuration service.</p>
-        <Button onClick={loadConfig} size="sm" variant="outline" className="mt-4">
+        <Button onClick={() => reloadConfig()} size="sm" variant="outline" className="mt-4">
           Retry Connection
         </Button>
       </div>
