@@ -11,9 +11,9 @@ export const AboutPage: FC = () => {
   return (
     <div
       id="page-content-about"
-      className="h-full w-full overflow-y-auto select-none bg-gradient-to-b from-[#080c14] via-[#090e18] to-[#04070d] text-zinc-100"
+      className="h-full w-full overflow-y-auto px-6 py-6 select-none bg-zinc-950/40 text-zinc-100"
     >
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-8">
+      <div className="max-w-7xl mx-auto space-y-6">
         <ProfileHero />
         <AboutSection />
         <MiraSection />

@@ -32,7 +32,7 @@ export const ProfileHero: FC = () => {
             </span>
           </div>
 
-          <p className="text-xs sm:text-sm text-zinc-300 font-medium leading-relaxed max-w-3xl">
+          <p className="text-xs sm:text-sm text-zinc-300 font-medium leading-relaxed max-w-4xl">
             Software Engineer | 1.4M+ App & 5.1K+ npm Downloads | Agentic AI • React • Node.js • TypeScript • Python | HackWithInfy Finalist
           </p>
 

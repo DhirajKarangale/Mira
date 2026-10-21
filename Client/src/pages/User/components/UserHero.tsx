@@ -62,7 +62,7 @@ export const UserHero: FC<UserHeroProps> = ({
                 )}
               </span>
             </div>
-            <p className="text-sm text-zinc-400 max-w-2xl leading-relaxed">
+            <p className="text-sm text-zinc-400 max-w-4xl leading-relaxed">
               Store, view, and update your personal identity, contact information, and regional coordinates.
               All attributes are securely encrypted and synchronized via MIRA Vault.
             </p>
