@@ -71,11 +71,6 @@ impl PermissionsManager {
         self.all_apps.read().await.clone()
     }
 
-    #[allow(dead_code)]
-    pub async fn get_restricted_apps(&self) -> HashSet<String> {
-        self.restricted_apps.read().await.clone()
-    }
-
     pub async fn sync_with_vault(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let vault_url = crate::config::get_vault_url();
         if vault_url.is_empty() {

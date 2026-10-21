@@ -24,7 +24,6 @@ impl CaptureManager {
         }
     }
 
-    #[allow(dead_code)]
     pub fn is_running(&self) -> bool {
         self.is_running.load(Ordering::SeqCst)
     }
@@ -72,7 +71,6 @@ impl CaptureManager {
                             break;
                         }
 
-                        // Seamless dynamic interval adjustment
                         let latest_interval = crate::config::get_capture_interval_secs();
                         if latest_interval >= 1 && latest_interval != current_interval {
                             info!(

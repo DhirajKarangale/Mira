@@ -1,27 +1,27 @@
 # Operator
 
-The **Operator** is the high-performance desktop capture and system automation service written in **Rust** using **Axum**, **Tokio**, and native **Windows GDI / xcap**.
+The **Operator** is the desktop capture and system automation service written in **Rust** using **Axum**, **Tokio**, and native **Windows GDI / xcap**.
 
 ---
 
-## 1. What It Does
+## 1. Purpose
 
-- **Silent Screen Capture**: Captures desktop screen frames silently in the background at regular intervals defined by `CAPTURE_INTERVAL_SECS` without notifications or user interruption.
-- **Active Application Detection & Capture Filtering**: Identifies the currently active foreground application executable name or window title before capture. Applications where `allowed_to_capture = false` are automatically ignored and skipped.
-- **System App Discovery & Vault Permissions Sync**: Discovers installed system applications and running window processes, refreshes the app list in Vault on startup, and keeps restricted apps synchronized with Vault.
-- **Job Generation & Queuing**: Creates screenshot job objects and streams them asynchronously to the **Message Broker** (`screenshot_process` consumer group) for downstream processing.
-- **Vault Configuration & Encrypted Logging**: Automatically pulls runtime configuration from Vault at startup and delivers asynchronous lifecycle and dispatch logs to Vault's encrypted log repository.
-- **Screenshot Cleanup**: Exposes an endpoint to delete processed screenshot files from disk.
+- **Silent Screen Capture**: Automatically captures desktop screen frames in the background at regular intervals defined by `CAPTURE_INTERVAL_SECS`.
+- **Active App Detection & Filtering**: Detects the active foreground process before capture. Applications where `allowed_to_capture = false` are automatically skipped.
+- **System App Discovery & Sync**: Scans installed applications and window processes, refreshes them with Vault, and tracks restricted applications.
+- **Message Broker Job Queuing**: Streams capture jobs asynchronously to the Message Broker (`screenshot_process` consumer group) for downstream processing.
+- **Screenshot Cleanup**: Deletes processed screenshot files from disk on demand.
 
 ---
 
-## 2. API Reference
+## 2. API Endpoints
 
-Every endpoint has strictly one way to be called.
-
-### 2.1 Service Health
+### 2.1 Health Check
 `GET /health`
 
+Checks if the service is online and healthy.
+
+- **Parameters**: None
 - **Response (`200 OK`):**
   ```json
   {
@@ -32,11 +32,32 @@ Every endpoint has strictly one way to be called.
 
 ---
 
-### 2.2 Start Screenshot Capture
+### 2.2 Capture Status
+`GET /status`
+
+Retrieves the live operational status of the background capture engine.
+
+- **Parameters**: None
+- **Response (`200 OK`):**
+  ```json
+  {
+    "service": "Operator",
+    "status": "started",
+    "is_running": true,
+    "is_capturing": true,
+    "auto_start": false,
+    "capture_interval_secs": 10
+  }
+  ```
+
+---
+
+### 2.3 Start Capture
 `POST /start`
 
-Initiates the continuous background capture loop ticking every `CAPTURE_INTERVAL_SECS`.
+Initiates the continuous background screen capture loop.
 
+- **Parameters**: None
 - **Response (`200 OK`):**
   ```json
   {
@@ -45,7 +66,7 @@ Initiates the continuous background capture loop ticking every `CAPTURE_INTERVAL
     "capture_interval_secs": 10
   }
   ```
-- **If already running:**
+- **If already running (`200 OK`):**
   ```json
   {
     "status": "already_running",
@@ -56,11 +77,12 @@ Initiates the continuous background capture loop ticking every `CAPTURE_INTERVAL
 
 ---
 
-### 2.3 Stop Screenshot Capture
+### 2.4 Stop Capture
 `POST /stop`
 
-Cleanly signals the background capture task to terminate.
+Stops the background screen capture loop.
 
+- **Parameters**: None
 - **Response (`200 OK`):**
   ```json
   {
@@ -68,7 +90,7 @@ Cleanly signals the background capture task to terminate.
     "message": "Screenshot capture loop stopped cleanly"
   }
   ```
-- **If not running:**
+- **If already stopped (`200 OK`):**
   ```json
   {
     "status": "already_stopped",
@@ -78,12 +100,52 @@ Cleanly signals the background capture task to terminate.
 
 ---
 
-### 2.4 Delete Screenshot
+### 2.5 Get Capture Interval
+`GET /interval`
+
+Returns the current screenshot capture interval in seconds.
+
+- **Parameters**: None
+- **Response (`200 OK`):**
+  ```json
+  {
+    "capture_interval_secs": 10,
+    "status": "ok"
+  }
+  ```
+
+---
+
+### 2.6 Update Capture Interval
+`POST /interval`
+
+Updates the capture interval dynamically in runtime (between 1 and 3600 seconds).
+
+- **Request Body (JSON):**
+  - `capture_interval_secs` (integer, required): New interval in seconds.
+  ```json
+  {
+    "capture_interval_secs": 15
+  }
+  ```
+- **Response (`200 OK`):**
+  ```json
+  {
+    "capture_interval_secs": 15,
+    "status": "updated",
+    "message": "Capture interval updated to 15s"
+  }
+  ```
+
+---
+
+### 2.7 Delete Screenshot
 `POST /delete`
 
-Deletes the specified screenshot file from the local filesystem.
+Deletes a local screenshot file from the filesystem.
 
-- **Request Body:**
+- **Request Body (JSON):**
+  - `image_path` (string, required): Absolute path to the screenshot file to remove.
   ```json
   {
     "image_path": "E:\\FullStack\\Mira\\Operator\\screenshots\\msedge_20-10-2026T13-13-45.png"
@@ -96,7 +158,7 @@ Deletes the specified screenshot file from the local filesystem.
     "message": "Screenshot deleted successfully"
   }
   ```
-- **If file not found (`404 Not Found`):**
+- **Response (`404 Not Found`):**
   ```json
   {
     "status": "error",
@@ -106,11 +168,12 @@ Deletes the specified screenshot file from the local filesystem.
 
 ---
 
-### 2.5 Get All App Permissions
+### 2.8 List Discovered Applications
 `GET /apps`
 
-Returns all discovered applications and their current capture permissions.
+Returns all discovered system applications along with their capture permissions.
 
+- **Parameters**: None
 - **Response (`200 OK`):**
   ```json
   [
@@ -129,11 +192,12 @@ Returns all discovered applications and their current capture permissions.
 
 ---
 
-### 2.6 Refresh Application List
+### 2.9 Refresh Applications
 `POST /apps/refresh`
 
-Re-discovers installed system applications and running window processes, refreshes them with Vault, and updates the local restricted hash set.
+Re-scans installed system applications and active window processes, synchronizes with Vault, and updates the local restricted set.
 
+- **Parameters**: None
 - **Response (`200 OK`):**
   ```json
   {
@@ -145,12 +209,14 @@ Re-discovers installed system applications and running window processes, refresh
 
 ---
 
-### 2.7 Update App Permission
+### 2.10 Update App Permission
 `POST /apps/permission`
 
-Updates an application's `allowed_to_capture` status. Updates the local restricted set immediately and synchronizes the change to Vault's SQL storage.
+Updates an application's `allowed_to_capture` status and synchronizes the change with Vault.
 
-- **Request Body:**
+- **Request Body (JSON):**
+  - `app_id` (string, required): Application identifier (e.g. `notepad.exe`).
+  - `allowed_to_capture` (boolean, required): Whether screen capture is permitted when this app is active.
   ```json
   {
     "app_id": "notepad.exe",
@@ -177,12 +243,12 @@ Every captured frame produces a job sent to Message Broker (`POST /jobs`):
 | :--- | :--- | :--- |
 | `job_id` | `String` (UUID v4) | Unique identifier for the capture frame. |
 | `consumer_key` | `String` | Stream routing key (`screenshot_process`). |
-| `os` | `String` | Host operating system retrieved from Vault (`Windows 11`, `Windows 10`, `macOS`, `Linux`, etc.). |
+| `os` | `String` | Host operating system retrieved from Vault (`Windows 11`, `macOS`, `Linux`). |
 | `app_name` | `String` | Active foreground process name (e.g. `msedge.exe`, `Code.exe`). |
 | `timestamp` | `String` | Formatted timestamp: `dd/mm/yyyyTHH:mm:ss`. |
-| `image_path` | `String` | Absolute path to the saved PNG screenshot file on the host filesystem (`<project_path>/Operator/screenshots/<AppName>_<timestamp>.png`). Dynamically adapts to the host OS and installation directory. |
+| `image_path` | `String` | Absolute path to the saved PNG screenshot file on the host filesystem. |
 
-**Example Job Object (Windows):**
+**Example Job Object:**
 ```json
 {
   "job_id": "786a78ce-e62d-4108-9e4e-5349fceb7e9c",
@@ -194,27 +260,12 @@ Every captured frame produces a job sent to Message Broker (`POST /jobs`):
 }
 ```
 
-**Example Job Object (Linux / macOS):**
-```json
-{
-  "job_id": "786a78ce-e62d-4108-9e4e-5349fceb7e9c",
-  "consumer_key": "screenshot_process",
-  "os": "Ubuntu 22.04",
-  "app_name": "chrome",
-  "timestamp": "20/10/2026T13:13:45",
-  "image_path": "/home/user/Mira/Operator/screenshots/chrome_20-10-2026T13-13-45.png"
-}
-```
-
-> [!NOTE]
-> `image_path` is resolved dynamically at runtime as the absolute local path on the host machine. It automatically conforms to the host filesystem separators (`\` on Windows, `/` on Linux/macOS) and adapts to wherever the project is cloned or launched from.
-
 ---
 
-## 4. How to Run
+## 4. Installation & Startup
 
 ### Install Dependencies
-Dependencies are defined in `Cargo.toml` and summarized in `dependencies.txt`.
+Dependencies and toolchain prerequisites are specified in `Cargo.toml` and `dependencies.txt`.
 ```bash
 cargo check
 ```
@@ -222,6 +273,5 @@ cargo check
 ### Start Server
 Run from the `Operator/` directory:
 ```bash
-cd Operator
-cargo run -- --port 8002
+cargo run -- --port 9003
 ```

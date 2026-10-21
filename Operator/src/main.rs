@@ -105,7 +105,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let manager = CaptureManager::new(permissions.clone());
 
-    // Reset local capturing state to false on fresh server boot
     local_state::save_local_state(false);
 
     if cfg.auto_start {

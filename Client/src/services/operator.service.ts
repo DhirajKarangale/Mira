@@ -24,6 +24,15 @@ export interface OperatorActionResponse {
  */
 export const operatorService = {
   /**
+   * Fetch health status of the Operator service.
+   * Canonical: GET /health
+   */
+  async getHealth(): Promise<{ service: string; status: string }> {
+    const response = await operatorApi.get<{ service: string; status: string }>("/health");
+    return response.data;
+  },
+
+  /**
    * Fetch current live status of the screen capture engine.
    * Canonical: GET /status
    */

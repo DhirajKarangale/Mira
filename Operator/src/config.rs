@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::OnceLock;
+use std::sync::RwLock;
 use tracing::info;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -11,8 +12,6 @@ pub struct OperatorConfig {
     pub os: String,
     pub auto_start: bool,
 }
-
-use std::sync::RwLock;
 
 static CONFIG: OnceLock<OperatorConfig> = OnceLock::new();
 static SERVICE_MAP: OnceLock<RwLock<HashMap<String, String>>> = OnceLock::new();
@@ -48,24 +47,6 @@ fn get_service_map() -> &'static RwLock<HashMap<String, String>> {
         }
         RwLock::new(map)
     })
-}
-
-pub fn update_service_urls(new_urls: HashMap<String, String>) {
-    let map_lock = get_service_map();
-    if let Ok(mut map) = map_lock.write() {
-        for (k, v) in new_urls {
-            map.insert(k.to_lowercase().replace('-', "_"), v.trim_end_matches('/').to_string());
-        }
-        info!("Updated Operator service registry with {} URLs", map.len());
-    }
-}
-
-pub fn get_all_service_urls() -> HashMap<String, String> {
-    if let Ok(map) = get_service_map().read() {
-        map.clone()
-    } else {
-        HashMap::new()
-    }
 }
 
 pub fn get_service_url(module_name: &str) -> Option<String> {
@@ -240,9 +221,4 @@ pub fn get_config() -> &'static OperatorConfig {
     CONFIG
         .get()
         .expect("Configuration must be initialized with init_config() before access")
-}
-
-#[allow(dead_code)]
-pub fn get_os() -> &'static str {
-    &get_config().os
 }
