@@ -9,6 +9,25 @@ export interface VaultHealth {
   status: string;
 }
 
+export interface AIConfig {
+  id?: number;
+  llm_provider: string;
+  total_keys: number;
+  current_key: number;
+  keys: string[];
+}
+
+export interface AIConfigUpdateRequest {
+  llm_provider?: string;
+  keys?: string[];
+  add_keys?: string[];
+  remove_keys?: string[];
+  add_key?: string;
+  remove_key?: string;
+  current_key?: number;
+  total_keys?: number;
+}
+
 export const vaultService = {
   async getHealth(): Promise<VaultHealth> {
     const response = await vaultApi.get<VaultHealth>("/health");
@@ -132,6 +151,44 @@ export const vaultService = {
     retained_count: number;
   }> {
     const response = await vaultApi.post("/retention/cleanup");
+    return response.data;
+  },
+
+  async getAIProviders(): Promise<string[]> {
+    const response = await vaultApi.get<string[]>("/ai/providers");
+    return response.data;
+  },
+
+  async getAllAIConfigs(): Promise<AIConfig[]> {
+    const response = await vaultApi.get<AIConfig[]>("/ai/configs");
+    return response.data;
+  },
+
+  async getAIConfig(provider: string): Promise<AIConfig> {
+    const response = await vaultApi.get<AIConfig>(`/ai/configs/${encodeURIComponent(provider)}`);
+    return response.data;
+  },
+
+  async updateAIConfig(
+    provider: string,
+    updates: AIConfigUpdateRequest
+  ): Promise<AIConfig> {
+    const response = await vaultApi.post<AIConfig>(
+      `/ai/configs/${encodeURIComponent(provider)}`,
+      updates
+    );
+    return response.data;
+  },
+
+  async createAIConfig(data: AIConfigUpdateRequest): Promise<AIConfig> {
+    const response = await vaultApi.post<AIConfig>("/ai/configs", data);
+    return response.data;
+  },
+
+  async deleteAIConfig(provider: string): Promise<{ status: string; message: string }> {
+    const response = await vaultApi.delete<{ status: string; message: string }>(
+      `/ai/configs/${encodeURIComponent(provider)}`
+    );
     return response.data;
   },
 };

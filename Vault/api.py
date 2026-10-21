@@ -472,3 +472,200 @@ async def update_app_permission_endpoint(request: UpdateAppPermissionRequest):
         )
 
 
+# ============================================================================
+# AI Configuration Endpoints
+# ============================================================================
+
+class AIConfigResponse(BaseModel):
+    id: Optional[int] = None
+    llm_provider: str
+    total_keys: int = 0
+    current_key: int = 0
+    keys: List[str] = []
+
+
+class AIConfigUpdateRequest(BaseModel):
+    llm_provider: Optional[str] = None
+    keys: Optional[List[str]] = None
+    add_keys: Optional[List[str]] = None
+    remove_keys: Optional[List[str]] = None
+    add_key: Optional[str] = None
+    remove_key: Optional[str] = None
+    current_key: Optional[int] = None
+    total_keys: Optional[int] = None
+
+
+@router.get(
+    "/ai/providers",
+    response_model=List[str],
+    status_code=status.HTTP_200_OK
+)
+@router.get(
+    "/config/ai/providers",
+    response_model=List[str],
+    status_code=status.HTTP_200_OK
+)
+async def get_ai_providers():
+    try:
+        return config_storage.get_all_ai_providers()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to retrieve AI providers: {str(e)}"}
+        )
+
+
+@router.get(
+    "/ai/configs",
+    response_model=List[AIConfigResponse],
+    status_code=status.HTTP_200_OK
+)
+@router.get(
+    "/config/ai/configs",
+    response_model=List[AIConfigResponse],
+    status_code=status.HTTP_200_OK
+)
+async def get_all_ai_configs():
+    try:
+        return config_storage.get_all_ai_configs()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to retrieve AI configs: {str(e)}"}
+        )
+
+
+@router.get(
+    "/ai/configs/{provider}",
+    response_model=AIConfigResponse,
+    status_code=status.HTTP_200_OK
+)
+@router.get(
+    "/config/ai/{provider}",
+    response_model=AIConfigResponse,
+    status_code=status.HTTP_200_OK
+)
+async def get_ai_config_by_provider(provider: str):
+    try:
+        return config_storage.get_ai_config(provider)
+    except KeyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": str(e)}
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": str(e)}
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to retrieve AI config: {str(e)}"}
+        )
+
+
+@router.post(
+    "/ai/configs/{provider}",
+    response_model=AIConfigResponse,
+    status_code=status.HTTP_200_OK
+)
+@router.put(
+    "/ai/configs/{provider}",
+    response_model=AIConfigResponse,
+    status_code=status.HTTP_200_OK
+)
+@router.patch(
+    "/ai/configs/{provider}",
+    response_model=AIConfigResponse,
+    status_code=status.HTTP_200_OK
+)
+@router.post(
+    "/config/ai/{provider}",
+    response_model=AIConfigResponse,
+    status_code=status.HTTP_200_OK
+)
+@router.put(
+    "/config/ai/{provider}",
+    response_model=AIConfigResponse,
+    status_code=status.HTTP_200_OK
+)
+async def update_ai_config_by_provider(provider: str, request: AIConfigUpdateRequest):
+    try:
+        add_keys = list(request.add_keys) if request.add_keys else []
+        if request.add_key and request.add_key.strip():
+            add_keys.append(request.add_key.strip())
+
+        remove_keys = list(request.remove_keys) if request.remove_keys else []
+        if request.remove_key and request.remove_key.strip():
+            remove_keys.append(request.remove_key.strip())
+
+        updated = config_storage.update_ai_config(
+            provider=provider,
+            keys=request.keys,
+            add_keys=add_keys if add_keys else None,
+            remove_keys=remove_keys if remove_keys else None,
+            current_key=request.current_key,
+            total_keys=request.total_keys,
+        )
+        return updated
+    except KeyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": str(e)}
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": str(e)}
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to update AI config: {str(e)}"}
+        )
+
+
+@router.post(
+    "/ai/configs",
+    response_model=AIConfigResponse,
+    status_code=status.HTTP_200_OK
+)
+@router.post(
+    "/config/ai",
+    response_model=AIConfigResponse,
+    status_code=status.HTTP_200_OK
+)
+async def update_ai_config_root(request: AIConfigUpdateRequest):
+    target_provider = (request.llm_provider or "").strip()
+    if not target_provider:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": "llm_provider is required in request body when provider is not in URL path."}
+        )
+    return await update_ai_config_by_provider(target_provider, request)
+
+
+@router.delete(
+    "/ai/configs/{provider}",
+    status_code=status.HTTP_200_OK
+)
+@router.delete(
+    "/config/ai/{provider}",
+    status_code=status.HTTP_200_OK
+)
+async def delete_ai_config_endpoint(provider: str):
+    try:
+        return config_storage.delete_ai_config(provider)
+    except KeyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": str(e)}
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to delete AI config: {str(e)}"}
+        )
+
+

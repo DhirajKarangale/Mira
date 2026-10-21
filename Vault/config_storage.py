@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 import sqlite3
@@ -100,7 +101,7 @@ def init_config_storage(
         if not exists:
             logger.info(f"Creating missing configuration table: '{table_name}'")
             _DB_CONN.execute(table_spec["create_sql"])
-            if table_name != "app_permissions":
+            if table_name not in ("app_permissions", "ai_configs"):
                 _DB_CONN.execute(f"INSERT INTO {table_name} DEFAULT VALUES")
             _DB_CONN.commit()
         else:
@@ -123,15 +124,16 @@ def init_config_storage(
                     except Exception as e:
                         logger.error(f"Failed to drop column '{col_name}' from '{table_name}': {e}")
 
-            if table_name != "app_permissions":
+            if table_name not in ("app_permissions", "ai_configs"):
                 count = _DB_CONN.execute(f"SELECT count(*) FROM {table_name}").fetchone()[0]
                 if count == 0:
                     _DB_CONN.execute(f"INSERT INTO {table_name} DEFAULT VALUES")
                     _DB_CONN.commit()
-            else:
+            elif table_name == "app_permissions":
                 _DB_CONN.execute("DELETE FROM app_permissions WHERE app_id IS NULL OR app_id = ''")
                 _DB_CONN.commit()
 
+    _seed_default_ai_configs()
     save_config_storage(enc_db_path)
 
 
@@ -162,6 +164,11 @@ def get_configuration(key: str) -> Dict[str, Any]:
         normalized_key = "message_broker"
     elif normalized_key in ("user", "users"):
         normalized_key = "user_details"
+    elif normalized_key in ("ai", "ai_config", "ai_configs", "llm"):
+        return {
+            "providers": get_all_ai_providers(),
+            "configs": get_all_ai_configs()
+        }
 
     if normalized_key in _PARSED_SCHEMA:
         table_name = normalized_key
@@ -392,3 +399,230 @@ def update_app_permission(app_id: str, allowed_to_capture: bool) -> Dict[str, An
     }
     logger.info(f"Updated capture permission for '{updated['app_name']}' ({clean_id}) -> {allowed_to_capture}")
     return updated
+
+
+def _seed_default_ai_configs() -> None:
+    global _DB_CONN
+    if _DB_CONN is None:
+        return
+
+    exists = _DB_CONN.execute(
+        "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='ai_configs'"
+    ).fetchone()[0]
+    if not exists:
+        return
+
+    default_providers = ["groq", "gemini"]
+    for provider in default_providers:
+        cursor = _DB_CONN.execute(
+            "SELECT count(*) FROM ai_configs WHERE LOWER(llm_provider) = LOWER(?)",
+            (provider,)
+        )
+        if cursor.fetchone()[0] == 0:
+            logger.info(f"Seeding default AI config provider: '{provider}'")
+            _DB_CONN.execute(
+                "INSERT INTO ai_configs (llm_provider, total_keys, current_key, keys) VALUES (?, 0, 0, '[]')",
+                (provider,)
+            )
+    _DB_CONN.commit()
+
+
+def get_all_ai_providers() -> List[str]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+
+    cursor = _DB_CONN.execute("SELECT llm_provider FROM ai_configs ORDER BY id ASC")
+    rows = cursor.fetchall()
+    return [row[0] for row in rows]
+
+
+def get_all_ai_configs() -> List[Dict[str, Any]]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+
+    cursor = _DB_CONN.execute(
+        "SELECT id, llm_provider, total_keys, current_key, keys FROM ai_configs ORDER BY id ASC"
+    )
+    rows = cursor.fetchall()
+    results: List[Dict[str, Any]] = []
+    for row in rows:
+        raw_keys = row[4]
+        try:
+            keys_list = json.loads(raw_keys) if raw_keys else []
+            if not isinstance(keys_list, list):
+                keys_list = []
+        except Exception:
+            keys_list = []
+
+        results.append({
+            "id": row[0],
+            "llm_provider": row[1],
+            "total_keys": int(row[2]) if row[2] is not None else 0,
+            "current_key": int(row[3]) if row[3] is not None else 0,
+            "keys": [str(k) for k in keys_list]
+        })
+    return results
+
+
+def get_ai_config(provider: str) -> Dict[str, Any]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+
+    clean_provider = provider.strip()
+    if not clean_provider:
+        raise ValueError("Provider name cannot be empty")
+
+    cursor = _DB_CONN.execute(
+        "SELECT id, llm_provider, total_keys, current_key, keys FROM ai_configs WHERE LOWER(llm_provider) = LOWER(?)",
+        (clean_provider,)
+    )
+    row = cursor.fetchone()
+    if not row:
+        raise KeyError(f"AI config for provider '{provider}' not found in Vault.")
+
+    raw_keys = row[4]
+    try:
+        keys_list = json.loads(raw_keys) if raw_keys else []
+        if not isinstance(keys_list, list):
+            keys_list = []
+    except Exception:
+        keys_list = []
+
+    return {
+        "id": row[0],
+        "llm_provider": row[1],
+        "total_keys": int(row[2]) if row[2] is not None else 0,
+        "current_key": int(row[3]) if row[3] is not None else 0,
+        "keys": [str(k) for k in keys_list]
+    }
+
+
+def update_ai_config(
+    provider: str,
+    *,
+    keys: Optional[List[str]] = None,
+    add_keys: Optional[List[str]] = None,
+    remove_keys: Optional[List[str]] = None,
+    current_key: Optional[int] = None,
+    total_keys: Optional[int] = None,
+    create_if_missing: bool = True
+) -> Dict[str, Any]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+
+    clean_provider = provider.strip()
+    if not clean_provider:
+        raise ValueError("Provider name cannot be empty")
+
+    cursor = _DB_CONN.execute(
+        "SELECT id, llm_provider, total_keys, current_key, keys FROM ai_configs WHERE LOWER(llm_provider) = LOWER(?)",
+        (clean_provider,)
+    )
+    row = cursor.fetchone()
+    if not row:
+        if not create_if_missing:
+            raise KeyError(f"AI config for provider '{provider}' not found in Vault.")
+        _DB_CONN.execute(
+            "INSERT INTO ai_configs (llm_provider, total_keys, current_key, keys) VALUES (?, 0, 0, '[]')",
+            (clean_provider,)
+        )
+        _DB_CONN.commit()
+        cursor = _DB_CONN.execute(
+            "SELECT id, llm_provider, total_keys, current_key, keys FROM ai_configs WHERE LOWER(llm_provider) = LOWER(?)",
+            (clean_provider,)
+        )
+        row = cursor.fetchone()
+
+    row_id, orig_provider, current_total_keys, current_key_idx, raw_keys = row
+
+    try:
+        keys_list = json.loads(raw_keys) if raw_keys else []
+        if not isinstance(keys_list, list):
+            keys_list = []
+    except Exception:
+        keys_list = []
+
+    # 1. Full replacement if 'keys' provided
+    if keys is not None:
+        keys_list = [str(k).strip() for k in keys if str(k).strip()]
+
+    # 2. Add keys if 'add_keys' provided
+    if add_keys:
+        for k in add_keys:
+            cleaned_k = str(k).strip()
+            if cleaned_k and cleaned_k not in keys_list:
+                keys_list.append(cleaned_k)
+
+    # 3. Remove keys if 'remove_keys' provided
+    if remove_keys:
+        remove_set = {str(k).strip() for k in remove_keys if str(k).strip()}
+        keys_list = [k for k in keys_list if k not in remove_set]
+
+    # Calculate total_keys
+    computed_total = len(keys_list) if total_keys is None else max(0, total_keys)
+
+    # 4. Handle current_key index
+    if current_key is not None:
+        if computed_total == 0:
+            current_key_idx = 0
+        else:
+            current_key_idx = max(0, min(current_key, computed_total - 1))
+    else:
+        if computed_total == 0:
+            current_key_idx = 0
+        elif current_key_idx >= computed_total:
+            current_key_idx = max(0, computed_total - 1)
+        elif current_key_idx < 0:
+            current_key_idx = 0
+
+    json_keys = json.dumps(keys_list)
+    _DB_CONN.execute(
+        "UPDATE ai_configs SET total_keys = ?, current_key = ?, keys = ? WHERE id = ?",
+        (computed_total, current_key_idx, json_keys, row_id)
+    )
+    _DB_CONN.commit()
+    save_config_storage()
+
+    logger.info(
+        f"Updated AI config for '{orig_provider}': total_keys={computed_total}, "
+        f"current_key={current_key_idx}, keys={len(keys_list)}"
+    )
+
+    return {
+        "id": row_id,
+        "llm_provider": orig_provider,
+        "total_keys": computed_total,
+        "current_key": current_key_idx,
+        "keys": keys_list
+    }
+
+
+def delete_ai_config(provider: str) -> Dict[str, Any]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+
+    clean_provider = provider.strip()
+    if not clean_provider:
+        raise ValueError("Provider name cannot be empty")
+
+    cursor = _DB_CONN.execute(
+        "SELECT id, llm_provider FROM ai_configs WHERE LOWER(llm_provider) = LOWER(?)",
+        (clean_provider,)
+    )
+    row = cursor.fetchone()
+    if not row:
+        raise KeyError(f"AI config for provider '{provider}' not found in Vault.")
+
+    _DB_CONN.execute("DELETE FROM ai_configs WHERE id = ?", (row[0],))
+    _DB_CONN.commit()
+    save_config_storage()
+
+    return {
+        "status": "success",
+        "message": f"AI config for provider '{row[1]}' deleted successfully."
+    }

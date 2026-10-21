@@ -38,5 +38,11 @@ export const QUERY_KEYS = {
     list: (filters: Record<string, unknown>, page: number, limit: number) =>
       ["vault", "logs", "list", { ...filters, page, limit }] as const,
   },
+  ai: {
+    all: ["vault", "ai"] as const,
+    providers: ["vault", "ai", "providers"] as const,
+    configs: ["vault", "ai", "configs"] as const,
+    config: (provider: string) => ["vault", "ai", "config", provider.toLowerCase()] as const,
+  },
 } as const;
 

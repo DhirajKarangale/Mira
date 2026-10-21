@@ -48,3 +48,11 @@ CREATE TABLE IF NOT EXISTS app_permissions (
     allowed_to_capture BOOLEAN DEFAULT 1
 );
 
+CREATE TABLE IF NOT EXISTS ai_configs (
+    id INTEGER PRIMARY KEY,
+    llm_provider TEXT UNIQUE NOT NULL,
+    total_keys INTEGER DEFAULT 0,
+    current_key INTEGER DEFAULT 0,
+    keys TEXT DEFAULT '[]'
+);
+

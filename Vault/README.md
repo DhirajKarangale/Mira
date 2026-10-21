@@ -344,6 +344,108 @@ Updates an application's `allowed_to_capture` status in the encrypted database a
 
 ---
 
+### 2.17 Get Available AI Providers
+`GET /ai/providers`
+
+Returns the list of all configured LLM provider names.
+
+- **Response (`200 OK`):**
+  ```json
+  [
+    "groq",
+    "gemini"
+  ]
+  ```
+
+---
+
+### 2.18 Get All AI Configs
+`GET /ai/configs`
+
+Returns the complete configuration objects for all LLM providers.
+
+- **Response (`200 OK`):**
+  ```json
+  [
+    {
+      "id": 1,
+      "llm_provider": "groq",
+      "total_keys": 0,
+      "current_key": 0,
+      "keys": []
+    },
+    {
+      "id": 2,
+      "llm_provider": "gemini",
+      "total_keys": 0,
+      "current_key": 0,
+      "keys": []
+    }
+  ]
+  ```
+
+---
+
+### 2.19 Get AI Config by Provider
+`GET /ai/configs/{provider}`
+
+Returns the full configuration object for a specific LLM provider (`groq`, `gemini`, etc.).
+
+- **Example:**
+  `GET /ai/configs/groq`
+- **Response (`200 OK`):**
+  ```json
+  {
+    "id": 1,
+    "llm_provider": "groq",
+    "total_keys": 0,
+    "current_key": 0,
+    "keys": []
+  }
+  ```
+
+---
+
+### 2.20 Update AI Config
+`POST /ai/configs/{provider}`
+
+Updates LLM provider configurations. Supports adding keys, removing keys, setting key arrays directly, and updating the active key index.
+
+- **Request Body Options:**
+  - `add_key`: string (single key to add)
+  - `add_keys`: array of strings (keys to add)
+  - `remove_key`: string (single key to remove)
+  - `remove_keys`: array of strings (keys to remove)
+  - `keys`: array of strings (replace entire key array)
+  - `current_key`: integer (set current key index)
+
+- **Example (Add Key):**
+  ```json
+  {
+    "add_key": "gsk_example_key_123"
+  }
+  ```
+- **Example (Remove Key):**
+  ```json
+  {
+    "remove_key": "gsk_example_key_123"
+  }
+  ```
+- **Response (`200 OK`):**
+  ```json
+  {
+    "id": 1,
+    "llm_provider": "groq",
+    "total_keys": 1,
+    "current_key": 0,
+    "keys": [
+      "gsk_example_key_123"
+    ]
+  }
+  ```
+
+---
+
 ## 3. How to Run
 
 ### Install Dependencies

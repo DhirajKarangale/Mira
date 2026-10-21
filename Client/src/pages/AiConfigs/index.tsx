@@ -1,0 +1,361 @@
+import { useState, useEffect, useMemo, type FC } from "react";
+import {
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  X,
+  Cpu,
+  Sparkles,
+  RefreshCw,
+  Zap,
+} from "lucide-react";
+import {
+  useAIProvidersQuery,
+  useAIConfigsQuery,
+  useUpdateAIConfigMutation,
+} from "./queries";
+import { ProviderOverviewCard } from "./components/ProviderOverviewCard";
+import { AddApiKeyCard } from "./components/AddApiKeyCard";
+import { ApiKeyList } from "./components/ApiKeyList";
+import { getProviderMeta, type FeedbackNotification } from "./types";
+import type { AIConfig } from "@/services";
+import { cn } from "@/lib/utils";
+
+export const AiConfigsPage: FC = () => {
+  const {
+    data: providers = [],
+    isLoading: isProvidersLoading,
+    isFetching: isProvidersFetching,
+    refetch: refetchProviders,
+    error: providersError,
+  } = useAIProvidersQuery();
+
+  const {
+    data: configs = [],
+    isLoading: isConfigsLoading,
+    isFetching: isConfigsFetching,
+    refetch: refetchConfigs,
+  } = useAIConfigsQuery();
+
+  const updateMutation = useUpdateAIConfigMutation();
+
+  const [activeProvider, setActiveProvider] = useState<string>("");
+  const [feedback, setFeedback] = useState<FeedbackNotification | null>(null);
+
+  // Set default active provider once loaded
+  useEffect(() => {
+    if (providers.length > 0 && (!activeProvider || !providers.includes(activeProvider))) {
+      setActiveProvider(providers[0]);
+    }
+  }, [providers, activeProvider]);
+
+  // Map configs by provider key
+  const configsMap = useMemo(() => {
+    const map: Record<string, AIConfig> = {};
+    for (const c of configs) {
+      if (c && c.llm_provider) {
+        map[c.llm_provider.toLowerCase()] = c;
+      }
+    }
+    return map;
+  }, [configs]);
+
+  const activeConfig = activeProvider ? configsMap[activeProvider.toLowerCase()] || null : null;
+  const activeKeys = activeConfig?.keys || [];
+  const currentKeyIndex = activeConfig?.current_key ?? 0;
+
+  const showFeedback = (type: "success" | "error" | "info", message: string) => {
+    setFeedback({ type, message });
+    if (type === "success") {
+      setTimeout(() => {
+        setFeedback((prev) => (prev?.type === "success" ? null : prev));
+      }, 5000);
+    }
+  };
+
+  const handleRefresh = async () => {
+    await Promise.all([refetchProviders(), refetchConfigs()]);
+    showFeedback("info", "Synchronized latest AI credentials from Vault.");
+  };
+
+  const handleAddKey = async (newKey: string, makeActive: boolean) => {
+    if (!activeProvider) return;
+    const currentKeys = activeConfig?.keys ? [...activeConfig.keys] : [];
+    const updatedKeys = [...currentKeys, newKey];
+    const newActiveIndex = makeActive ? updatedKeys.length - 1 : currentKeyIndex;
+
+    await updateMutation.mutateAsync({
+      provider: activeProvider,
+      updates: {
+        keys: updatedKeys,
+        current_key: newActiveIndex,
+      },
+    });
+
+    showFeedback(
+      "success",
+      `New API key successfully encrypted and stored for ${activeProvider}.`
+    );
+  };
+
+  const handleUpdateKey = async (index: number, updatedKeyValue: string) => {
+    if (!activeProvider || !activeConfig) return;
+    const currentKeys = [...(activeConfig.keys || [])];
+    if (index < 0 || index >= currentKeys.length) return;
+
+    currentKeys[index] = updatedKeyValue;
+
+    await updateMutation.mutateAsync({
+      provider: activeProvider,
+      updates: {
+        keys: currentKeys,
+        current_key: currentKeyIndex,
+      },
+    });
+
+    showFeedback("success", `Key #${index + 1} updated successfully in Vault.`);
+  };
+
+  const handleRemoveKey = async (index: number) => {
+    if (!activeProvider || !activeConfig) return;
+    const currentKeys = [...(activeConfig.keys || [])];
+    if (index < 0 || index >= currentKeys.length) return;
+
+    currentKeys.splice(index, 1);
+    let newIndex = currentKeyIndex;
+    if (currentKeys.length === 0) {
+      newIndex = 0;
+    } else if (newIndex >= currentKeys.length) {
+      newIndex = currentKeys.length - 1;
+    }
+
+    await updateMutation.mutateAsync({
+      provider: activeProvider,
+      updates: {
+        keys: currentKeys,
+        current_key: newIndex,
+      },
+    });
+
+    showFeedback("success", `API key removed from ${activeProvider}.`);
+  };
+
+  const handleSetAsActive = async (index: number) => {
+    if (!activeProvider) return;
+
+    await updateMutation.mutateAsync({
+      provider: activeProvider,
+      updates: {
+        current_key: index,
+      },
+    });
+
+    showFeedback(
+      "success",
+      `Active key for ${activeProvider} switched to Key #${index + 1}.`
+    );
+  };
+
+  const handleScrollToAdd = () => {
+    const element = document.getElementById(`card-add-key-${activeProvider}`);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      const input = document.getElementById("input-new-api-key");
+      if (input) input.focus();
+    }
+  };
+
+  const isLoading = isProvidersLoading || isConfigsLoading;
+  const isFetching = isProvidersFetching || isConfigsFetching;
+
+  const getProviderIcon = (providerName: string) => {
+    const lower = providerName.toLowerCase();
+    if (lower === "groq") return Zap;
+    if (lower === "gemini") return Sparkles;
+    return Cpu;
+  };
+
+  return (
+    <div
+      id="logs-subpage-container"
+      className="flex flex-col h-full w-full overflow-hidden select-none bg-zinc-950/40 text-zinc-100"
+    >
+      {/* Top Header Bar matching Activity/Logs */}
+      <div className="flex-none px-6 py-4 border-b border-white/[0.06] bg-zinc-950/60 backdrop-blur-md">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 max-w-7xl mx-auto">
+          {/* Title & Badge */}
+          <div className="flex items-center gap-3.5">
+            <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-cyan-500/10 border border-cyan-500/25 text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.2)]">
+              <Cpu className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold tracking-tight text-white">
+                  AI Configs
+                </h1>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                  Vault Engine
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Encrypted LLM inference API credentials, active key rotation, and multi-key redundancy
+              </p>
+            </div>
+          </div>
+
+          {/* Provider Tabs Switcher (matching Activity/Logs tab selector) */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center p-1 rounded-xl bg-zinc-900/80 border border-white/[0.08] self-start sm:self-auto shadow-inner">
+              {providers.map((p) => {
+                const meta = getProviderMeta(p);
+                const isActive = activeProvider.toLowerCase() === p.toLowerCase();
+                const cfg = configsMap[p.toLowerCase()];
+                const count = cfg?.total_keys ?? cfg?.keys?.length ?? 0;
+                const Icon = getProviderIcon(p);
+
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    id={`tab-btn-provider-${p}`}
+                    onClick={() => setActiveProvider(p)}
+                    className={cn(
+                      "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
+                      isActive
+                        ? "bg-cyan-600 text-white shadow-sm font-semibold shadow-cyan-950/60"
+                        : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
+                    )}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    <span>{meta.name}</span>
+                    <span
+                      className={cn(
+                        "ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-mono",
+                        isActive
+                          ? "bg-white/20 text-white font-bold"
+                          : "bg-white/[0.06] text-zinc-400"
+                      )}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              id="btn-refresh-ai-configs"
+              onClick={handleRefresh}
+              disabled={isFetching}
+              title="Refresh configurations from Vault"
+              className="p-2 rounded-xl border border-white/[0.08] bg-zinc-900/80 hover:bg-white/[0.08] text-zinc-400 hover:text-white transition-all cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw
+                className={cn("w-4 h-4", isFetching && "animate-spin text-cyan-400")}
+              />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Scrollable Viewport */}
+      <div className="flex-1 overflow-y-auto px-6 py-6">
+        <div className="max-w-7xl mx-auto space-y-6">
+          {/* Feedback Alert Toast */}
+          {(feedback || providersError) && (
+            <div
+              id="ai-config-feedback-banner"
+              className={`flex items-start justify-between gap-3 p-4 rounded-xl border backdrop-blur-md transition-all animate-in fade-in ${
+                (feedback?.type || "error") === "success"
+                  ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
+                  : (feedback?.type || "error") === "error"
+                  ? "bg-rose-500/10 border-rose-500/20 text-rose-300"
+                  : "bg-cyan-500/10 border-cyan-500/20 text-cyan-300"
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                {(feedback?.type || "error") === "success" ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                ) : (feedback?.type || "error") === "error" ? (
+                  <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
+                ) : (
+                  <Sparkles className="w-5 h-5 text-cyan-400 shrink-0" />
+                )}
+                <span className="text-xs sm:text-sm font-medium">
+                  {feedback?.message ||
+                    (providersError as any)?.response?.data?.detail?.message ||
+                    (providersError as Error)?.message ||
+                    "Could not connect to Vault to fetch AI configurations."}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFeedback(null)}
+                className="p-1 rounded-lg hover:bg-white/[0.06] text-zinc-400 hover:text-white transition-all cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Body Content */}
+          {isLoading && providers.length === 0 ? (
+            <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-16 flex flex-col items-center justify-center gap-3 backdrop-blur-xl">
+              <Loader2 className="w-8 h-8 animate-spin text-cyan-400" />
+              <p className="text-sm text-zinc-400 font-mono">Synchronizing with Vault...</p>
+            </div>
+          ) : activeProvider ? (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              {/* 1. Overview Card: Total Keys & Highlighted Current Key Count */}
+              <ProviderOverviewCard
+                provider={activeProvider}
+                config={activeConfig}
+                onAddNewKeyClick={handleScrollToAdd}
+              />
+
+              {/* 2. List of Configured Keys with Highlight on Current Key */}
+              <ApiKeyList
+                provider={activeProvider}
+                keys={activeKeys}
+                currentKeyIndex={currentKeyIndex}
+                onSetAsActive={handleSetAsActive}
+                onUpdateKey={handleUpdateKey}
+                onRemoveKey={handleRemoveKey}
+                onAddNewKeyClick={handleScrollToAdd}
+                disabled={updateMutation.isPending}
+              />
+
+              {/* 3. Add New API Key Form */}
+              <AddApiKeyCard
+                provider={activeProvider}
+                onAddKey={handleAddKey}
+                existingKeys={activeKeys}
+                disabled={updateMutation.isPending}
+              />
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-white/10 bg-zinc-900/20 p-12 text-center">
+              <Cpu className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
+              <h3 className="text-sm font-semibold text-zinc-300">No Provider Available</h3>
+              <p className="text-xs text-zinc-500 max-w-sm mx-auto mt-1">
+                No LLM providers were returned from Vault. Please ensure Vault is running.
+              </p>
+            </div>
+          )}
+
+          {/* Footer Notice */}
+          <div className="pt-4 pb-2 text-center text-xs text-zinc-500 font-mono flex items-center justify-center gap-2">
+            <span>MIRA Vault Engine</span>
+            <span>•</span>
+            <span>Encrypted LLM Keyring</span>
+            <span>•</span>
+            <span>Zero Plaintext Logs</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default AiConfigsPage;
