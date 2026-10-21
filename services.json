@@ -1,8 +1,8 @@
 {
-  "message_broker": "http://127.0.0.1:8000",
-  "vault": "http://127.0.0.1:8001",
-  "operator": "http://127.0.0.1:8002",
+  "message_broker": "http://127.0.0.1:1001",
+  "vault": "http://127.0.0.1:1000",
+  "operator": "http://127.0.0.1:1002",
   "memory": "http://127.0.0.1:8003",
   "engine": "http://127.0.0.1:8004",
-  "client": "http://127.0.0.1:8005"
+  "client": "http://127.0.0.1:1003"
 }

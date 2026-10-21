@@ -44,6 +44,7 @@ All inter-module data transfers route through the central **Message Broker**. Al
 4. **Image Processing & Storage:** Memory consumes raw screenshots from the Message Broker, executes the image processing pipeline (frame comparison, perceptual hashing, LRU OCR caching, and OCR text extraction), and publishes extracted records to Redis Streams via Message Broker for later database persistence (Qdrant & SQLite).
 5. **AI Interaction:** Client submits user queries through the Message Broker to Engine. Engine requests contextual history from Memory via the Message Broker, calls AI models, and routes answers back to Client via the Message Broker.
 6. **Service Discovery:** Global `services.json` defines base URLs and ports for all modules. Each module loads `services.json` at startup to dynamically resolve inter-service endpoints without hardcoded addresses.
+7. **Unified Multi-Service Starter (`start.py`):** Project-level launcher (`start.py` / `start.bat` / `start.ps1`) that orchestrates all module lifecycles. It checks port availability with automatic conflict incrementation, updates `services.json` and client environments before spawning processes, launches services in dependency order with automated health checks, multiplexes logs into a single console, and terminates all child processes cleanly on exit.
 
 ---
 

@@ -6,7 +6,7 @@ import type { LogConfig, LogEntry, LogFilters, LogsResponse } from "@/pages/Acti
 
 /**
  * Centralized Vault API Service
- * Single source of truth for all communications with MIRA Vault (http://127.0.0.1:8001).
+ * Single source of truth for all communications with MIRA Vault.
  */
 export const vaultService = {
   // -------------------------------------------------------------

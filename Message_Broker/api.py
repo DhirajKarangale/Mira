@@ -139,3 +139,21 @@ async def format_redis():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": f"Failed to format Redis: {str(e)}"}
         )
+
+
+@router.post("/services", status_code=status.HTTP_200_OK)
+async def update_services(services: Dict[str, str]):
+    import config
+    config.set_services(services)
+    try:
+        config.fetch_and_store_config()
+    except Exception:
+        pass
+    return {"status": "success", "services": config.get_services()}
+
+
+@router.get("/services", status_code=status.HTTP_200_OK)
+async def get_services():
+    import config
+    return config.get_services()
+

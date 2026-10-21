@@ -366,8 +366,10 @@ def _notify_operator_permission_sync(app_id: str, allowed_to_capture: bool) -> N
     try:
         import urllib.request
         import json
-        import config
-        operator_url = getattr(config, "SERVICES", {}).get("operator", "http://127.0.0.1:8002").rstrip("/")
+        operator_url = config.get_service_url("operator")
+        if not operator_url:
+            return
+        operator_url = operator_url.rstrip("/")
         req = urllib.request.Request(
             f"{operator_url}/apps/permission",
             data=json.dumps({"app_id": app_id, "allowed_to_capture": allowed_to_capture}).encode("utf-8"),
@@ -377,6 +379,17 @@ def _notify_operator_permission_sync(app_id: str, allowed_to_capture: bool) -> N
         urllib.request.urlopen(req, timeout=1.5)
     except Exception as e:
         logger.debug(f"Could not notify Operator of permission change for '{app_id}': {e}")
+
+
+@router.post("/services", status_code=status.HTTP_200_OK)
+async def update_services_endpoint(services: Dict[str, str]):
+    config.set_services(services)
+    return {"status": "success", "services": config.get_services()}
+
+
+@router.get("/services", status_code=status.HTTP_200_OK)
+async def get_services_endpoint():
+    return config.get_services()
 
 
 @router.get(

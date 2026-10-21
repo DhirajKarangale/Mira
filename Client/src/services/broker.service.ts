@@ -20,7 +20,7 @@ export interface JobResponse {
 
 /**
  * Centralized Message Broker API Service
- * Single source of truth for all communications with Message Broker & Redis (http://127.0.0.1:8000).
+ * Single source of truth for all communications with Message Broker & Redis.
  */
 export const brokerService = {
   // -------------------------------------------------------------

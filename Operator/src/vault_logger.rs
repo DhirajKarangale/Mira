@@ -14,6 +14,9 @@ pub fn log_event(message: impl Into<String>) {
     info!("[{}] {}", MODULE_NAME, msg);
 
     let vault_url = crate::config::get_vault_url();
+    if vault_url.is_empty() {
+        return;
+    }
 
     tokio::spawn(async move {
         let endpoint = format!("{}/logs", vault_url);

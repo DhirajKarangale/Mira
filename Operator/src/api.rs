@@ -46,6 +46,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/apps", get(get_apps_handler))
         .route("/apps/refresh", post(refresh_apps_handler))
         .route("/apps/permission", post(update_app_permission_handler))
+        .route("/services", post(update_services_handler).get(get_services_handler))
         .with_state(state)
 }
 
@@ -298,5 +299,28 @@ async fn update_app_permission_handler(
             "allowed_to_capture": payload.allowed_to_capture
         })),
     )
+}
+
+async fn update_services_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    crate::config::update_service_urls(payload);
+    let permissions = state.permissions.clone();
+    tokio::spawn(async move {
+        let _ = permissions.sync_with_vault().await;
+    });
+    (
+        StatusCode::OK,
+        Json(json!({
+            "status": "success",
+            "services": crate::config::get_all_service_urls()
+        })),
+    )
+}
+
+async fn get_services_handler() -> impl IntoResponse {
+    let urls = crate::config::get_all_service_urls();
+    (StatusCode::OK, Json(urls))
 }
 

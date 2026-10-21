@@ -5,7 +5,7 @@
   "identifier": "com.mira.client",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:8005",
+    "devUrl": "http://localhost:1003",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },

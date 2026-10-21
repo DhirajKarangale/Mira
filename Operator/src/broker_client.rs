@@ -17,6 +17,9 @@ pub async fn dispatch_screenshot_job(
     job: &ScreenshotJob,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mb_url = crate::config::get_message_broker_url();
+    if mb_url.is_empty() {
+        return Err("Message Broker URL is not configured".into());
+    }
     let endpoint = format!("{}/jobs", mb_url.trim_end_matches('/'));
 
     let client = reqwest::Client::builder()

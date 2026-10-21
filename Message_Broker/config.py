@@ -15,22 +15,49 @@ def load_services_json() -> Dict[str, str]:
     ]
     for p in candidate_paths:
         if p and p.exists() and p.is_file():
-            with open(p, "r", encoding="utf-8") as f:
-                return json.load(f)
-    raise FileNotFoundError("services.json was not found in project workspace")
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+    return {}
 
 
 SERVICES: Dict[str, str] = load_services_json()
 
 
-def get_service_url(module_name: str) -> str:
+def set_services(services_map: Dict[str, str]) -> None:
+    global SERVICES, VAULT_URL
+    SERVICES.update({k.lower().replace("-", "_"): v.rstrip("/") for k, v in services_map.items()})
+    v_url = get_service_url("vault")
+    if v_url:
+        VAULT_URL = v_url
+
+
+def get_services() -> Dict[str, str]:
+    return dict(SERVICES)
+
+
+def get_service_url(module_name: str, default: Optional[str] = None) -> Optional[str]:
     key = module_name.lower().replace("-", "_")
-    if key not in SERVICES:
-        raise KeyError(f"Module '{module_name}' not defined in services.json")
-    return SERVICES[key]
+    if key in SERVICES:
+        return SERVICES[key]
+    env_key = f"{key.upper()}_URL"
+    if env_key in os.environ:
+        return os.environ[env_key].rstrip("/")
+    try:
+        fresh_services = load_services_json()
+        if key in fresh_services:
+            SERVICES[key] = fresh_services[key].rstrip("/")
+            return SERVICES[key]
+    except Exception:
+        pass
+    if default is not None:
+        return default
+    return None
 
 
-VAULT_URL: str = SERVICES["vault"]
+VAULT_URL: Optional[str] = os.getenv("VAULT_URL", get_service_url("vault"))
 
 REDIS_HOST: str = "localhost"
 REDIS_PORT: int = 6379
@@ -66,8 +93,10 @@ def apply_config_dict(cfg: Dict[str, Any]) -> None:
 
 
 def fetch_config(vault_base_url: Optional[str] = None) -> Dict[str, Any]:
-    url = (vault_base_url or VAULT_URL).rstrip("/")
-    endpoint = f"{url}/config/message_broker"
+    url = vault_base_url or VAULT_URL or get_service_url("vault")
+    if not url:
+        return {}
+    endpoint = f"{url.rstrip('/')}/config/message_broker"
 
     response = requests.get(endpoint, timeout=3.0)
     response.raise_for_status()

@@ -10,8 +10,12 @@ MODULE_NAME = "message_broker"
 
 def log(message: str) -> None:
     log_string = str(message)
-    vault_url = getattr(config, "VAULT_URL", "http://127.0.0.1:8001").rstrip("/")
-    endpoint = f"{vault_url}/logs"
+    vault_url = config.get_service_url("vault")
+    if not vault_url:
+        print(f"[{MODULE_NAME}] {log_string}", file=sys.stderr, flush=True)
+        return
+
+    endpoint = f"{vault_url.rstrip('/')}/logs"
 
     payload = {
         "module_name": MODULE_NAME,

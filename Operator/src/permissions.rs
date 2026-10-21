@@ -78,6 +78,10 @@ impl PermissionsManager {
 
     pub async fn sync_with_vault(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let vault_url = crate::config::get_vault_url();
+        if vault_url.is_empty() {
+            info!("Vault URL is not configured yet; skipping sync_with_vault");
+            return Ok(());
+        }
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(5))
             .build()?;
@@ -143,6 +147,9 @@ impl PermissionsManager {
         allowed_to_capture: bool,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let vault_url = crate::config::get_vault_url();
+        if vault_url.is_empty() {
+            return Err("Vault URL is not configured".into());
+        }
         let endpoint = format!("{}/apps/permission", vault_url);
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(3))

@@ -20,7 +20,7 @@ export interface OperatorActionResponse {
 
 /**
  * Centralized Operator API Service
- * Single source of truth for all communications with the Rust Operator service (http://127.0.0.1:8002).
+ * Single source of truth for all communications with the Rust Operator service.
  */
 export const operatorService = {
   /**

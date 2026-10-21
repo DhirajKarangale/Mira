@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 
 def load_services_json() -> Dict[str, str]:
@@ -14,24 +14,54 @@ def load_services_json() -> Dict[str, str]:
     ]
     for p in candidate_paths:
         if p and p.exists() and p.is_file():
-            with open(p, "r", encoding="utf-8") as f:
-                return json.load(f)
-    raise FileNotFoundError("services.json was not found in project workspace")
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+    return {}
 
 
 SERVICES: Dict[str, str] = load_services_json()
 
 
-def get_service_url(module_name: str) -> str:
+def set_services(services_map: Dict[str, str]) -> None:
+    global SERVICES
+    SERVICES.update({k.lower().replace("-", "_"): v.rstrip("/") for k, v in services_map.items()})
+
+
+def get_services() -> Dict[str, str]:
+    return dict(SERVICES)
+
+
+def get_service_url(module_name: str, default: Optional[str] = None) -> Optional[str]:
     key = module_name.lower().replace("-", "_")
-    if key not in SERVICES:
-        raise KeyError(f"Module '{module_name}' not defined in services.json")
-    return SERVICES[key]
+    if key in SERVICES:
+        return SERVICES[key]
+    env_key = f"{key.upper()}_URL"
+    if env_key in os.environ:
+        return os.environ[env_key].rstrip("/")
+    try:
+        fresh_services = load_services_json()
+        if key in fresh_services:
+            SERVICES[key] = fresh_services[key].rstrip("/")
+            return SERVICES[key]
+    except Exception:
+        pass
+    if default is not None:
+        return default
+    return None
 
 
-_VAULT_URL = SERVICES["vault"]
-_clean_url = _VAULT_URL.replace("http://", "").replace("https://", "").rstrip("/")
-_host, _port_str = _clean_url.split(":")
+_vault_url = os.getenv("VAULT_URL", SERVICES.get("vault", ""))
+if _vault_url:
+    _clean_url = _vault_url.replace("http://", "").replace("https://", "").rstrip("/")
+    if ":" in _clean_url:
+        _host, _port_str = _clean_url.split(":")
+    else:
+        _host, _port_str = "127.0.0.1", "1000"
+else:
+    _host, _port_str = "127.0.0.1", "1000"
 
 SERVER_HOST: str = os.getenv("VAULT_HOST", _host)
 SERVER_PORT: int = int(os.getenv("VAULT_PORT", _port_str))
