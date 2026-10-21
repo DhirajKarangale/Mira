@@ -1,8 +1,8 @@
 import { vaultApi } from "@/lib/api";
 import type { UserDetails, UserFormState } from "@/pages/User/types";
-import type { OperatorConfigResponse } from "@/pages/History/CapturedData/types";
-import type { RedisConfig } from "@/pages/History/Redis/types";
-import type { LogConfig, LogEntry, LogFilters, LogsResponse } from "@/pages/History/Logs/types";
+import type { OperatorConfigResponse } from "@/pages/Activity/CapturedData/types";
+import type { RedisConfig } from "@/pages/Activity/Redis/types";
+import type { LogConfig, LogEntry, LogFilters, LogsResponse } from "@/pages/Activity/Logs/types";
 
 /**
  * Centralized Vault API Service

@@ -63,9 +63,8 @@ export const DeleteConfirmModal: FC<DeleteConfirmModalProps> = ({
       >
         {/* Glow */}
         <div
-          className={`absolute top-0 right-0 w-48 h-48 rounded-full blur-3xl pointer-events-none transition-colors duration-300 ${
-            step === "success" ? "bg-emerald-500/10" : "bg-rose-500/10"
-          }`}
+          className={`absolute top-0 right-0 w-48 h-48 rounded-full blur-3xl pointer-events-none transition-colors duration-300 ${step === "success" ? "bg-emerald-500/10" : "bg-rose-500/10"
+            }`}
         />
 
         {/* ================= STEP 1: CONFIRM ================= */}
@@ -106,7 +105,7 @@ export const DeleteConfirmModal: FC<DeleteConfirmModalProps> = ({
                 Your captured data is <strong className="text-white font-semibold">encrypted and highly secured</strong>, present <strong className="text-white font-semibold">locally on your device only</strong>. We are not taking it or storing it in the cloud.
               </p>
               <p className="text-xs text-amber-300 font-medium leading-relaxed pt-1 border-t border-amber-500/20">
-                ⚠️ If this data is deleted, you will permanently lose all your previous work history, visual timelines, and activity context. This action cannot be reversed.
+                ⚠️ If this data is deleted, you will permanently lose all your previous work activity, visual timelines, and activity context. This action cannot be reversed.
               </p>
             </div>
 
@@ -171,7 +170,7 @@ export const DeleteConfirmModal: FC<DeleteConfirmModalProps> = ({
                 Data Deleted Successfully
               </h3>
               <p className="text-xs sm:text-sm text-zinc-300 max-w-md mx-auto leading-relaxed">
-                All local screen capture records and visual activity history have been permanently deleted from your device.
+                All local screen capture records and visual activity activity have been permanently deleted from your device.
               </p>
             </div>
 

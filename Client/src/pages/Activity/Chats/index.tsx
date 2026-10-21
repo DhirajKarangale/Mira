@@ -4,7 +4,7 @@ import { MessageSquare } from "lucide-react";
 export const ChatsPage: FC = () => {
   return (
     <div
-      id="history-subpage-chats"
+      id="activity-subpage-chats"
       className="relative flex flex-col items-center justify-center h-full w-full overflow-hidden select-none"
     >
       {/* Subtle ambient lighting */}

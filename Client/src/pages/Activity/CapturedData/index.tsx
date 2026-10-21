@@ -12,12 +12,12 @@ export const CapturedDataPage: FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Active view driven strictly by React Router URL: /history/captured-data/apps vs /history/captured-data/configurations
+  // Active view driven strictly by React Router URL: /activity/captured-data/apps vs /activity/captured-data/configurations
   const isAppsView = location.pathname.includes("/captured-data/apps");
 
   return (
     <div
-      id="history-subpage-captured-data"
+      id="activity-subpage-captured-data"
       className="flex flex-col h-full w-full overflow-hidden select-none bg-zinc-950/40"
     >
       {/* Top Header with Navigation Tabs (consistent with Redis and Logs pages) */}
@@ -48,7 +48,7 @@ export const CapturedDataPage: FC = () => {
             <button
               type="button"
               id="tab-btn-capture-configurations"
-              onClick={() => navigate("/history/captured-data/configurations")}
+              onClick={() => navigate("/activity/captured-data/configurations")}
               className={cn(
                 "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
                 !isAppsView
@@ -63,7 +63,7 @@ export const CapturedDataPage: FC = () => {
             <button
               type="button"
               id="tab-btn-capture-apps-configurations"
-              onClick={() => navigate("/history/captured-data/apps")}
+              onClick={() => navigate("/activity/captured-data/apps")}
               className={cn(
                 "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
                 isAppsView

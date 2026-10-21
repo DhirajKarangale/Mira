@@ -28,8 +28,8 @@ export function App() {
           <Route path="/chats" element={<ChatsPage />} />
           <Route path="/user" element={<UserPage />} />
           <Route path="/ai-configs" element={<LlmConfigsPage />} />
-          <Route path="/screen-capturing" element={<Navigate to="/history/captured-data" replace />} />
-          <Route path="/history/*" element={<HistoryPage />} />
+          <Route path="/screen-capturing" element={<Navigate to="/activity/captured-data" replace />} />
+          <Route path="/activity/*" element={<HistoryPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="*" element={<Navigate to="/mira" replace />} />
         </Routes>

@@ -3,7 +3,7 @@ export type NavTabId =
   | "chats"
   | "user"
   | "ai-configs"
-  | "history"
+  | "activity"
   | "about";
 
 export interface NavItem {
@@ -33,10 +33,10 @@ export const NAV_ITEMS: readonly NavItem[] = [
     iconName: "Cpu",
   },
   {
-    id: "history",
-    label: "History",
+    id: "activity",
+    label: "Activity",
     description: "Temporal activity logs, recalled memories, and sessions",
-    iconName: "History",
+    iconName: "Activity",
   },
   {
     id: "about",

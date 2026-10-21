@@ -14,7 +14,7 @@ export const LogsPage: FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Active view driven strictly by React Router URL: /history/logs/config vs /history/logs
+  // Active view driven strictly by React Router URL: /activity/logs/config vs /activity/logs
   const isConfigView = location.pathname.endsWith("/config");
 
   const getTodayString = () => {
@@ -108,7 +108,7 @@ export const LogsPage: FC = () => {
       id="logs-subpage-container"
       className="flex flex-col h-full w-full overflow-hidden select-none bg-zinc-950/40"
     >
-      {/* Top Header with Navigation Tabs (consistent across History pages) */}
+      {/* Top Header with Navigation Tabs (consistent across Activity pages) */}
       <div className="flex-none px-6 py-4 border-b border-white/[0.06] bg-zinc-950/60 backdrop-blur-md">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 max-w-7xl mx-auto">
           {/* Title and Badge */}
@@ -136,7 +136,7 @@ export const LogsPage: FC = () => {
             <button
               type="button"
               id="tab-btn-logs-viewer"
-              onClick={() => navigate("/history/logs")}
+              onClick={() => navigate("/activity/logs")}
               className={cn(
                 "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
                 !isConfigView
@@ -156,7 +156,7 @@ export const LogsPage: FC = () => {
             <button
               type="button"
               id="tab-btn-logs-config"
-              onClick={() => navigate("/history/logs/config")}
+              onClick={() => navigate("/activity/logs/config")}
               className={cn(
                 "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
                 isConfigView

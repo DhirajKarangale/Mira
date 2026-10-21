@@ -11,7 +11,7 @@ export const RedisPage: FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Active view driven strictly by React Router URL: /history/redis/config vs /history/redis
+  // Active view driven strictly by React Router URL: /activity/redis/config vs /activity/redis
   const isConfigView = location.pathname.endsWith("/config");
 
   const {
@@ -30,13 +30,13 @@ export const RedisPage: FC = () => {
 
   const errorMessage = error
     ? (error as any)?.response?.data?.detail?.message ||
-      error.message ||
-      "Failed to connect to Message Broker. Ensure the service and Redis are running."
+    error.message ||
+    "Failed to connect to Message Broker. Ensure the service and Redis are running."
     : null;
 
   return (
     <div
-      id="history-subpage-redis"
+      id="activity-subpage-redis"
       className="flex flex-col h-full w-full overflow-hidden select-none bg-zinc-950/40"
     >
       {/* Top Header */}
@@ -66,7 +66,7 @@ export const RedisPage: FC = () => {
           <div className="flex items-center p-1 rounded-xl bg-zinc-900/80 border border-white/[0.08] self-start sm:self-auto shadow-inner">
             <button
               type="button"
-              onClick={() => navigate("/history/redis")}
+              onClick={() => navigate("/activity/redis")}
               className={cn(
                 "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
                 !isConfigView
@@ -80,7 +80,7 @@ export const RedisPage: FC = () => {
 
             <button
               type="button"
-              onClick={() => navigate("/history/redis/config")}
+              onClick={() => navigate("/activity/redis/config")}
               className={cn(
                 "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
                 isConfigView
@@ -135,7 +135,7 @@ export const RedisPage: FC = () => {
               }
             />
             <Route path="config" element={<RedisConfigCard />} />
-            <Route path="*" element={<Navigate to="/history/redis" replace />} />
+            <Route path="*" element={<Navigate to="/activity/redis" replace />} />
           </Routes>
         </div>
       </div>

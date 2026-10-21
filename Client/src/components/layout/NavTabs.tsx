@@ -5,7 +5,7 @@ import {
   User,
   Sliders,
   Monitor,
-  History,
+  Activity,
   Info,
   MessageSquare,
   type LucideIcon,
@@ -19,7 +19,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   MessageSquare,
   Cpu: Sliders,
   Monitor,
-  History,
+  Activity,
   Info,
 };
 

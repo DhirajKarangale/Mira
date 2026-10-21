@@ -4,7 +4,7 @@ import { Network } from "lucide-react";
 export const MessageBrokerDataPage: FC = () => {
   return (
     <div
-      id="history-subpage-message-broker-data"
+      id="activity-subpage-message-broker-data"
       className="relative flex flex-col items-center justify-center h-full w-full overflow-hidden select-none"
     >
       {/* Subtle ambient lighting */}

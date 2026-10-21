@@ -1,5 +1,5 @@
 import { messageBrokerApi } from "@/lib/api";
-import type { ConsumerGroup, CleanResult, FormatResult } from "@/pages/History/Redis/types";
+import type { ConsumerGroup, CleanResult, FormatResult } from "@/pages/Activity/Redis/types";
 
 export interface DeleteConsumerGroupResponse {
   message: string;
