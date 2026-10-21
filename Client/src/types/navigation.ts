@@ -21,12 +21,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
     iconName: "MessageSquare",
   },
   {
-    id: "user",
-    label: "Me",
-    description: "User profiles, preferences, and identity settings",
-    iconName: "User",
-  },
-  {
     id: "ai-configs",
     label: "AI Configs",
     description: "Model parameters, providers, and reasoning settings",
@@ -37,6 +31,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: "Activity",
     description: "Temporal activity logs, recalled memories, and sessions",
     iconName: "Activity",
+  },
+  {
+    id: "user",
+    label: "Me",
+    description: "User profiles, preferences, and identity settings",
+    iconName: "User",
   },
   {
     id: "about",
