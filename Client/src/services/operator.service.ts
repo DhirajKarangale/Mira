@@ -1,4 +1,4 @@
-import { operatorApi, vaultApi } from "@/lib/api";
+import { operatorApi } from "@/lib/api";
 import type {
   OperatorStatusResponse,
   AppPermission,
@@ -77,41 +77,23 @@ export const operatorService = {
   },
 
   async getApps(): Promise<AppPermission[]> {
-    try {
-      const response = await operatorApi.get<AppPermission[]>("/apps");
-      return response.data;
-    } catch {
-      const vaultResponse = await vaultApi.get<AppPermission[]>("/apps");
-      return vaultResponse.data;
-    }
+    const response = await operatorApi.get<AppPermission[]>("/apps");
+    return response.data;
   },
 
   async refreshApps(): Promise<RefreshAppsResponse> {
-    try {
-      const response = await operatorApi.post<RefreshAppsResponse>("/apps/refresh");
-      return response.data;
-    } catch {
-      const vaultResponse = await vaultApi.post<RefreshAppsResponse>("/apps/refresh", []);
-      return vaultResponse.data;
-    }
+    const response = await operatorApi.post<RefreshAppsResponse>("/apps/refresh");
+    return response.data;
   },
 
   async updateAppPermission(
     appId: string,
     allowedToCapture: boolean
   ): Promise<UpdateAppPermissionResponse> {
-    try {
-      const response = await operatorApi.post<UpdateAppPermissionResponse>("/apps/permission", {
-        app_id: appId,
-        allowed_to_capture: allowedToCapture,
-      });
-      return response.data;
-    } catch {
-      const vaultResponse = await vaultApi.post<UpdateAppPermissionResponse>("/apps/permission", {
-        app_id: appId,
-        allowed_to_capture: allowedToCapture,
-      });
-      return vaultResponse.data;
-    }
+    const response = await operatorApi.post<UpdateAppPermissionResponse>("/apps/permission", {
+      app_id: appId,
+      allowed_to_capture: allowedToCapture,
+    });
+    return response.data;
   },
 };

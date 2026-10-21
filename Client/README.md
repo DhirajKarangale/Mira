@@ -139,7 +139,7 @@ Central configuration and encrypted data storage service.
   ```
 
 #### Get Log Configuration
-`GET /logs/config`
+`GET /config/logs`
 - **Parameters**: None
 - **Response (`200 OK`):**
   ```json
@@ -161,12 +161,12 @@ Central configuration and encrypted data storage service.
   ```
 
 #### Save Log Configuration
-`POST /logs/config`
+`POST /config/logs`
 - **Request Body (JSON):** Full or partial `LogConfig` object.
 - **Response (`200 OK`):** Updated `LogConfig` object.
 
 #### Get Redis Configuration
-`GET /redis/config`
+`GET /config/message_broker`
 - **Parameters**: None
 - **Response (`200 OK`):**
   ```json
@@ -183,13 +183,35 @@ Central configuration and encrypted data storage service.
   ```
 
 #### Save Redis Configuration
-`POST /redis/config`
+`POST /config/message_broker`
 - **Request Body (JSON):** Partial or complete `RedisConfig` object.
 - **Response (`200 OK`):** Updated `RedisConfig` object.
 
+#### Get AI Providers
+`GET /ai/providers`
+- **Response (`200 OK`):** `["groq", "gemini"]`
+
+#### Get All AI Configs
+`GET /ai/configs`
+- **Response (`200 OK`):** List of configured AI provider objects.
+
+#### Update AI Config
+`POST /ai/configs/{provider}`
+- **Request Body (JSON):** Partial or complete `AIConfigUpdateRequest` (e.g. `add_key`, `remove_key`, `current_key`).
+- **Response (`200 OK`):** Updated `AIConfig` object.
+
+#### Delete AI Config
+`DELETE /ai/configs/{provider}`
+- **Response (`200 OK`):** Status confirmation.
+
+#### Get / Update AI Priorities
+`GET /ai/priorities` / `PUT /ai/priorities`
+- **Request Body (PUT):** Ordered array of provider strings (e.g. `["gemini", "groq"]`).
+- **Response (`200 OK`):** Reordered priorities array.
+
 ---
 
-### 2.2 Operator Service (`http://127.0.0.1:9000`)
+### 2.2 Operator Service (`http://127.0.0.1:9003`)
 
 System automation, screen capture runtime, and window monitoring service.
 
@@ -204,40 +226,50 @@ System automation, screen capture runtime, and window monitoring service.
   }
   ```
 
-#### Trigger Manual Capture
-`POST /capture/trigger`
-- **Parameters**: None
+#### Capture Status
+`GET /status`
 - **Response (`200 OK`):**
   ```json
   {
-    "status": "success",
-    "message": "Capture triggered"
+    "service": "Operator",
+    "status": "started",
+    "is_running": true,
+    "is_capturing": true,
+    "auto_start": false,
+    "capture_interval_secs": 10
   }
   ```
 
-#### Update Capture Interval
-`POST /capture/interval`
+#### Start / Stop Capture Loop
+`POST /start` / `POST /stop`
+- **Response (`200 OK`):** Status message and capture state.
+
+#### Get / Update Capture Interval
+`GET /interval` / `POST /interval`
+- **Request Body (POST):**
+  - `capture_interval_secs` (integer, required): Periodic capture frequency in seconds (range: 1 - 3600).
+- **Response (`200 OK`):** Updated interval object.
+
+#### Delete Screenshot
+`POST /delete`
 - **Request Body (JSON):**
-  - `interval_seconds` (integer, required): Periodic capture frequency in seconds (range: 1 - 3600).
-- **Response (`200 OK`):**
-  ```json
-  {
-    "interval_seconds": 10
-  }
-  ```
+  - `image_path` (string, required): Full filesystem path to screenshot file.
+- **Response (`200 OK`):** Deletion confirmation.
 
-#### Get Running Applications
-`GET /apps/running`
-- **Parameters**: None
-- **Response (`200 OK`):**
-  ```json
-  [
-    {
-      "app_id": "msedge.exe",
-      "app_name": "Microsoft Edge"
-    }
-  ]
-  ```
+#### List Discovered Applications & Permissions
+`GET /apps`
+- **Response (`200 OK`):** Array of discovered apps with `allowed_to_capture` flags.
+
+#### Refresh Applications
+`POST /apps/refresh`
+- **Response (`200 OK`):** Refresh confirmation and total count.
+
+#### Update App Capture Permission
+`POST /apps/permission`
+- **Request Body (JSON):**
+  - `app_id` (string, required): Application ID (e.g. `notepad.exe`).
+  - `allowed_to_capture` (boolean, required): Whether capture is allowed.
+- **Response (`200 OK`):** Updated app permission object.
 
 ---
 

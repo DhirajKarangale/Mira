@@ -118,7 +118,7 @@ Retrieves configuration parameters for a module group (`logs`, `message_broker`,
 ---
 
 ### 2.6 Update Logs Configuration
-`POST /config/logs` / `PUT /config/logs`
+`POST /config/logs`
 
 - **Request Body:**
   ```json
@@ -126,8 +126,16 @@ Retrieves configuration parameters for a module group (`logs`, `message_broker`,
     "retention_period": 30,
     "show_logs_vault": true,
     "show_logs_operator": true,
+    "show_logs_engine": true,
+    "show_logs_memory": true,
+    "show_logs_client": true,
+    "show_logs_message_broker": true,
     "store_logs_vault": true,
-    "store_logs_operator": true
+    "store_logs_operator": true,
+    "store_logs_engine": true,
+    "store_logs_memory": true,
+    "store_logs_client": true,
+    "store_logs_message_broker": true
   }
   ```
 - **Response (`200 OK`):**
@@ -448,7 +456,24 @@ Updates LLM provider configurations. Supports adding keys, removing keys, settin
 
 ---
 
-### 2.21 Get LLM Priorities
+### 2.21 Delete AI Config
+`DELETE /ai/configs/{provider}`
+
+Removes a configured LLM provider and all associated API keys from Vault.
+
+- **Example:**
+  `DELETE /ai/configs/groq`
+- **Response (`200 OK`):**
+  ```json
+  {
+    "status": "success",
+    "message": "AI config for provider 'groq' deleted successfully."
+  }
+  ```
+
+---
+
+### 2.22 Get LLM Priorities
 `GET /ai/priorities`
 
 Returns the ordered priority sequence of configured LLM providers for execution and fallback routing.
@@ -463,8 +488,8 @@ Returns the ordered priority sequence of configured LLM providers for execution 
 
 ---
 
-### 2.22 Update LLM Priorities
-`PUT /ai/priorities` or `POST /ai/priorities`
+### 2.23 Update LLM Priorities
+`PUT /ai/priorities`
 
 Updates the priority sequence of all configured LLM providers.
 - Validates that every configured provider appears exactly once.

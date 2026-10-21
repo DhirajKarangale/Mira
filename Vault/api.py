@@ -82,25 +82,7 @@ class LogConfigUpdateRequest(BaseModel):
     store_logs_message_broker: Optional[bool] = None
 
 
-@router.get(
-    "/config/logs",
-    status_code=status.HTTP_200_OK
-)
-async def get_logs_config():
-    try:
-        return config_storage.get_configuration("logs")
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"message": f"Failed to retrieve log configuration: {str(e)}"}
-        )
-
-
 @router.post(
-    "/config/logs",
-    status_code=status.HTTP_200_OK
-)
-@router.put(
     "/config/logs",
     status_code=status.HTTP_200_OK
 )
@@ -522,11 +504,6 @@ class AIConfigUpdateRequest(BaseModel):
     response_model=List[str],
     status_code=status.HTTP_200_OK
 )
-@router.get(
-    "/config/ai/providers",
-    response_model=List[str],
-    status_code=status.HTTP_200_OK
-)
 async def get_ai_providers():
     try:
         return config_storage.get_all_ai_providers()
@@ -542,11 +519,6 @@ async def get_ai_providers():
     response_model=List[AIConfigResponse],
     status_code=status.HTTP_200_OK
 )
-@router.get(
-    "/config/ai/configs",
-    response_model=List[AIConfigResponse],
-    status_code=status.HTTP_200_OK
-)
 async def get_all_ai_configs():
     try:
         return config_storage.get_all_ai_configs()
@@ -559,11 +531,6 @@ async def get_all_ai_configs():
 
 @router.get(
     "/ai/configs/{provider}",
-    response_model=AIConfigResponse,
-    status_code=status.HTTP_200_OK
-)
-@router.get(
-    "/config/ai/{provider}",
     response_model=AIConfigResponse,
     status_code=status.HTTP_200_OK
 )
@@ -589,26 +556,6 @@ async def get_ai_config_by_provider(provider: str):
 
 @router.post(
     "/ai/configs/{provider}",
-    response_model=AIConfigResponse,
-    status_code=status.HTTP_200_OK
-)
-@router.put(
-    "/ai/configs/{provider}",
-    response_model=AIConfigResponse,
-    status_code=status.HTTP_200_OK
-)
-@router.patch(
-    "/ai/configs/{provider}",
-    response_model=AIConfigResponse,
-    status_code=status.HTTP_200_OK
-)
-@router.post(
-    "/config/ai/{provider}",
-    response_model=AIConfigResponse,
-    status_code=status.HTTP_200_OK
-)
-@router.put(
-    "/config/ai/{provider}",
     response_model=AIConfigResponse,
     status_code=status.HTTP_200_OK
 )
@@ -648,32 +595,8 @@ async def update_ai_config_by_provider(provider: str, request: AIConfigUpdateReq
         )
 
 
-@router.post(
-    "/ai/configs",
-    response_model=AIConfigResponse,
-    status_code=status.HTTP_200_OK
-)
-@router.post(
-    "/config/ai",
-    response_model=AIConfigResponse,
-    status_code=status.HTTP_200_OK
-)
-async def update_ai_config_root(request: AIConfigUpdateRequest):
-    target_provider = (request.llm_provider or "").strip()
-    if not target_provider:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"message": "llm_provider is required in request body when provider is not in URL path."}
-        )
-    return await update_ai_config_by_provider(target_provider, request)
-
-
 @router.delete(
     "/ai/configs/{provider}",
-    status_code=status.HTTP_200_OK
-)
-@router.delete(
-    "/config/ai/{provider}",
     status_code=status.HTTP_200_OK
 )
 async def delete_ai_config_endpoint(provider: str):
@@ -704,16 +627,6 @@ class AIPrioritiesUpdateRequest(BaseModel):
     response_model=List[str],
     status_code=status.HTTP_200_OK
 )
-@router.get(
-    "/config/ai/priorities",
-    response_model=List[str],
-    status_code=status.HTTP_200_OK
-)
-@router.get(
-    "/ai/configs/priorities",
-    response_model=List[str],
-    status_code=status.HTTP_200_OK
-)
 async def get_ai_priorities_endpoint():
     try:
         return config_storage.get_ai_priorities()
@@ -726,21 +639,6 @@ async def get_ai_priorities_endpoint():
 
 @router.put(
     "/ai/priorities",
-    response_model=List[str],
-    status_code=status.HTTP_200_OK
-)
-@router.post(
-    "/ai/priorities",
-    response_model=List[str],
-    status_code=status.HTTP_200_OK
-)
-@router.put(
-    "/config/ai/priorities",
-    response_model=List[str],
-    status_code=status.HTTP_200_OK
-)
-@router.post(
-    "/config/ai/priorities",
     response_model=List[str],
     status_code=status.HTTP_200_OK
 )

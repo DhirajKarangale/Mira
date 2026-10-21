@@ -181,8 +181,10 @@ export const vaultService = {
   },
 
   async createAIConfig(data: AIConfigUpdateRequest): Promise<AIConfig> {
-    const response = await vaultApi.post<AIConfig>("/ai/configs", data);
-    return response.data;
+    if (!data.llm_provider) {
+      throw new Error("llm_provider is required to configure AI provider");
+    }
+    return this.updateAIConfig(data.llm_provider, data);
   },
 
   async deleteAIConfig(provider: string): Promise<{ status: string; message: string }> {
