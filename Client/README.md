@@ -1,359 +1,75 @@
-# MIRA Client
+# Client
 
-The **Client** is the desktop graphical user interface and control center for the MIRA system, built using **Tauri v2**, **React 19**, **Vite**, and **TailwindCSS**.
+The **Client** is the desktop graphical user interface and control center for MIRA, built with **Tauri v2**, **React 19**, **Vite**, and **TailwindCSS**.
 
 ---
 
 ## 1. Purpose
 
-- **Desktop Operator Shell**: Provides a high-performance native desktop environment powered by Tauri v2 with custom frameless window controls.
-- **Activity & Telemetry Center**: Real-time monitoring and management of screen capture sessions, application permissions, aggregated system logs, and Redis streams.
-- **Centralized Integration**: Directly and uniformly interfaces with MIRA backend microservices (**Vault**, **Operator**, and **Message Broker**) through centralized services.
-- **Configuration Management**: Unified management of user profiles, LLM credentials, log retention rules, and message broker connection settings.
+- **Desktop Control Center**: Native desktop interface with frameless window controls and responsive views.
+- **Activity Monitoring**: Live screen capture controls, application permission toggles, encrypted log inspection, and Redis stream telemetry.
+- **Configuration Management**: Manages user details, AI provider API credentials, priority fallback order, and worker concurrency limits.
+- **Centralized Service Layer**: Interacts with backend microservices via unified service modules in `src/services/`.
 
 ---
 
-## 2. Integrated Service APIs
+## 2. Integrated Backend Services
 
-All external API interactions are centralized through dedicated client services under `src/services/`.
+The Client communicates directly with MIRA backend services using centralized HTTP clients (`src/services/`):
 
-### 2.1 Vault Service (`http://127.0.0.1:9001`)
+### 2.1 Vault Service (`http://127.0.0.1:9002`)
+- `GET /health`: Vault service health.
+- `GET /user`, `POST /user`: User profile retrieval and persistence.
+- `GET /config/{key}`, `POST /config/{module}`: Module configurations (`logs`, `message_broker`, `operator`).
+- `GET /logs`: Encrypted log queries with module, search, and date filters.
+- `POST /retention/cleanup`: Trigger log retention purge.
+- `GET /os`: Host operating system detection.
+- `GET /ai/providers`: Registered LLM providers.
+- `GET /ai/configs`, `GET /ai/configs/{provider}`, `POST /ai/configs/{provider}`, `DELETE /ai/configs/{provider}`: AI provider credentials.
+- `GET /ai/priorities`, `PUT /ai/priorities`: AI provider execution order.
+- `GET /engine/workers`, `PUT /engine/workers`: Background worker concurrency limits.
 
-Central configuration and encrypted data storage service.
+### 2.2 Operator Service (`http://127.0.0.1:9004`)
+- `GET /health`: Operator service health.
+- `GET /status`: Capture loop status and active interval.
+- `POST /start`: Start screen capture loop.
+- `POST /stop`: Stop screen capture loop.
+- `POST /interval`: Update capture frequency.
+- `POST /delete`: Delete local screenshot file.
+- `GET /apps`: Discovered applications and permissions.
+- `POST /apps/refresh`: Scan system applications and sync with Vault.
+- `POST /apps/permission`: Update app capture permission.
 
-#### Health Check
-`GET /health`
-- **Parameters**: None
-- **Response (`200 OK`):**
-  ```json
-  {
-    "service": "Vault",
-    "status": "online"
-  }
-  ```
-
-#### Get User Profile
-`GET /user`
-- **Parameters**: None
-- **Response (`200 OK`):**
-  ```json
-  {
-    "username": "user",
-    "email": "user@example.com",
-    "dob": "2000-01-01"
-  }
-  ```
-
-#### Save User Profile
-`POST /user`
-- **Request Body (JSON):**
-  - `username` (string, required): Username identifier.
-  - `email` (string, required): User email address.
-  - `dob` (string, required): Date of birth (`YYYY-MM-DD`).
-- **Response (`200 OK`):**
-  ```json
-  {
-    "username": "user",
-    "email": "user@example.com",
-    "dob": "2000-01-01"
-  }
-  ```
-
-#### Get Screen Capture Settings
-`GET /capture-settings`
-- **Parameters**: None
-- **Response (`200 OK`):**
-  ```json
-  {
-    "interval_seconds": 5,
-    "start_date": "2026-10-20",
-    "end_date": "2026-10-21"
-  }
-  ```
-
-#### Delete Screen Capture Data by Date Range
-`DELETE /capture-data`
-- **Query Parameters:**
-  - `start_date` (string, required): Beginning date (`YYYY-MM-DD`).
-  - `end_date` (string, required): Ending date (`YYYY-MM-DD`).
-- **Response (`200 OK`):**
-  ```json
-  {
-    "message": "Capture data deleted successfully",
-    "deleted_count": 42
-  }
-  ```
-
-#### Get App Capture Permissions
-`GET /apps`
-- **Parameters**: None
-- **Response (`200 OK`):**
-  ```json
-  [
-    {
-      "app_id": "msedge.exe",
-      "app_name": "Microsoft Edge",
-      "allowed_to_capture": true
-    }
-  ]
-  ```
-
-#### Update App Capture Permission
-`PUT /apps`
-- **Request Body (JSON):**
-  - `app_id` (string, required): Executable process identifier.
-  - `allowed_to_capture` (boolean, required): Whether screen capture is permitted.
-- **Response (`200 OK`):**
-  ```json
-  {
-    "app_id": "msedge.exe",
-    "app_name": "Microsoft Edge",
-    "allowed_to_capture": false
-  }
-  ```
-
-#### Query System Logs
-`GET /logs`
-- **Query Parameters:**
-  - `page` (integer, optional, default: `1`): Page number.
-  - `limit` (integer, optional, default: `50`): Results per page.
-  - `search` (string, optional): Text filter query.
-  - `module_name` (string, optional): Filter by module (`vault`, `operator`, `engine`, `memory`, `client`, `message_broker`).
-  - `start_date` (string, optional): Date lower bound (`YYYY-MM-DD`).
-  - `end_date` (string, optional): Date upper bound (`YYYY-MM-DD`).
-- **Response (`200 OK`):**
-  ```json
-  {
-    "logs": [
-      {
-        "id": 1,
-        "module_name": "operator",
-        "timestamp": "2026-10-21T10:00:00Z",
-        "data": "Capture cycle started"
-      }
-    ],
-    "total": 1,
-    "page": 1,
-    "limit": 50
-  }
-  ```
-
-#### Get Log Configuration
-`GET /config/logs`
-- **Parameters**: None
-- **Response (`200 OK`):**
-  ```json
-  {
-    "retention_period": 30,
-    "show_logs_vault": true,
-    "show_logs_operator": true,
-    "show_logs_engine": true,
-    "show_logs_memory": true,
-    "show_logs_client": true,
-    "show_logs_message_broker": true,
-    "store_logs_vault": true,
-    "store_logs_operator": true,
-    "store_logs_engine": true,
-    "store_logs_memory": true,
-    "store_logs_client": true,
-    "store_logs_message_broker": true
-  }
-  ```
-
-#### Save Log Configuration
-`POST /config/logs`
-- **Request Body (JSON):** Full or partial `LogConfig` object.
-- **Response (`200 OK`):** Updated `LogConfig` object.
-
-#### Get Redis Configuration
-`GET /config/message_broker`
-- **Parameters**: None
-- **Response (`200 OK`):**
-  ```json
-  {
-    "REDIS_HOST": "localhost",
-    "REDIS_PORT": 6379,
-    "REDIS_DB": 0,
-    "REDIS_PASSWORD": null,
-    "REDIS_PROTOCOL": 2,
-    "REDIS_DECODE_RESPONSES": true,
-    "SERVER_HOST": "127.0.0.1",
-    "SERVER_RELOAD": false
-  }
-  ```
-
-#### Save Redis Configuration
-`POST /config/message_broker`
-- **Request Body (JSON):** Partial or complete `RedisConfig` object.
-- **Response (`200 OK`):** Updated `RedisConfig` object.
-
-#### Get AI Providers
-`GET /ai/providers`
-- **Response (`200 OK`):** `["groq", "gemini"]`
-
-#### Get All AI Configs
-`GET /ai/configs`
-- **Response (`200 OK`):** List of configured AI provider objects.
-
-#### Update AI Config
-`POST /ai/configs/{provider}`
-- **Request Body (JSON):** Partial or complete `AIConfigUpdateRequest` (e.g. `add_key`, `remove_key`, `current_key`).
-- **Response (`200 OK`):** Updated `AIConfig` object.
-
-#### Delete AI Config
-`DELETE /ai/configs/{provider}`
-- **Response (`200 OK`):** Status confirmation.
-
-#### Get / Update AI Priorities
-`GET /ai/priorities` / `PUT /ai/priorities`
-- **Request Body (PUT):** Ordered array of provider strings (e.g. `["gemini", "groq"]`).
-- **Response (`200 OK`):** Reordered priorities array.
+### 2.3 Message Broker Service (`http://127.0.0.1:9003`)
+- `GET /health`: Message Broker service health.
+- `GET /redis/consumer-groups`: Stream and consumer group telemetry.
+- `DELETE /redis/consumer-groups/{group_name}`: Delete a consumer group.
+- `POST /redis/clean`: Clear pending messages.
+- `POST /redis/format`: Flush Redis database and reinitialize consumer groups.
+- `POST /jobs`, `GET /jobs`, `DELETE /jobs`: Queue and manage stream jobs.
 
 ---
 
-### 2.2 Operator Service (`http://127.0.0.1:9003`)
-
-System automation, screen capture runtime, and window monitoring service.
-
-#### Health Check
-`GET /health`
-- **Parameters**: None
-- **Response (`200 OK`):**
-  ```json
-  {
-    "service": "Operator",
-    "status": "online"
-  }
-  ```
-
-#### Capture Status
-`GET /status`
-- **Response (`200 OK`):**
-  ```json
-  {
-    "service": "Operator",
-    "status": "started",
-    "is_running": true,
-    "is_capturing": true,
-    "auto_start": false,
-    "capture_interval_secs": 10
-  }
-  ```
-
-#### Start / Stop Capture Loop
-`POST /start` / `POST /stop`
-- **Response (`200 OK`):** Status message and capture state.
-
-#### Get / Update Capture Interval
-`GET /interval` / `POST /interval`
-- **Request Body (POST):**
-  - `capture_interval_secs` (integer, required): Periodic capture frequency in seconds (range: 1 - 3600).
-- **Response (`200 OK`):** Updated interval object.
-
-#### Delete Screenshot
-`POST /delete`
-- **Request Body (JSON):**
-  - `image_path` (string, required): Full filesystem path to screenshot file.
-- **Response (`200 OK`):** Deletion confirmation.
-
-#### List Discovered Applications & Permissions
-`GET /apps`
-- **Response (`200 OK`):** Array of discovered apps with `allowed_to_capture` flags.
-
-#### Refresh Applications
-`POST /apps/refresh`
-- **Response (`200 OK`):** Refresh confirmation and total count.
-
-#### Update App Capture Permission
-`POST /apps/permission`
-- **Request Body (JSON):**
-  - `app_id` (string, required): Application ID (e.g. `notepad.exe`).
-  - `allowed_to_capture` (boolean, required): Whether capture is allowed.
-- **Response (`200 OK`):** Updated app permission object.
-
----
-
-### 2.3 Message Broker Service (`http://127.0.0.1:9002`)
-
-Redis streams event bus and queue telemetry service.
-
-#### Health Check
-`GET /health`
-- **Parameters**: None
-- **Response (`200 OK`):**
-  ```json
-  {
-    "service": "Message Broker",
-    "status": "online"
-  }
-  ```
-
-#### List Consumer Groups & Telemetry
-`GET /redis/consumer-groups`
-- **Query Parameters:**
-  - `raw` (boolean, optional, default: `false`): If `true`, returns flat array of group names.
-- **Response (`200 OK`):** Array of consumer group telemetry objects.
-
-#### Delete Consumer Group
-`DELETE /redis/consumer-groups/{group_name}`
-- **Path Parameters:**
-  - `group_name` (string, required): Consumer group name.
-- **Response (`200 OK`):** Deletion confirmation message.
-
-#### Clean Consumer Group Pending Messages
-`POST /redis/clean`
-- **Request Body (JSON, Optional):**
-  - `group_name` (string, optional): Specific group to clean. Omit to clean all.
-  - `reset_stream` (boolean, optional, default: `false`): Reset stream offset to 0.
-- **Response (`200 OK`):** Clean summary response.
-
-#### Format Redis Database
-`POST /redis/format`
-- **Request Body**: None
-- **Response (`200 OK`):** Flush confirmation and count of re-initialized streams.
-
----
-
-## 3. Native Tauri IPC Commands
-
-The Client uses custom Rust IPC commands defined in `src-tauri/src/lib.rs` for frameless window management:
-
-| Command | Description |
-|---|---|
-| `minimize_window` | Minimizes the active application window to the taskbar. |
-| `toggle_maximize_window` | Toggles the window between maximized and restored states. |
-| `close_window` | Gracefully closes the desktop application window. |
-| `is_window_maximized` | Returns boolean indicating if the window is currently maximized. |
-
----
-
-## 4. Installation & Startup
-
-### Prerequisites
-- **Node.js**: `>= 18.0.0`
-- **npm**: `>= 9.0.0`
-- **Rust & Cargo**: `>= 1.77.0` (with MSVC C++ Build Tools on Windows)
+## 3. Installation & Startup
 
 ### Install Dependencies
-Run from the `Client/` directory:
 ```bash
 npm install
 ```
 
-### Start in Web / Dev Server Mode
-Runs Vite with Hot Module Replacement in your default browser:
+### Start Web Development Server
+Run Vite dev server on port `9005`:
 ```bash
 npm run dev
 ```
 
-### Start in Desktop App Mode (Tauri)
-Runs Vite dev server and compiles/launches the native Tauri desktop window:
+### Start Desktop App
+Run desktop application via Tauri:
 ```bash
 npm run tauri dev
 ```
 
 ### Build Production Bundle
-Builds the optimized web assets and standalone native binary (`.exe` on Windows):
 ```bash
-npm run tauri build
+npm run build
 ```

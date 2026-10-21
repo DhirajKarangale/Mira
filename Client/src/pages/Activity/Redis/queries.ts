@@ -1,19 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  fetchRedisConfig,
-  updateRedisConfig,
-  fetchConsumerGroups,
-  deleteConsumerGroup,
-  cleanPendingMessages,
-  formatRedis,
-} from "./api";
+import { vaultService, brokerService } from "@/services";
 import { QUERY_KEYS } from "@/lib/queryClient";
 import type { RedisConfig, ConsumerGroup } from "./types";
 
 export function useRedisConfigQuery() {
   return useQuery<RedisConfig>({
     queryKey: QUERY_KEYS.redis.config,
-    queryFn: fetchRedisConfig,
+    queryFn: () => vaultService.getConfig<RedisConfig>("message_broker"),
     staleTime: 15 * 60 * 1000,
   });
 }
@@ -21,7 +14,7 @@ export function useRedisConfigQuery() {
 export function useConsumerGroupsQuery() {
   return useQuery<ConsumerGroup[]>({
     queryKey: QUERY_KEYS.redis.consumerGroups,
-    queryFn: fetchConsumerGroups,
+    queryFn: () => brokerService.getConsumerGroups(),
     staleTime: 15 * 60 * 1000,
   });
 }
@@ -30,7 +23,7 @@ export function useUpdateRedisConfigMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (updates: Partial<RedisConfig>) => updateRedisConfig(updates),
+    mutationFn: (updates: Partial<RedisConfig>) => vaultService.updateMessageBrokerConfig(updates),
     onSuccess: (updated) => {
       queryClient.setQueryData(QUERY_KEYS.redis.config, updated);
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.redis.config });
@@ -43,7 +36,7 @@ export function useDeleteConsumerGroupMutation() {
 
   return useMutation({
     mutationFn: ({ groupName, streamName }: { groupName: string; streamName?: string }) =>
-      deleteConsumerGroup(groupName, streamName),
+      brokerService.deleteConsumerGroup(groupName, streamName),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.redis.consumerGroups });
     },
@@ -55,7 +48,7 @@ export function useCleanPendingMessagesMutation() {
 
   return useMutation({
     mutationFn: ({ groupName, streamName }: { groupName?: string; streamName?: string } = {}) =>
-      cleanPendingMessages(groupName, streamName),
+      brokerService.cleanPendingMessages(groupName, streamName),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.redis.consumerGroups });
     },
@@ -66,7 +59,7 @@ export function useFormatRedisMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => formatRedis(),
+    mutationFn: () => brokerService.formatRedis(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.redis.consumerGroups });
     },

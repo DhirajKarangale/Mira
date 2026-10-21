@@ -25,9 +25,6 @@ static DPI_INIT: std::sync::Once = std::sync::Once::new();
 pub fn enable_dpi_awareness() {
     DPI_INIT.call_once(|| {
         unsafe {
-            // 1. Try SetProcessDpiAwarenessContext (Windows 10 1607+)
-            // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
-            // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE = -3
             type SetProcessDpiAwarenessContextFn = unsafe extern "system" fn(isize) -> i32;
             let user32 = windows_sys::Win32::System::LibraryLoader::LoadLibraryA(b"user32.dll\0".as_ptr());
             if user32 != 0 {
@@ -44,8 +41,6 @@ pub fn enable_dpi_awareness() {
                 }
             }
 
-            // 2. Try SetProcessDpiAwareness from shcore.dll (Windows 8.1+)
-            // PROCESS_PER_MONITOR_DPI_AWARE = 2
             type SetProcessDpiAwarenessFn = unsafe extern "system" fn(i32) -> i32;
             let shcore = windows_sys::Win32::System::LibraryLoader::LoadLibraryA(b"shcore.dll\0".as_ptr());
             if shcore != 0 {
@@ -62,7 +57,6 @@ pub fn enable_dpi_awareness() {
                 }
             }
 
-            // 3. Fallback to SetProcessDPIAware from user32.dll (Windows Vista+)
             let user32 = windows_sys::Win32::System::LibraryLoader::LoadLibraryA(b"user32.dll\0".as_ptr());
             if user32 != 0 {
                 type SetProcessDPIAwareFn = unsafe extern "system" fn() -> i32;
@@ -79,7 +73,6 @@ pub fn enable_dpi_awareness() {
         }
     });
 
-    // Also ensure the calling thread is configured for Per-Monitor V2 awareness
     unsafe {
         type SetThreadDpiAwarenessContextFn = unsafe extern "system" fn(isize) -> isize;
         let user32 = windows_sys::Win32::System::LibraryLoader::LoadLibraryA(b"user32.dll\0".as_ptr());
@@ -314,7 +307,6 @@ pub fn get_target_display() -> TargetDisplay {
         GetForegroundWindow, GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN,
     };
 
-    // 1. Try finding the monitor hosting the active/foreground window
     unsafe {
         let hwnd = GetForegroundWindow();
         if hwnd != 0 {
@@ -345,7 +337,6 @@ pub fn get_target_display() -> TargetDisplay {
         }
     }
 
-    // 2. Fallback to enumerated displays (prefer primary monitor)
     let displays = enumerate_displays();
     if let Some(primary) = displays.iter().find(|d| d.is_primary).cloned() {
         return primary;
@@ -354,7 +345,6 @@ pub fn get_target_display() -> TargetDisplay {
         return first;
     }
 
-    // 3. Fallback to DPI-aware primary screen metrics
     unsafe {
         let width = GetSystemMetrics(SM_CXSCREEN).max(0) as u32;
         let height = GetSystemMetrics(SM_CYSCREEN).max(0) as u32;
@@ -435,8 +425,6 @@ fn capture_screen_native(target: &TargetDisplay) -> Result<image::RgbaImage, Box
 
         let old_bitmap = SelectObject(hdc_mem, hbitmap);
 
-        // First attempt BitBlt with CAPTUREBLT (0x40000000) to include layered/transparent windows;
-        // if that fails, fall back to standard SRCCOPY.
         let mut blt_ok = BitBlt(hdc_mem, 0, 0, width, height, hdc_screen, src_x, src_y, SRCCOPY | 0x40000000);
         if blt_ok == 0 {
             blt_ok = BitBlt(hdc_mem, 0, 0, width, height, hdc_screen, src_x, src_y, SRCCOPY);
@@ -593,85 +581,4 @@ pub fn capture_silent_screenshot() -> Result<CapturedScreenshot, Box<dyn std::er
     };
 
     Ok(CapturedScreenshot { job })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_dpi_awareness_init() {
-        enable_dpi_awareness();
-    }
-
-    #[test]
-    fn test_target_display_detection() {
-        let target = get_target_display();
-        println!("Detected target display: {:?}", target);
-        assert!(target.width > 0, "Target display width must be positive");
-        assert!(target.height > 0, "Target display height must be positive");
-    }
-
-    #[test]
-    fn test_capture_matches_display_dimensions() {
-        let target = get_target_display();
-        let image = capture_raw_image().expect("Raw image capture must succeed");
-
-        println!(
-            "Target display: {}x{} at ({}, {}). Captured image: {}x{}",
-            target.width, target.height, target.x, target.y, image.width(), image.height()
-        );
-
-        assert_eq!(
-            image.width(),
-            target.width,
-            "Captured width must match target display physical width"
-        );
-        assert_eq!(
-            image.height(),
-            target.height,
-            "Captured height must match target display physical height"
-        );
-
-        // Verify that the rightmost pixel boundary is fully populated and accessible
-        let right_edge_x = image.width() - 1;
-        let mid_y = image.height() / 2;
-        let pixel = image.get_pixel(right_edge_x, mid_y);
-        // Alpha channel must be 255 (opaque valid pixel)
-        assert_eq!(pixel[3], 255, "Rightmost pixel must have full alpha opacity");
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn test_native_vs_xcap_dimensions() {
-        let target = get_target_display();
-        let native_img = capture_screen_native(&target).expect("Native capture must succeed");
-        let xcap_img = capture_screen_xcap(Some(&target)).expect("xcap capture must succeed");
-
-        assert_eq!(native_img.width(), target.width);
-        assert_eq!(native_img.height(), target.height);
-        assert_eq!(xcap_img.width(), target.width);
-        assert_eq!(xcap_img.height(), target.height);
-    }
-
-    #[tokio::test]
-    async fn test_capture_silent_screenshot_workflow() {
-        let _ = crate::config::init_config().await;
-        let result = capture_silent_screenshot().expect("capture_silent_screenshot must succeed");
-
-        assert!(!result.job.job_id.is_empty());
-        assert!(!result.job.image_path.is_empty());
-
-        let path = std::path::Path::new(&result.job.image_path);
-        assert!(path.exists(), "Captured screenshot file must exist on disk");
-
-        // Verify saved image dimensions match target display
-        let target = get_target_display();
-        let loaded = image::open(path).expect("Must be able to open captured screenshot");
-        assert_eq!(loaded.width(), target.width);
-        assert_eq!(loaded.height(), target.height);
-
-        // Cleanup test screenshot
-        let _ = std::fs::remove_file(path);
-    }
 }

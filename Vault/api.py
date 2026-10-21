@@ -17,6 +17,14 @@ logger = logging.getLogger("mira.vault.api")
 router = APIRouter(prefix="", tags=["Vault"])
 
 
+@router.get("/health", status_code=status.HTTP_200_OK)
+async def health():
+    return {
+        "service": "Vault",
+        "status": "online"
+    }
+
+
 class LogCreateRequest(BaseModel):
     module_name: str = Field(..., min_length=1)
     data: str = Field(...)
@@ -207,7 +215,6 @@ async def save_user_details(request: UserDetailsRequest):
         )
 
 
-
 class PaginatedLogsResponse(BaseModel):
     items: List[LogEntryResponse]
     total: int
@@ -276,7 +283,6 @@ async def get_logs(
 
         return logs
     except Exception as e:
-        logger = logging.getLogger("mira.vault.api")
         logger.error(f"Error in get_logs: {e}")
         if envelope:
             return {
@@ -476,10 +482,6 @@ async def update_app_permission_endpoint(request: UpdateAppPermissionRequest):
         )
 
 
-# ============================================================================
-# AI Configuration Endpoints
-# ============================================================================
-
 class AIConfigResponse(BaseModel):
     id: Optional[int] = None
     llm_provider: str
@@ -614,10 +616,6 @@ async def delete_ai_config_endpoint(provider: str):
         )
 
 
-# ============================================================================
-# AI Priorities Endpoints
-# ============================================================================
-
 class AIPrioritiesUpdateRequest(BaseModel):
     priorities: List[str]
 
@@ -666,31 +664,20 @@ async def update_ai_priorities_endpoint(payload: Union[List[str], AIPrioritiesUp
         )
 
 
-# ============================================================================
-# Engine Workers Endpoints
-# ============================================================================
-
 class EngineWorkersConfig(BaseModel):
-    embedding_workers: int = Field(default=1, ge=1, le=50, description="Embedding workers (1-50)")
-    llm_workers: int = Field(default=1, ge=1, le=50, description="LLM workers (1-50)")
+    embedding_workers: int = Field(default=1, ge=1, le=50)
+    llm_workers: int = Field(default=1, ge=1, le=50)
 
 
 class EngineWorkersUpdateRequest(BaseModel):
-    embedding_workers: Optional[int] = Field(default=None, ge=1, le=50, description="Embedding workers (1-50)")
-    llm_workers: Optional[int] = Field(default=None, ge=1, le=50, description="LLM workers (1-50)")
+    embedding_workers: Optional[int] = Field(default=None, ge=1, le=50)
+    llm_workers: Optional[int] = Field(default=None, ge=1, le=50)
 
 
 @router.get(
     "/engine/workers",
     response_model=EngineWorkersConfig,
-    status_code=status.HTTP_200_OK,
-    summary="Get Engine Workers Configuration"
-)
-@router.get(
-    "/config/engine/workers",
-    response_model=EngineWorkersConfig,
-    status_code=status.HTTP_200_OK,
-    include_in_schema=False
+    status_code=status.HTTP_200_OK
 )
 async def get_engine_workers_endpoint():
     try:
@@ -705,26 +692,7 @@ async def get_engine_workers_endpoint():
 @router.put(
     "/engine/workers",
     response_model=EngineWorkersConfig,
-    status_code=status.HTTP_200_OK,
-    summary="Update Engine Workers Configuration"
-)
-@router.post(
-    "/engine/workers",
-    response_model=EngineWorkersConfig,
-    status_code=status.HTTP_200_OK,
-    include_in_schema=False
-)
-@router.put(
-    "/config/engine/workers",
-    response_model=EngineWorkersConfig,
-    status_code=status.HTTP_200_OK,
-    include_in_schema=False
-)
-@router.post(
-    "/config/engine/workers",
-    response_model=EngineWorkersConfig,
-    status_code=status.HTTP_200_OK,
-    include_in_schema=False
+    status_code=status.HTTP_200_OK
 )
 async def update_engine_workers_endpoint(payload: Union[EngineWorkersUpdateRequest, Dict[str, Any]]):
     try:
@@ -742,6 +710,3 @@ async def update_engine_workers_endpoint(payload: Union[EngineWorkersUpdateReque
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": f"Failed to update engine workers config: {str(e)}"}
         )
-
-
-

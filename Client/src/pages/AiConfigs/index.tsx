@@ -69,7 +69,6 @@ export const AiConfigsPage: FC = () => {
   const [dismissedQueryError, setDismissedQueryError] = useState(false);
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Compute canonical ordered list of providers based on priority sequence
   const orderedProviders = useMemo(() => {
     if (!providers || providers.length === 0) return [];
     if (!priorities || priorities.length === 0) return providers;
@@ -94,7 +93,6 @@ export const AiConfigsPage: FC = () => {
     return result;
   }, [providers, priorities]);
 
-  // Map configs by provider key
   const configsMap = useMemo(() => {
     const map: Record<string, AIConfig> = {};
     for (const c of configs) {
@@ -111,7 +109,6 @@ export const AiConfigsPage: FC = () => {
   const activeKeys = activeConfig?.keys || [];
   const currentKeyIndex = activeConfig?.current_key ?? 0;
 
-  // Auto-dismiss feedback notification after duration (default 4 seconds)
   const showFeedback = (
     type: "success" | "error" | "info",
     message: string,
@@ -126,7 +123,6 @@ export const AiConfigsPage: FC = () => {
     }, durationMs);
   };
 
-  // Clean up any pending timer on unmount
   useEffect(() => {
     return () => {
       if (feedbackTimeoutRef.current) {
@@ -269,10 +265,8 @@ export const AiConfigsPage: FC = () => {
       id="logs-subpage-container"
       className="flex flex-col h-full w-full overflow-hidden select-none bg-zinc-950/40 text-zinc-100"
     >
-      {/* Top Header Bar matching Activity/Logs */}
       <div className="flex-none px-6 py-4 border-b border-white/[0.06] bg-zinc-950/60 backdrop-blur-md">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 max-w-7xl mx-auto">
-          {/* Title & Badge */}
           <div className="flex items-center gap-3.5">
             <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-cyan-500/10 border border-cyan-500/25 text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.2)]">
               <Cpu className="w-5 h-5" />
@@ -292,10 +286,8 @@ export const AiConfigsPage: FC = () => {
             </div>
           </div>
 
-          {/* Switcher: Engine Workers + Provider Tabs */}
           <div className="flex items-center gap-2">
             <div className="flex items-center p-1 rounded-xl bg-zinc-900/80 border border-white/[0.08] self-start sm:self-auto shadow-inner">
-              {/* Separate Tab: Engine Workers */}
               <button
                 type="button"
                 id="tab-btn-engine-workers"
@@ -313,7 +305,6 @@ export const AiConfigsPage: FC = () => {
 
               <div className="h-4 w-px bg-white/10 mx-1" />
 
-              {/* Provider Tabs Switcher (matching Activity/Logs tab selector) */}
               {orderedProviders.map((p, index) => {
                 const meta = getProviderMeta(p);
                 const isActive = activeTab === p.toLowerCase();
@@ -375,10 +366,8 @@ export const AiConfigsPage: FC = () => {
         </div>
       </div>
 
-      {/* Main Scrollable Viewport */}
       <div className="flex-1 overflow-y-auto px-6 py-6">
         <div className="max-w-7xl mx-auto space-y-6">
-          {/* Feedback Alert Toast */}
           {(feedback || (!dismissedQueryError && (providersError || prioritiesError || engineError))) && (
             <div
               id="ai-config-feedback-banner"
@@ -419,16 +408,13 @@ export const AiConfigsPage: FC = () => {
             </div>
           )}
 
-          {/* Body Content */}
           {isLoading && orderedProviders.length === 0 && !engineWorkers ? (
             <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-16 flex flex-col items-center justify-center gap-3 backdrop-blur-xl">
               <Loader2 className="w-8 h-8 animate-spin text-cyan-400" />
               <p className="text-sm text-zinc-400 font-mono">Synchronizing with Vault...</p>
             </div>
           ) : isEngineTab ? (
-            /* TAB 1: Engine Workers & LLM Priority/Failover Sequence */
             <div className="space-y-6 animate-in fade-in duration-200">
-              {/* 1. Engine Worker Concurrency Configuration */}
               <EngineWorkersCard
                 config={engineWorkers}
                 isLoading={isEngineLoading}
@@ -436,7 +422,6 @@ export const AiConfigsPage: FC = () => {
                 disabled={updateEngineMutation.isPending}
               />
 
-              {/* 2. Moved LLM Priority & Failover Sequence Manager */}
               <ProviderPriorityCard
                 providers={orderedProviders}
                 priorities={priorities}
@@ -448,16 +433,13 @@ export const AiConfigsPage: FC = () => {
               />
             </div>
           ) : activeProvider ? (
-            /* TAB 2..N: Individual Provider API Key Management (Priority component removed from here) */
             <div className="space-y-6 animate-in fade-in duration-200">
-              {/* 1. Overview Card: Total Keys & Highlighted Current Key Count */}
               <ProviderOverviewCard
                 provider={activeProvider}
                 config={activeConfig}
                 onAddNewKeyClick={handleScrollToAdd}
               />
 
-              {/* 2. List of Configured Keys with Highlight on Current Key */}
               <ApiKeyList
                 provider={activeProvider}
                 keys={activeKeys}
@@ -469,7 +451,6 @@ export const AiConfigsPage: FC = () => {
                 disabled={updateMutation.isPending}
               />
 
-              {/* 3. Add New API Key Form */}
               <AddApiKeyCard
                 provider={activeProvider}
                 onAddKey={handleAddKey}
@@ -487,7 +468,6 @@ export const AiConfigsPage: FC = () => {
             </div>
           )}
 
-          {/* Footer Notice */}
           <div className="pt-4 pb-2 text-center text-xs text-zinc-500 font-mono flex items-center justify-center gap-2">
             <span>MIRA Vault Engine</span>
             <span>•</span>

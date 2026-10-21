@@ -1,12 +1,12 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { fetchLogConfig, saveLogConfig, fetchLogs } from "./api";
+import { vaultService } from "@/services";
 import { QUERY_KEYS } from "@/lib/queryClient";
 import type { LogConfig, LogFilters, LogsResponse } from "./types";
 
 export function useLogConfigQuery() {
   return useQuery<LogConfig>({
     queryKey: QUERY_KEYS.logs.config,
-    queryFn: fetchLogConfig,
+    queryFn: () => vaultService.getConfig<LogConfig>("logs"),
     staleTime: 15 * 60 * 1000,
   });
 }
@@ -15,7 +15,7 @@ export function useSaveLogConfigMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (config: Partial<LogConfig>) => saveLogConfig(config),
+    mutationFn: (config: Partial<LogConfig>) => vaultService.updateLogConfig(config),
     onSuccess: (updated) => {
       queryClient.setQueryData(QUERY_KEYS.logs.config, updated);
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.logs.config });
@@ -38,7 +38,7 @@ export function useLogsQuery(filters: LogFilters, page: number = 1, limit: numbe
       page,
       limit
     ),
-    queryFn: () => fetchLogs(filters, page, limit),
+    queryFn: () => vaultService.getLogs(filters, page, limit),
     enabled: isEnabled,
     placeholderData: keepPreviousData,
     staleTime: 15 * 60 * 1000,

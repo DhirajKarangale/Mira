@@ -35,7 +35,6 @@ export const ProviderOverviewCard: FC<ProviderOverviewCardProps> = ({
   const rawCurrentIndex = config?.current_key ?? 0;
 
   const hasKeys = keys.length > 0;
-  // 1-indexed count as requested: count we got from backend + 1
   const currentKey1Indexed = hasKeys ? rawCurrentIndex + 1 : 0;
   const activeKeyRaw = hasKeys
     ? keys[Math.max(0, Math.min(rawCurrentIndex, keys.length - 1))] || ""
@@ -61,7 +60,6 @@ export const ProviderOverviewCard: FC<ProviderOverviewCardProps> = ({
       id={`provider-overview-${provider}`}
       className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-zinc-900/30 backdrop-blur-xl shadow-xl transition-all"
     >
-      {/* Provider Details Header */}
       <div className="p-6 border-b border-white/[0.06] bg-zinc-950/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2.5">
@@ -88,9 +86,7 @@ export const ProviderOverviewCard: FC<ProviderOverviewCardProps> = ({
         )}
       </div>
 
-      {/* Primary Metrics: Total Keys & Highlighted Current Key */}
       <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Metric 1: Total Configured Keys */}
         <div
           id="stat-total-keys"
           className="relative overflow-hidden rounded-xl border border-white/[0.08] bg-zinc-950/50 p-5 backdrop-blur-md transition-all hover:border-white/15"
@@ -141,7 +137,6 @@ export const ProviderOverviewCard: FC<ProviderOverviewCardProps> = ({
           </p>
         </div>
 
-        {/* Metric 2: Current Key with Prominently Highlighted Count */}
         <div
           id="stat-current-key"
           className={cn(
@@ -178,7 +173,6 @@ export const ProviderOverviewCard: FC<ProviderOverviewCardProps> = ({
 
           {hasKeys ? (
             <div className="space-y-3">
-              {/* Highlighted Count Display */}
               <div className="flex items-baseline gap-2.5">
                 <div className="flex items-center gap-2">
                   <span className="px-2.5 py-0.5 rounded-lg text-xs font-mono font-bold bg-cyan-500/25 border border-cyan-400/40 text-cyan-200 shadow-[0_0_12px_rgba(6,182,212,0.3)]">
@@ -193,7 +187,6 @@ export const ProviderOverviewCard: FC<ProviderOverviewCardProps> = ({
                 </span>
               </div>
 
-              {/* Masked Key Display with Eye Toggle */}
               <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-zinc-900/80 border border-white/10">
                 <span className="font-mono text-xs text-zinc-200 truncate select-all px-1">
                   {showCurrentKey ? activeKeyRaw : maskKey(activeKeyRaw)}

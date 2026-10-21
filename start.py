@@ -311,8 +311,6 @@ def wait_for_service_ready(
 
 
 class LogFilterManager:
-    """Dynamically synchronizes with Vault logs_config to respect 'Show in Console' toggles."""
-
     def __init__(self, vault_url: str):
         self.vault_url = vault_url.rstrip("/")
         self._config: Dict[str, Any] = {}
@@ -320,30 +318,24 @@ class LogFilterManager:
         self._lock = threading.Lock()
 
     def should_show_module(self, mod_id: str, line: str) -> bool:
-        # Always allow critical errors and crash traces so developers never miss failures
         lower_line = line.lower()
         if any(err in lower_line for err in ("error", "fatal", "panic", "traceback", "exception", "failed to start", "failed to launch")):
             return True
 
-        # Refresh from Vault /config/logs every 2 seconds
         now = time.time()
         if now - self._last_fetch > 2.0:
             self._fetch_config()
 
         with self._lock:
-            # Map module ID to config key, e.g. "message_broker" -> "show_logs_message_broker"
             mod_key = mod_id.lower().replace("-", "_")
             config_key = f"show_logs_{mod_key}"
 
-            # If the module has an explicit toggle in logs_config, respect it
             if config_key in self._config:
                 return bool(self._config[config_key])
 
-            # For vault: if all configured modules have console disabled, silence vault access logs too
             if mod_key == "vault":
                 show_values = [v for k, v in self._config.items() if k.startswith("show_logs_")]
                 if show_values and not any(show_values):
-                    # Suppress routine uvicorn access logs
                     if "http/1.1" in lower_line and ("200 ok" in lower_line or "201 created" in lower_line or "304 not modified" in lower_line):
                         return False
 

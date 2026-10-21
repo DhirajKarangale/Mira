@@ -41,7 +41,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/status", get(status_handler))
         .route("/start", post(start_capture_handler))
         .route("/stop", post(stop_capture_handler))
-        .route("/interval", get(get_interval_handler).post(update_interval_handler))
+        .route("/interval", post(update_interval_handler))
         .route("/delete", post(delete_screenshot_handler))
         .route("/apps", get(get_apps_handler))
         .route("/apps/refresh", post(refresh_apps_handler))
@@ -55,17 +55,6 @@ async fn health_handler() -> impl IntoResponse {
         Json(json!({
             "service": "Operator",
             "status": "online"
-        })),
-    )
-}
-
-async fn get_interval_handler() -> impl IntoResponse {
-    let interval = crate::config::get_capture_interval_secs();
-    (
-        StatusCode::OK,
-        Json(json!({
-            "capture_interval_secs": interval,
-            "status": "ok"
         })),
     )
 }

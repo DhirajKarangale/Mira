@@ -41,13 +41,11 @@ export const ProviderPriorityCard: FC<ProviderPriorityCardProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
 
-  // Sync state whenever priorities or providers change
   useEffect(() => {
     const canonicalMap = new Map(providers.map((p) => [p.toLowerCase(), p]));
     const merged: string[] = [];
     const seen = new Set<string>();
 
-    // 1. Add valid providers from priorities
     for (const p of priorities) {
       const lower = p.toLowerCase();
       if (canonicalMap.has(lower) && !seen.has(lower)) {
@@ -56,7 +54,6 @@ export const ProviderPriorityCard: FC<ProviderPriorityCardProps> = ({
       }
     }
 
-    // 2. Append any missing configured providers
     for (const p of providers) {
       const lower = p.toLowerCase();
       if (!seen.has(lower)) {
@@ -76,7 +73,6 @@ export const ProviderPriorityCard: FC<ProviderPriorityCardProps> = ({
   };
 
   const executeReorder = async (newOrder: string[]) => {
-    // Validation safeguard: ensure exact 1-to-1 match with configured providers
     const currentSet = new Set(providers.map((p) => p.toLowerCase()));
     const newSet = new Set(newOrder.map((p) => p.toLowerCase()));
 
@@ -157,7 +153,6 @@ export const ProviderPriorityCard: FC<ProviderPriorityCardProps> = ({
       id="card-provider-priority"
       className="rounded-2xl border border-white/[0.08] bg-zinc-900/30 backdrop-blur-xl shadow-xl overflow-hidden transition-all"
     >
-      {/* Card Header matching LogConfigCard */}
       <div className="p-6 border-b border-white/[0.06] bg-zinc-950/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
@@ -195,7 +190,6 @@ export const ProviderPriorityCard: FC<ProviderPriorityCardProps> = ({
         </div>
       </div>
 
-      {/* Card Body with Draggable List */}
       <div className="p-6 space-y-3">
         {error && (
           <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 font-mono flex items-center gap-2">
@@ -237,7 +231,6 @@ export const ProviderPriorityCard: FC<ProviderPriorityCardProps> = ({
                     : "border-white/[0.08] bg-zinc-950/40 hover:border-white/15 hover:bg-zinc-950/60"
                 )}
               >
-                {/* Drag Handle & Provider Identity */}
                 <div className="flex items-center gap-3">
                   <div
                     title="Drag to change priority sequence"
@@ -246,7 +239,6 @@ export const ProviderPriorityCard: FC<ProviderPriorityCardProps> = ({
                     <GripVertical className="w-4 h-4" />
                   </div>
 
-                  {/* Priority Rank Indicator */}
                   <div
                     className={cn(
                       "flex items-center justify-center min-w-8 h-8 px-2 rounded-lg text-xs font-mono font-bold shrink-0 border",
@@ -305,7 +297,6 @@ export const ProviderPriorityCard: FC<ProviderPriorityCardProps> = ({
                   </div>
                 </div>
 
-                {/* Right Side Controls: Up/Down Buttons & View Tab */}
                 <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
                   <div className="flex items-center rounded-lg border border-white/10 bg-zinc-900/80 p-0.5 shadow-inner">
                     <button

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sys
 if sys.platform == "win32":
-    # Suppress spurious WinError 10054 connection reset tracebacks in asyncio Windows Proactor
     from asyncio.proactor_events import _ProactorBasePipeTransport
 
     _orig_call_connection_lost = _ProactorBasePipeTransport._call_connection_lost
@@ -32,24 +31,16 @@ import crypto
 import config_storage
 import log_manager
 
-class VaultTerminalFilter(logging.Filter):
-    """Controls terminal console logging output for Vault based on show_logs_vault."""
 
+class VaultTerminalFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        # Always allow warnings, errors, and fatal failures through
         if record.levelno >= logging.WARNING:
             return True
-
-        # Module logs output by append_log already respected their module's show_logs_<mod> toggle
         msg = record.getMessage()
         if msg.startswith("[VAULT LOG]"):
             return True
-
-        # If storage is not yet initialized during startup, allow records
         if config_storage._DB_CONN is None:
             return True
-
-        # Check show_logs_vault setting for Vault's own terminal logs
         try:
             cfg = log_manager.get_logs_config()
             return bool(cfg.get("show_logs_vault", True))
@@ -77,9 +68,7 @@ async def lifespan(app: FastAPI):
 
     try:
         crypto.init_encryption_key()
-        logger.info(
-            "Vault encryption key successfully initialized and held strictly internal in memory."
-        )
+        logger.info("Vault encryption key successfully initialized and held strictly internal in memory.")
     except Exception as e:
         logger.error(f"Failed to initialize encryption key: {e}")
         sys.exit(1)
@@ -113,7 +102,6 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(
         title="MIRA Vault",
-        description="Centralized Vault Module for Encrypted Logs, Configuration, and Secrets",
         version="1.0.0",
         lifespan=lifespan
     )
@@ -128,14 +116,6 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(vault_router)
-
-    @app.get("/health")
-    async def health():
-        return {
-            "service": "Vault",
-            "status": "online"
-        }
-
     return app
 
 

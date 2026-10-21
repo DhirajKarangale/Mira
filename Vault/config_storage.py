@@ -559,26 +559,21 @@ def update_ai_config(
     except Exception:
         keys_list = []
 
-    # 1. Full replacement if 'keys' provided
     if keys is not None:
         keys_list = [str(k).strip() for k in keys if str(k).strip()]
 
-    # 2. Add keys if 'add_keys' provided
     if add_keys:
         for k in add_keys:
             cleaned_k = str(k).strip()
             if cleaned_k and cleaned_k not in keys_list:
                 keys_list.append(cleaned_k)
 
-    # 3. Remove keys if 'remove_keys' provided
     if remove_keys:
         remove_set = {str(k).strip() for k in remove_keys if str(k).strip()}
         keys_list = [k for k in keys_list if k not in remove_set]
 
-    # Calculate total_keys
     computed_total = len(keys_list) if total_keys is None else max(0, total_keys)
 
-    # 4. Handle current_key index
     if current_key is not None:
         if computed_total == 0:
             current_key_idx = 0
@@ -672,7 +667,6 @@ def get_ai_priorities() -> List[str]:
     except Exception:
         parsed = []
 
-    # Reconcile with current configured providers
     reconciled: List[str] = []
     seen = set()
     for item in parsed:

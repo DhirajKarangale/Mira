@@ -206,7 +206,6 @@ async def append_log(module_name: str, data: str) -> Dict[str, Any]:
 
 
 async def log_vault_event(message: str) -> Optional[Dict[str, Any]]:
-    """Record an internal Vault operational event subject to show_logs_vault and store_logs_vault."""
     try:
         return await append_log("vault", message)
     except Exception as e:
@@ -215,7 +214,6 @@ async def log_vault_event(message: str) -> Optional[Dict[str, Any]]:
 
 
 def log_vault_event_sync(message: str) -> None:
-    """Synchronous helper to record a Vault event into Vault's log stream."""
     try:
         loop = None
         try:

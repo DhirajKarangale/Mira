@@ -56,7 +56,6 @@ export const AddApiKeyCard: FC<AddApiKeyCardProps> = ({
       id={`card-add-key-${provider}`}
       className="rounded-2xl border border-white/[0.08] bg-zinc-900/30 backdrop-blur-xl shadow-xl overflow-hidden"
     >
-      {/* Card Header matching LogConfigCard */}
       <div className="p-6 border-b border-white/[0.06] bg-zinc-950/40 flex items-center gap-3">
         <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
           <Key className="w-4 h-4" />
@@ -71,7 +70,6 @@ export const AddApiKeyCard: FC<AddApiKeyCardProps> = ({
         </div>
       </div>
 
-      {/* Card Body */}
       <div className="p-6">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">

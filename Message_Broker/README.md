@@ -210,5 +210,5 @@ python app.py
 ```
 Or directly using Uvicorn:
 ```bash
-uvicorn app:app --host 127.0.0.1 --port 9002
+uvicorn app:app --host 127.0.0.1 --port 9003
 ```

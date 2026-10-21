@@ -1,15 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  fetchOperatorConfig,
-  updateOperatorConfig,
-  fetchOperatorStatus,
-  syncOperatorInterval,
-  startCapture,
-  stopCapture,
-  fetchAppPermissions,
-  refreshAppPermissions,
-  updateAppPermission,
-} from "./api";
+import { vaultService, operatorService } from "@/services";
 import { QUERY_KEYS } from "@/lib/queryClient";
 import type {
   OperatorConfigResponse,
@@ -21,7 +11,7 @@ import type {
 export function useOperatorConfigQuery() {
   return useQuery<OperatorConfigResponse>({
     queryKey: QUERY_KEYS.operator.config,
-    queryFn: fetchOperatorConfig,
+    queryFn: () => vaultService.getConfig<OperatorConfigResponse>("operator"),
     staleTime: 15 * 60 * 1000,
   });
 }
@@ -29,7 +19,7 @@ export function useOperatorConfigQuery() {
 export function useOperatorStatusQuery() {
   return useQuery<OperatorStatusResponse>({
     queryKey: QUERY_KEYS.operator.status,
-    queryFn: fetchOperatorStatus,
+    queryFn: () => operatorService.getStatus(),
     staleTime: 15 * 60 * 1000,
   });
 }
@@ -38,7 +28,8 @@ export function useUpdateOperatorConfigMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (updates: Partial<OperatorConfigResponse>) => updateOperatorConfig(updates),
+    mutationFn: (updates: Partial<OperatorConfigResponse>) =>
+      operatorService.updateOperatorConfig(updates),
     onSuccess: (updated) => {
       queryClient.setQueryData(QUERY_KEYS.operator.config, updated);
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.operator.config });
@@ -53,9 +44,9 @@ export function useToggleCaptureMutation() {
   return useMutation({
     mutationFn: async (targetStatus: CaptureStatus) => {
       if (targetStatus === "Started") {
-        return await startCapture();
+        return await operatorService.startCapture();
       }
-      return await stopCapture();
+      return await operatorService.stopCapture();
     },
     onMutate: async (targetStatus: CaptureStatus) => {
       await queryClient.cancelQueries({ queryKey: QUERY_KEYS.operator.status });
@@ -82,22 +73,10 @@ export function useToggleCaptureMutation() {
   });
 }
 
-export function useSyncIntervalMutation() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (seconds: number) => syncOperatorInterval(seconds),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.operator.status });
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.operator.config });
-    },
-  });
-}
-
 export function useAppPermissionsQuery() {
   return useQuery<AppPermission[]>({
     queryKey: QUERY_KEYS.operator.apps,
-    queryFn: fetchAppPermissions,
+    queryFn: () => operatorService.getApps(),
     staleTime: 60 * 1000,
     refetchOnMount: true,
   });
@@ -107,7 +86,7 @@ export function useRefreshAppPermissionsMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: refreshAppPermissions,
+    mutationFn: () => operatorService.refreshApps(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.operator.apps });
     },
@@ -124,7 +103,7 @@ export function useUpdateAppPermissionMutation() {
     }: {
       appId: string;
       allowedToCapture: boolean;
-    }) => updateAppPermission(appId, allowedToCapture),
+    }) => operatorService.updateAppPermission(appId, allowedToCapture),
     onMutate: async ({ appId, allowedToCapture }) => {
       await queryClient.cancelQueries({ queryKey: QUERY_KEYS.operator.apps });
       const previous = queryClient.getQueryData<AppPermission[]>(

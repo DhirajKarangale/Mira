@@ -1,27 +1,27 @@
 # Vault
 
-The **Vault** is the centralized service for secret management, configuration storage, encrypted audit logging, and application permissions across MIRA modules.
+The **Vault** is the centralized security, secret management, encrypted configuration storage, and audit logging service for MIRA.
 
 ---
 
-## 1. What It Does
+## 1. Purpose
 
-- **Secrets & Encryption**: Derives and retains an internal 256-bit encryption key securely in memory using the OS credential store (Windows Credential Manager / macOS Keychain / Linux SecretService).
-- **Encrypted Configurations**: Stores module configurations in an encrypted SQLite database (`logs`, `message_broker`, `operator`, `user_details`, `app_permissions`).
-- **Encrypted Audit Logging**: Ingests logs from all modules and stores them in encrypted daily files (`dd-mm-yyyy.jsonl`) with search, date filtering, and pagination.
-- **Log Retention**: Automatically and manually cleans up expired logs according to configured retention periods.
-- **Host OS Detection**: Identifies host operating system type and friendly version.
-- **App Capture Permissions**: Maintains system application capture permissions and keeps them synchronized with Operator.
+- **Credential & Secret Storage**: Retains encryption keys securely in memory using native OS credential management.
+- **Encrypted Configurations**: Stores system configurations (`logs`, `message_broker`, `operator`, `user_details`, `ai_configs`, `engine_workers`) in an encrypted database.
+- **Audit Logging & Retention**: Collects encrypted audit logs with full-text search, pagination, and automated retention cleanup.
+- **App Permissions**: Tracks system applications and synchronizes screen capture permissions with Operator.
+- **AI & Concurrency Management**: Manages LLM API keys, provider priorities, and worker concurrency limits.
 
 ---
 
-## 2. API Reference
+## 2. API Endpoints
 
-Every endpoint has strictly one way to be called.
-
-### 2.1 Service Health
+### 2.1 Health Check
 `GET /health`
 
+Checks if the service is online.
+
+- **Parameters**: None
 - **Response (`200 OK`):**
   ```json
   {
@@ -35,13 +35,13 @@ Every endpoint has strictly one way to be called.
 ### 2.2 Ingest Log
 `POST /logs`
 
-Appends an encrypted log entry to the active daily log file.
+Appends an encrypted log entry.
 
-- **Request Body:**
+- **Request Body (JSON):**
   ```json
   {
     "module_name": "operator",
-    "data": "Captured silent screenshot: job_123"
+    "data": "Capture cycle started"
   }
   ```
 - **Response (`201 Created`):**
@@ -59,40 +59,43 @@ Appends an encrypted log entry to the active daily log file.
 Queries encrypted log records with optional filtering and pagination.
 
 - **Query Parameters:**
-  - `module_name` (optional, default: `"all"`): Filter by module name.
-  - `search` (optional): Case-insensitive text search within log contents.
-  - `start_date` (optional): Beginning date (`dd-mm-yyyy` or `yyyy-mm-dd`).
-  - `end_date` (optional): Ending date (`dd-mm-yyyy` or `yyyy-mm-dd`).
-  - `date` (optional): Single day filter.
-  - `limit` (optional, default: `50`, max: `1000`): Maximum logs per page.
-  - `offset` (optional, default: `0`): Offset for pagination.
-  - `page` (optional): Page number (1-indexed).
-  - `envelope` (optional, default: `false`): When `true`, returns items with pagination metadata.
+  - `module_name` (string, optional, default: `"all"`): Filter by module.
+  - `search` (string, optional): Text search query.
+  - `start_date` (string, optional): Start date (`dd-mm-yyyy`).
+  - `end_date` (string, optional): End date (`dd-mm-yyyy`).
+  - `limit` (integer, optional, default: `50`): Max records.
+  - `page` (integer, optional, default: `1`): Page number.
+  - `envelope` (boolean, optional, default: `false`): Include pagination metadata.
 - **Response (`200 OK`):**
   ```json
-  [
-    {
-      "id": 1,
-      "module_name": "operator",
-      "timestamp": "21/10/2026T10:00:00",
-      "data": "Captured silent screenshot: job_123"
-    }
-  ]
+  {
+    "items": [
+      {
+        "id": 1,
+        "module_name": "operator",
+        "timestamp": "21/10/2026T10:00:00",
+        "data": "Capture cycle started"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "limit": 50
+  }
   ```
 
 ---
 
-### 2.4 Trigger Retention Cleanup
+### 2.4 Retention Cleanup
 `POST /retention/cleanup`
 
-Manually purges log files that exceed retention days or possess invalid file naming formats.
+Purges log files exceeding the retention period.
 
+- **Parameters**: None
 - **Response (`200 OK`):**
   ```json
   {
     "status": "success",
     "retention_days": 30,
-    "deleted_invalid_count": 0,
     "deleted_expired_count": 0,
     "retained_count": 1
   }
@@ -103,10 +106,10 @@ Manually purges log files that exceed retention days or possess invalid file nam
 ### 2.5 Get Module Configuration
 `GET /config/{key}`
 
-Retrieves configuration parameters for a module group (`logs`, `message_broker`, `operator`, `user_details`).
+Retrieves configuration for a specific module (`logs`, `message_broker`, `operator`, `user_details`).
 
-- **Example:**
-  `GET /config/operator`
+- **Path Parameters:**
+  - `key` (string, required): Configuration key.
 - **Response (`200 OK`):**
   ```json
   {
@@ -120,33 +123,32 @@ Retrieves configuration parameters for a module group (`logs`, `message_broker`,
 ### 2.6 Update Logs Configuration
 `POST /config/logs`
 
-- **Request Body:**
+Updates log retention and visibility settings.
+
+- **Request Body (JSON):**
   ```json
   {
     "retention_period": 30,
-    "show_logs_vault": true,
     "show_logs_operator": true,
-    "show_logs_engine": true,
-    "show_logs_memory": true,
-    "show_logs_client": true,
-    "show_logs_message_broker": true,
-    "store_logs_vault": true,
-    "store_logs_operator": true,
-    "store_logs_engine": true,
-    "store_logs_memory": true,
-    "store_logs_client": true,
-    "store_logs_message_broker": true
+    "store_logs_operator": true
   }
   ```
 - **Response (`200 OK`):**
-  Returns the updated configuration object for `logs`.
+  ```json
+  {
+    "retention_period": 30,
+    "show_logs_operator": true
+  }
+  ```
 
 ---
 
 ### 2.7 Update Message Broker Configuration
 `POST /config/message_broker`
 
-- **Request Body:**
+Updates Redis connection configuration.
+
+- **Request Body (JSON):**
   ```json
   {
     "REDIS_HOST": "localhost",
@@ -155,14 +157,21 @@ Retrieves configuration parameters for a module group (`logs`, `message_broker`,
   }
   ```
 - **Response (`200 OK`):**
-  Returns the updated configuration object for `message_broker`.
+  ```json
+  {
+    "REDIS_HOST": "localhost",
+    "REDIS_PORT": 6379
+  }
+  ```
 
 ---
 
 ### 2.8 Update Operator Configuration
 `POST /config/operator`
 
-- **Request Body:**
+Updates desktop operator capture settings.
+
+- **Request Body (JSON):**
   ```json
   {
     "CAPTURE_INTERVAL_SECS": 15,
@@ -170,13 +179,21 @@ Retrieves configuration parameters for a module group (`logs`, `message_broker`,
   }
   ```
 - **Response (`200 OK`):**
-  Returns the updated configuration object for `operator`.
+  ```json
+  {
+    "CAPTURE_INTERVAL_SECS": 15,
+    "AUTO_START": true
+  }
+  ```
 
 ---
 
 ### 2.9 Get User Profile
 `GET /user`
 
+Retrieves stored user profile details.
+
+- **Parameters**: None
 - **Response (`200 OK`):**
   ```json
   {
@@ -184,8 +201,6 @@ Retrieves configuration parameters for a module group (`logs`, `message_broker`,
     "email": "dakarangale02@gmail.com",
     "phone_number": "+91 7620320595",
     "city": "Pune",
-    "state": "Maharashtra",
-    "country": "India",
     "exists": true
   }
   ```
@@ -195,7 +210,9 @@ Retrieves configuration parameters for a module group (`logs`, `message_broker`,
 ### 2.10 Save User Profile
 `POST /user`
 
-- **Request Body:**
+Saves or updates user profile details.
+
+- **Request Body (JSON):**
   ```json
   {
     "user_name": "Dhiraj",
@@ -210,21 +227,18 @@ Retrieves configuration parameters for a module group (`logs`, `message_broker`,
   ```json
   {
     "user_name": "Dhiraj",
-    "email": "dakarangale02@gmail.com",
-    "phone_number": "+91 7620320595",
-    "city": "Pune",
-    "state": "Maharashtra",
-    "country": "India",
-    "exists": true,
     "message": "User details saved successfully"
   }
   ```
 
 ---
 
-### 2.11 Detect Operating System
+### 2.11 Detect Host OS
 `GET /os`
 
+Identifies the host operating system.
+
+- **Parameters**: None
 - **Response (`200 OK`):**
   ```json
   "Windows 11"
@@ -232,23 +246,19 @@ Retrieves configuration parameters for a module group (`logs`, `message_broker`,
 
 ---
 
-### 2.12 Get App Capture Permissions
+### 2.12 List App Permissions
 `GET /apps`
 
-Returns all discovered system applications with their capture permission settings.
+Returns all discovered applications with capture permissions.
 
+- **Parameters**: None
 - **Response (`200 OK`):**
   ```json
   [
     {
-      "app_name": "Microsoft Edge",
       "app_id": "msedge.exe",
+      "app_name": "Microsoft Edge",
       "allowed_to_capture": true
-    },
-    {
-      "app_name": "Notepad",
-      "app_id": "notepad.exe",
-      "allowed_to_capture": false
     }
   ]
   ```
@@ -258,18 +268,11 @@ Returns all discovered system applications with their capture permission setting
 ### 2.13 Refresh App List
 `POST /apps/refresh`
 
-Synchronizes the application database with system applications discovered by Operator:
-- Adds new applications with `allowed_to_capture = true`.
-- Removes applications no longer present on the host system.
-- Preserves existing capture permissions for already registered applications.
+Synchronizes the application database with newly discovered system apps.
 
-- **Request Body:**
+- **Request Body (JSON):**
   ```json
   [
-    {
-      "app_name": "Microsoft Edge",
-      "app_id": "msedge.exe"
-    },
     {
       "app_name": "Notepad",
       "app_id": "notepad.exe"
@@ -280,22 +283,19 @@ Synchronizes the application database with system applications discovered by Ope
   ```json
   {
     "status": "success",
-    "message": "App list refreshed successfully",
     "total": 42,
-    "added": 2,
-    "removed": 0,
-    "preserved": 40
+    "added": 1
   }
   ```
 
 ---
 
-### 2.14 Update App Capture Permission
+### 2.14 Update App Permission
 `POST /apps/permission`
 
-Updates an application's `allowed_to_capture` status in the encrypted database and notifies Operator.
+Updates capture permission for a single application and syncs with Operator.
 
-- **Request Body:**
+- **Request Body (JSON):**
   ```json
   {
     "app_id": "notepad.exe",
@@ -306,9 +306,7 @@ Updates an application's `allowed_to_capture` status in the encrypted database a
   ```json
   {
     "status": "success",
-    "message": "App permission updated successfully",
     "app": {
-      "app_name": "Notepad",
       "app_id": "notepad.exe",
       "allowed_to_capture": false
     }
@@ -317,152 +315,126 @@ Updates an application's `allowed_to_capture` status in the encrypted database a
 
 ---
 
-### 2.15 Get Services
+### 2.15 Get Service Endpoints
 `GET /services`
 
+Returns discovered service URLs.
+
+- **Parameters**: None
 - **Response (`200 OK`):**
   ```json
   {
-    "vault": "http://127.0.0.1:8001",
-    "message_broker": "http://127.0.0.1:8000",
-    "operator": "http://127.0.0.1:8002"
+    "vault": "http://127.0.0.1:9002",
+    "message_broker": "http://127.0.0.1:9003",
+    "operator": "http://127.0.0.1:9004"
   }
   ```
 
 ---
 
-### 2.16 Update Services
+### 2.16 Update Service Endpoints
 `POST /services`
 
-- **Request Body:**
+Updates registered service endpoints.
+
+- **Request Body (JSON):**
   ```json
   {
-    "operator": "http://127.0.0.1:8002"
+    "operator": "http://127.0.0.1:9004"
   }
   ```
 - **Response (`200 OK`):**
   ```json
   {
-    "status": "success",
-    "services": {
-      "vault": "http://127.0.0.1:8001",
-      "message_broker": "http://127.0.0.1:8000",
-      "operator": "http://127.0.0.1:8002"
-    }
+    "status": "success"
   }
   ```
 
 ---
 
-### 2.17 Get Available AI Providers
+### 2.17 List AI Providers
 `GET /ai/providers`
 
-Returns the list of all configured LLM provider names.
+Lists all configured LLM provider identifiers.
 
+- **Parameters**: None
 - **Response (`200 OK`):**
   ```json
-  [
-    "groq",
-    "gemini"
-  ]
+  ["groq", "gemini"]
   ```
 
 ---
 
-### 2.18 Get All AI Configs
+### 2.18 List All AI Configurations
 `GET /ai/configs`
 
-Returns the complete configuration objects for all LLM providers.
+Returns configuration details for all LLM providers.
 
+- **Parameters**: None
 - **Response (`200 OK`):**
   ```json
   [
     {
-      "id": 1,
       "llm_provider": "groq",
-      "total_keys": 0,
+      "total_keys": 1,
       "current_key": 0,
-      "keys": []
-    },
-    {
-      "id": 2,
-      "llm_provider": "gemini",
-      "total_keys": 0,
-      "current_key": 0,
-      "keys": []
+      "keys": ["gsk_..."]
     }
   ]
   ```
 
 ---
 
-### 2.19 Get AI Config by Provider
+### 2.19 Get AI Configuration by Provider
 `GET /ai/configs/{provider}`
 
-Returns the full configuration object for a specific LLM provider (`groq`, `gemini`, etc.).
+Retrieves configuration for a specific provider.
 
-- **Example:**
-  `GET /ai/configs/groq`
+- **Path Parameters:**
+  - `provider` (string, required): Provider identifier (`groq`, `gemini`).
 - **Response (`200 OK`):**
   ```json
   {
-    "id": 1,
-    "llm_provider": "groq",
-    "total_keys": 0,
-    "current_key": 0,
-    "keys": []
-  }
-  ```
-
----
-
-### 2.20 Update AI Config
-`POST /ai/configs/{provider}`
-
-Updates LLM provider configurations. Supports adding keys, removing keys, setting key arrays directly, and updating the active key index.
-
-- **Request Body Options:**
-  - `add_key`: string (single key to add)
-  - `add_keys`: array of strings (keys to add)
-  - `remove_key`: string (single key to remove)
-  - `remove_keys`: array of strings (keys to remove)
-  - `keys`: array of strings (replace entire key array)
-  - `current_key`: integer (set current key index)
-
-- **Example (Add Key):**
-  ```json
-  {
-    "add_key": "gsk_example_key_123"
-  }
-  ```
-- **Example (Remove Key):**
-  ```json
-  {
-    "remove_key": "gsk_example_key_123"
-  }
-  ```
-- **Response (`200 OK`):**
-  ```json
-  {
-    "id": 1,
     "llm_provider": "groq",
     "total_keys": 1,
     "current_key": 0,
-    "keys": [
-      "gsk_example_key_123"
-    ]
+    "keys": ["gsk_..."]
   }
   ```
 
 ---
 
-### 2.21 Delete AI Config
+### 2.20 Update AI Configuration
+`POST /ai/configs/{provider}`
+
+Modifies keys or active index for a provider.
+
+- **Path Parameters:**
+  - `provider` (string, required): Provider identifier.
+- **Request Body (JSON):**
+  ```json
+  {
+    "add_key": "gsk_new_key"
+  }
+  ```
+- **Response (`200 OK`):**
+  ```json
+  {
+    "llm_provider": "groq",
+    "total_keys": 2,
+    "current_key": 0
+  }
+  ```
+
+---
+
+### 2.21 Delete AI Configuration
 `DELETE /ai/configs/{provider}`
 
-Removes a configured LLM provider and all associated API keys from Vault.
+Deletes an LLM provider configuration and its stored keys.
 
-- **Example:**
-  `DELETE /ai/configs/groq`
+- **Path Parameters:**
+  - `provider` (string, required): Provider identifier.
 - **Response (`200 OK`):**
   ```json
   {
@@ -476,14 +448,12 @@ Removes a configured LLM provider and all associated API keys from Vault.
 ### 2.22 Get LLM Priorities
 `GET /ai/priorities`
 
-Returns the ordered priority sequence of configured LLM providers for execution and fallback routing.
+Returns the priority order for AI providers.
 
+- **Parameters**: None
 - **Response (`200 OK`):**
   ```json
-  [
-    "groq",
-    "gemini"
-  ]
+  ["gemini", "groq"]
   ```
 
 ---
@@ -491,32 +461,25 @@ Returns the ordered priority sequence of configured LLM providers for execution 
 ### 2.23 Update LLM Priorities
 `PUT /ai/priorities`
 
-Updates the priority sequence of all configured LLM providers.
-- Validates that every configured provider appears exactly once.
-- Disallows adding new, removing existing, or duplicating providers (only reordering allowed).
+Updates provider priority sequence.
 
-- **Request Body:**
+- **Request Body (JSON):**
   ```json
-  [
-    "gemini",
-    "groq"
-  ]
+  ["groq", "gemini"]
   ```
 - **Response (`200 OK`):**
   ```json
-  [
-    "gemini",
-    "groq"
-  ]
+  ["groq", "gemini"]
   ```
 
 ---
 
 ### 2.24 Get Engine Workers
-`GET /engine/workers` (or `GET /config/engine/workers`)
+`GET /engine/workers`
 
-Retrieves the current background worker concurrency configuration for embeddings and LLM inference.
+Retrieves background worker concurrency limits.
 
+- **Parameters**: None
 - **Response (`200 OK`):**
   ```json
   {
@@ -528,12 +491,11 @@ Retrieves the current background worker concurrency configuration for embeddings
 ---
 
 ### 2.25 Update Engine Workers
-`PUT /engine/workers` (or `POST /engine/workers`, `PUT /config/engine/workers`)
+`PUT /engine/workers`
 
-Updates the background worker concurrency counts.
-- Validates that both `embedding_workers` and `llm_workers` are integers between `1` and `50`, inclusive.
+Updates worker concurrency counts.
 
-- **Request Body:**
+- **Request Body (JSON):**
   ```json
   {
     "embedding_workers": 4,
@@ -550,7 +512,7 @@ Updates the background worker concurrency counts.
 
 ---
 
-## 3. How to Run
+## 3. Installation & Startup
 
 ### Install Dependencies
 ```bash
@@ -560,7 +522,9 @@ pip install -r requirements.txt
 ### Start Server
 Run from the `Vault/` directory:
 ```bash
-cd Vault
-uvicorn app:app --host 127.0.0.1 --port 8001 --reload
+python app.py
 ```
-*(Or start all modules simultaneously using `python start.py` from the project root)*
+Or directly using Uvicorn:
+```bash
+uvicorn app:app --host 127.0.0.1 --port 9002
+```

@@ -33,7 +33,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
 
-  // Sync state whenever external config updates
   useEffect(() => {
     if (config) {
       setEmbeddingWorkers(String(config.embedding_workers ?? 1));
@@ -124,7 +123,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
       id="card-engine-workers"
       className="rounded-2xl border border-white/[0.08] bg-zinc-900/30 backdrop-blur-xl shadow-xl overflow-hidden transition-all"
     >
-      {/* Header Bar */}
       <div className="p-6 border-b border-white/[0.06] bg-zinc-950/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
@@ -161,7 +159,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
         </div>
       </div>
 
-      {/* Validation Alert */}
       {validationError && (
         <div className="mx-6 mt-6 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 font-mono flex items-center gap-2 animate-in fade-in">
           <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
@@ -169,9 +166,7 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
         </div>
       )}
 
-      {/* Workers Grid */}
       <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
-        {/* Panel 1: Embedding Workers */}
         <div
           id="panel-embedding-workers"
           className="relative rounded-xl border border-white/[0.08] bg-zinc-950/50 p-5 backdrop-blur-md flex flex-col justify-between gap-4 transition-all hover:border-white/15"
@@ -197,7 +192,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
           </div>
 
           <div className="space-y-3 pt-2">
-            {/* Input with Steppers */}
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -239,7 +233,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
               </button>
             </div>
 
-            {/* Quick Presets */}
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-[10px] text-zinc-500 font-mono mr-1">Presets:</span>
               {presets.map((preset) => (
@@ -265,7 +258,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
           </div>
         </div>
 
-        {/* Panel 2: LLM Workers */}
         <div
           id="panel-llm-workers"
           className="relative rounded-xl border border-white/[0.08] bg-zinc-950/50 p-5 backdrop-blur-md flex flex-col justify-between gap-4 transition-all hover:border-white/15"
@@ -291,7 +283,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
           </div>
 
           <div className="space-y-3 pt-2">
-            {/* Input with Steppers */}
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -333,7 +324,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
               </button>
             </div>
 
-            {/* Quick Presets */}
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-[10px] text-zinc-500 font-mono mr-1">Presets:</span>
               {presets.map((preset) => (
@@ -360,7 +350,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
         </div>
       </div>
 
-      {/* Footer Actions */}
       <div className="px-6 py-4 bg-zinc-950/60 border-t border-white/[0.06] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="text-xs text-zinc-400 font-mono">
           <span>Active in Vault: </span>

@@ -111,7 +111,6 @@ export const ApiKeyItem: FC<ApiKeyItemProps> = ({
       )}
     >
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        {/* Left header: Key Number & Active Indicator */}
         <div className="flex items-center gap-3">
           <div
             className={cn(
@@ -150,7 +149,6 @@ export const ApiKeyItem: FC<ApiKeyItemProps> = ({
           </div>
         </div>
 
-        {/* Action Controls for item */}
         <div className="flex items-center gap-1.5 self-end sm:self-auto">
           {copied && (
             <span className="text-[11px] font-mono text-emerald-400 mr-1 animate-in fade-in">
@@ -225,7 +223,6 @@ export const ApiKeyItem: FC<ApiKeyItemProps> = ({
         </div>
       </div>
 
-      {/* Input / Display Field */}
       <div className="mt-3">
         {isEditing ? (
           <form onSubmit={handleSaveEdit} className="space-y-2">

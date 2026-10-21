@@ -60,7 +60,6 @@ export const ApiKeyList: FC<ApiKeyListProps> = ({
       id={`keys-list-container-${provider}`}
       className="rounded-2xl border border-white/[0.08] bg-zinc-900/30 backdrop-blur-xl shadow-xl overflow-hidden"
     >
-      {/* Card Header matching LogConfigCard */}
       <div className="p-6 border-b border-white/[0.06] bg-zinc-950/40 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
@@ -91,7 +90,6 @@ export const ApiKeyList: FC<ApiKeyListProps> = ({
         </button>
       </div>
 
-      {/* Card Body */}
       <div className="p-6 space-y-3">
         {keys.map((key, idx) => (
           <ApiKeyItem

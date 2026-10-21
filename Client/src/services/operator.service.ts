@@ -1,5 +1,7 @@
 import { operatorApi } from "@/lib/api";
+import { vaultService } from "./vault.service";
 import type {
+  OperatorConfigResponse,
   OperatorStatusResponse,
   AppPermission,
   RefreshAppsResponse,
@@ -60,16 +62,21 @@ export const operatorService = {
     return response.data;
   },
 
-  async getInterval(): Promise<OperatorIntervalResponse> {
-    const response = await operatorApi.get<OperatorIntervalResponse>("/interval");
-    return response.data;
-  },
-
   async updateInterval(seconds: number): Promise<OperatorIntervalResponse> {
     const response = await operatorApi.post<OperatorIntervalResponse>("/interval", {
       capture_interval_secs: seconds,
     });
     return response.data;
+  },
+
+  async updateOperatorConfig(
+    updates: Partial<OperatorConfigResponse>
+  ): Promise<OperatorConfigResponse> {
+    const result = await vaultService.updateOperatorConfig(updates);
+    if (typeof updates.CAPTURE_INTERVAL_SECS === "number") {
+      await this.updateInterval(updates.CAPTURE_INTERVAL_SECS).catch(() => {});
+    }
+    return result;
   },
 
   async deleteScreenshot(imagePath: string): Promise<void> {
