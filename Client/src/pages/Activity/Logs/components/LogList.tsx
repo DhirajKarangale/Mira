@@ -8,6 +8,7 @@ interface LogListProps {
 }
 
 const MODULE_BADGE_STYLES: Record<string, string> = {
+  vault: "text-violet-300 bg-violet-500/15 border-violet-500/30",
   operator: "text-emerald-300 bg-emerald-500/15 border-emerald-500/30",
   engine: "text-indigo-300 bg-indigo-500/15 border-indigo-500/30",
   memory: "text-amber-300 bg-amber-500/15 border-amber-500/30",

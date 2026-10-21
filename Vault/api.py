@@ -68,11 +68,13 @@ def parse_flexible_date(date_str: Optional[str]) -> Optional[date]:
 
 class LogConfigUpdateRequest(BaseModel):
     retention_period: Optional[int] = Field(None, ge=1, le=365)
+    show_logs_vault: Optional[bool] = None
     show_logs_operator: Optional[bool] = None
     show_logs_engine: Optional[bool] = None
     show_logs_memory: Optional[bool] = None
     show_logs_client: Optional[bool] = None
     show_logs_message_broker: Optional[bool] = None
+    store_logs_vault: Optional[bool] = None
     store_logs_operator: Optional[bool] = None
     store_logs_engine: Optional[bool] = None
     store_logs_memory: Optional[bool] = None
@@ -80,7 +82,25 @@ class LogConfigUpdateRequest(BaseModel):
     store_logs_message_broker: Optional[bool] = None
 
 
+@router.get(
+    "/config/logs",
+    status_code=status.HTTP_200_OK
+)
+async def get_logs_config():
+    try:
+        return config_storage.get_configuration("logs")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to retrieve log configuration: {str(e)}"}
+        )
+
+
 @router.post(
+    "/config/logs",
+    status_code=status.HTTP_200_OK
+)
+@router.put(
     "/config/logs",
     status_code=status.HTTP_200_OK
 )
@@ -89,7 +109,9 @@ async def update_logs_config(request: LogConfigUpdateRequest):
         updates = {k: v for k, v in request.model_dump().items() if v is not None}
         if not updates:
             return config_storage.get_configuration("logs")
-        return config_storage.update_configuration("logs", updates)
+        updated = config_storage.update_configuration("logs", updates)
+        await log_manager.log_vault_event(f"Log configuration updated: {list(updates.keys())}")
+        return updated
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

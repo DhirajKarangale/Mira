@@ -32,11 +32,42 @@ import crypto
 import config_storage
 import log_manager
 
+class VaultTerminalFilter(logging.Filter):
+    """Controls terminal console logging output for Vault based on show_logs_vault."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Always allow warnings, errors, and fatal failures through
+        if record.levelno >= logging.WARNING:
+            return True
+
+        # Module logs output by append_log already respected their module's show_logs_<mod> toggle
+        msg = record.getMessage()
+        if msg.startswith("[VAULT LOG]"):
+            return True
+
+        # If storage is not yet initialized during startup, allow records
+        if config_storage._DB_CONN is None:
+            return True
+
+        # Check show_logs_vault setting for Vault's own terminal logs
+        try:
+            cfg = log_manager.get_logs_config()
+            return bool(cfg.get("show_logs_vault", True))
+        except Exception:
+            return True
+
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S"
 )
+_vault_terminal_filter = VaultTerminalFilter()
+for handler in logging.root.handlers:
+    handler.addFilter(_vault_terminal_filter)
+for _log_name in ("uvicorn", "uvicorn.access", "uvicorn.error", "mira.vault"):
+    logging.getLogger(_log_name).addFilter(_vault_terminal_filter)
+
 logger = logging.getLogger("mira.vault.app")
 
 
@@ -73,8 +104,10 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize or clean logs directory: {e}")
 
     logger.info("MIRA Vault initialization complete. Ready to receive requests.")
+    await log_manager.log_vault_event("MIRA Vault module initialized and online.")
     yield
     logger.info("MIRA Vault shutting down...")
+    await log_manager.log_vault_event("MIRA Vault shutting down...")
 
 
 def create_app() -> FastAPI:

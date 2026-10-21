@@ -1,10 +1,12 @@
 export interface LogConfig {
   retention_period: number;
+  show_logs_vault: boolean;
   show_logs_operator: boolean;
   show_logs_engine: boolean;
   show_logs_memory: boolean;
   show_logs_client: boolean;
   show_logs_message_broker: boolean;
+  store_logs_vault: boolean;
   store_logs_operator: boolean;
   store_logs_engine: boolean;
   store_logs_memory: boolean;

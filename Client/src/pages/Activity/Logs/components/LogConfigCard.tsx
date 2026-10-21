@@ -12,6 +12,7 @@ import {
   Radio,
   Layers,
   Sparkles,
+  Shield,
   Minus,
   Plus,
 } from "lucide-react";
@@ -25,6 +26,14 @@ interface LogConfigCardProps {
 }
 
 const MODULE_DEFINITIONS = [
+  {
+    id: "vault",
+    name: "Vault",
+    showKey: "show_logs_vault" as const,
+    storeKey: "store_logs_vault" as const,
+    icon: Shield,
+    color: "text-violet-400 bg-violet-500/10 border-violet-500/30",
+  },
   {
     id: "operator",
     name: "Operator",

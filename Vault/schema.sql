@@ -1,11 +1,13 @@
 CREATE TABLE IF NOT EXISTS logs (
     id INTEGER PRIMARY KEY,
     retention_period INTEGER DEFAULT 30,
+    show_logs_vault BOOLEAN DEFAULT 1,
     show_logs_operator BOOLEAN DEFAULT 1,
     show_logs_engine BOOLEAN DEFAULT 1,
     show_logs_memory BOOLEAN DEFAULT 1,
     show_logs_client BOOLEAN DEFAULT 1,
     show_logs_message_broker BOOLEAN DEFAULT 1,
+    store_logs_vault BOOLEAN DEFAULT 1,
     store_logs_operator BOOLEAN DEFAULT 1,
     store_logs_engine BOOLEAN DEFAULT 1,
     store_logs_memory BOOLEAN DEFAULT 1,

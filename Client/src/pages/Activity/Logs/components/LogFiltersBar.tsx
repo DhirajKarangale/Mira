@@ -12,6 +12,7 @@ import {
   Sparkles,
   Radio,
   Layers,
+  Shield,
 } from "lucide-react";
 import type { LogFilters } from "../types";
 import { LogDateRangePicker } from "./LogDateRangePicker";
@@ -35,6 +36,14 @@ const MODULE_OPTIONS = [
     color: "text-zinc-300",
     badgeBg: "bg-zinc-800",
     description: "View logs aggregated across all system modules",
+  },
+  {
+    value: "vault",
+    label: "Vault",
+    icon: Shield,
+    color: "text-violet-400",
+    badgeBg: "bg-violet-500/10 border-violet-500/20",
+    description: "Encrypted configurations, audit logs, and secrets storage",
   },
   {
     value: "operator",

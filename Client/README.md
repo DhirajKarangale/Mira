@@ -118,7 +118,7 @@ Central configuration and encrypted data storage service.
   - `page` (integer, optional, default: `1`): Page number.
   - `limit` (integer, optional, default: `50`): Results per page.
   - `search` (string, optional): Text filter query.
-  - `module_name` (string, optional): Filter by module (`operator`, `engine`, `memory`, `client`, `message_broker`).
+  - `module_name` (string, optional): Filter by module (`vault`, `operator`, `engine`, `memory`, `client`, `message_broker`).
   - `start_date` (string, optional): Date lower bound (`YYYY-MM-DD`).
   - `end_date` (string, optional): Date upper bound (`YYYY-MM-DD`).
 - **Response (`200 OK`):**
@@ -145,11 +145,13 @@ Central configuration and encrypted data storage service.
   ```json
   {
     "retention_period": 30,
+    "show_logs_vault": true,
     "show_logs_operator": true,
     "show_logs_engine": true,
     "show_logs_memory": true,
     "show_logs_client": true,
     "show_logs_message_broker": true,
+    "store_logs_vault": true,
     "store_logs_operator": true,
     "store_logs_engine": true,
     "store_logs_memory": true,

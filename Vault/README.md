@@ -118,13 +118,15 @@ Retrieves configuration parameters for a module group (`logs`, `message_broker`,
 ---
 
 ### 2.6 Update Logs Configuration
-`POST /config/logs`
+`POST /config/logs` / `PUT /config/logs`
 
 - **Request Body:**
   ```json
   {
     "retention_period": 30,
+    "show_logs_vault": true,
     "show_logs_operator": true,
+    "store_logs_vault": true,
     "store_logs_operator": true
   }
   ```

@@ -26,11 +26,13 @@ def get_logs_config() -> Dict[str, Any]:
         logger.error(f"Error reading logs config from encrypted SQL storage ({e}), using defaults.")
         return {
             "retention_period": 30,
+            "show_logs_vault": True,
             "show_logs_operator": True,
             "show_logs_engine": True,
             "show_logs_memory": True,
             "show_logs_client": True,
             "show_logs_message_broker": True,
+            "store_logs_vault": True,
             "store_logs_operator": True,
             "store_logs_engine": True,
             "store_logs_memory": True,
@@ -201,6 +203,32 @@ async def append_log(module_name: str, data: str) -> Dict[str, Any]:
             temp_filepath.replace(filepath)
 
         return new_entry
+
+
+async def log_vault_event(message: str) -> Optional[Dict[str, Any]]:
+    """Record an internal Vault operational event subject to show_logs_vault and store_logs_vault."""
+    try:
+        return await append_log("vault", message)
+    except Exception as e:
+        logger.error(f"Failed to record Vault event '{message}': {e}")
+        return None
+
+
+def log_vault_event_sync(message: str) -> None:
+    """Synchronous helper to record a Vault event into Vault's log stream."""
+    try:
+        loop = None
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            pass
+
+        if loop and loop.is_running():
+            asyncio.create_task(append_log("vault", message))
+        else:
+            asyncio.run(append_log("vault", message))
+    except Exception as e:
+        logger.error(f"Failed to record Vault event sync '{message}': {e}")
 
 
 async def get_logs(

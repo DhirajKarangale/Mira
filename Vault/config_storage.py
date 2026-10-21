@@ -129,6 +129,10 @@ def init_config_storage(
                 if count == 0:
                     _DB_CONN.execute(f"INSERT INTO {table_name} DEFAULT VALUES")
                     _DB_CONN.commit()
+                elif table_name == "logs":
+                    _DB_CONN.execute("UPDATE logs SET show_logs_vault = 1 WHERE show_logs_vault IS NULL")
+                    _DB_CONN.execute("UPDATE logs SET store_logs_vault = 1 WHERE store_logs_vault IS NULL")
+                    _DB_CONN.commit()
             elif table_name == "app_permissions":
                 _DB_CONN.execute("DELETE FROM app_permissions WHERE app_id IS NULL OR app_id = ''")
                 _DB_CONN.commit()
