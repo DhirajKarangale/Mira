@@ -17,6 +17,20 @@ class AddJobRequest(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
+class CleanConsumerGroupRequest(BaseModel):
+    group_name: Optional[str] = None
+    stream_name: Optional[str] = None
+    reset_stream: Optional[bool] = False
+
+
+@router.get("/health", status_code=status.HTTP_200_OK)
+async def health():
+    return {
+        "service": "Message Broker",
+        "status": "online"
+    }
+
+
 @router.post("/jobs", status_code=status.HTTP_201_CREATED)
 async def add_job(job_req: AddJobRequest):
     if not cgm.get_consumer_group(job_req.consumer_key):
@@ -34,7 +48,7 @@ async def add_job(job_req: AddJobRequest):
         )
 
 
-@router.get("/jobs")
+@router.get("/jobs", status_code=status.HTTP_200_OK)
 async def get_jobs(
     consumer_key: str = Query(..., min_length=1),
     count: int = Query(1, ge=1, le=10)
@@ -82,13 +96,7 @@ async def delete_job(
         )
 
 
-class CleanConsumerGroupRequest(BaseModel):
-    group_name: Optional[str] = None
-    stream_name: Optional[str] = None
-    reset_stream: Optional[bool] = False
-
-
-@router.get("/redis/consumer-groups")
+@router.get("/redis/consumer-groups", status_code=status.HTTP_200_OK)
 async def get_redis_consumer_groups(raw: bool = Query(False)):
     if raw:
         return cgm.get_all_consumer_groups()
@@ -101,7 +109,7 @@ async def get_redis_consumer_groups(raw: bool = Query(False)):
         )
 
 
-@router.delete("/redis/consumer-groups/{group_name}")
+@router.delete("/redis/consumer-groups/{group_name}", status_code=status.HTTP_200_OK)
 async def delete_consumer_group(group_name: str, stream_name: Optional[str] = Query(None)):
     try:
         return await rs.delete_consumer_group(group_name=group_name, stream_name=stream_name)
@@ -112,7 +120,7 @@ async def delete_consumer_group(group_name: str, stream_name: Optional[str] = Qu
         )
 
 
-@router.post("/redis/clean")
+@router.post("/redis/clean", status_code=status.HTTP_200_OK)
 async def clean_pending_messages(req: Optional[CleanConsumerGroupRequest] = None):
     try:
         group_name = req.group_name if req else None
@@ -130,7 +138,7 @@ async def clean_pending_messages(req: Optional[CleanConsumerGroupRequest] = None
         )
 
 
-@router.post("/redis/format")
+@router.post("/redis/format", status_code=status.HTTP_200_OK)
 async def format_redis():
     try:
         return await rs.format_all_redis()
@@ -139,21 +147,3 @@ async def format_redis():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": f"Failed to format Redis: {str(e)}"}
         )
-
-
-@router.post("/services", status_code=status.HTTP_200_OK)
-async def update_services(services: Dict[str, str]):
-    import config
-    config.set_services(services)
-    try:
-        config.fetch_and_store_config()
-    except Exception:
-        pass
-    return {"status": "success", "services": config.get_services()}
-
-
-@router.get("/services", status_code=status.HTTP_200_OK)
-async def get_services():
-    import config
-    return config.get_services()
-

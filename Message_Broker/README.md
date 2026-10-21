@@ -4,23 +4,24 @@ The **Message Broker** is the centralized asynchronous communication hub connect
 
 ---
 
-## 1. What It Does
+## 1. Purpose
 
-- **Asynchronous Ingestion**: Ingests tasks via `POST /jobs` and appends them to Redis Streams (`XADD`).
-- **Consumer Group Dispatch**: Dispatches jobs in batches (up to 10) to workers via `GET /jobs`.
-- **Job Deletion**: Removes jobs by `job_id` and acknowledges them (`XACK` + `XDEL`) via `DELETE /jobs`.
-- **Maintenance Operations**: Cleans all consumer groups or formats the entire Redis database.
+- **Centralized Event Backbone**: Facilitates asynchronous, decoupled data exchange between MIRA modules.
+- **Job Ingestion & Queuing**: Accepts jobs from producers (e.g., Operator) and stores them reliably in Redis Streams.
+- **Consumer Group Dispatch**: Distributes queued messages to dedicated worker consumer groups with acknowledgment semantics.
+- **Telemetry & Maintenance**: Provides stream monitoring, pending message cleanup, and Redis database formatting.
 
 ---
 
-## 2. API Reference
+## 2. API Endpoints
 
-Every endpoint has strictly one way to be called.
-
-### 2.1 Service Health
+### 2.1 Health Check
 `GET /health`
 
-- **Response:**
+Checks if the service is online and healthy.
+
+- **Parameters**: None
+- **Response (`200 OK`):**
   ```json
   {
     "service": "Message Broker",
@@ -33,16 +34,18 @@ Every endpoint has strictly one way to be called.
 ### 2.2 Add Job
 `POST /jobs`
 
-Adds a job to the Redis stream corresponding to `consumer_key`. Stores `job_id` and whatever other data elements were sent by the calling module (e.g. `text`, `prompt`, `image_path`, etc.), excluding `consumer_key`.
+Enqueues a job into the Redis stream for the designated consumer key.
 
-- **Mandatory Fields:** `job_id`, `consumer_key`
-- **Other Fields:** Completely depends on the calling module/target service (e.g. `text`, `prompt`, `image_path`, `query`, etc.)
-- **Request Body Example:**
+- **Request Body (JSON):**
+  - `job_id` (string, required): Unique identifier for the job.
+  - `consumer_key` (string, required): Consumer group key registered in `consumer_groups.json` (e.g. `screenshot_process`, `engine_llm_task`).
+  - *Additional Fields*: Any arbitrary payload fields needed by the downstream consumer (e.g. `image_path`, `app_name`, `timestamp`, `prompt`).
   ```json
   {
-    "job_id": "job_123",
-    "consumer_key": "engine_llm_task",
-    "prompt": "Summarize user notes"
+    "job_id": "job_12345",
+    "consumer_key": "screenshot_process",
+    "app_name": "Code",
+    "image_path": "E:/Screenshots/frame_1.png"
   }
   ```
 - **Response (`201 Created`):**
@@ -57,48 +60,39 @@ Adds a job to the Redis stream corresponding to `consumer_key`. Stores `job_id` 
 ### 2.3 Get Jobs
 `GET /jobs`
 
-Reads pending jobs from the stream via consumer groups.
+Dequeues pending jobs from the consumer group stream for processing.
 
 - **Query Parameters:**
-  - `consumer_key` (mandatory): Task key to read from.
-  - `count` (optional, default `1`, max `10`): Maximum number of jobs to fetch.
-- **Request Example:**
-  ```bash
-  curl "http://127.0.0.1:8000/jobs?consumer_key=engine_llm_task&count=2"
-  ```
+  - `consumer_key` (string, required): Consumer group key to poll.
+  - `count` (integer, optional, default: `1`, min: `1`, max: `10`): Number of jobs to fetch.
 - **Response (`200 OK`):**
-  Array containing the stored job data:
   ```json
   [
     {
-      "job_id": "job_123",
-      "prompt": "Summarize user notes"
+      "job_id": "job_12345",
+      "app_name": "Code",
+      "image_path": "E:/Screenshots/frame_1.png"
     }
   ]
   ```
-  *(Returns `[]` if no jobs are available)*
 
 ---
 
 ### 2.4 Delete Job
 `DELETE /jobs`
 
-Acknowledges the job from the consumer group (`XACK`), removes it from the Redis stream (`XDEL`), and cleans the internal lookup index.
+Acknowledges (`XACK`) and deletes (`XDEL`) a completed job from the stream and internal index.
 
 - **Query Parameters:**
-  - `consumer_key` (mandatory): Task key associated with the job.
-  - `job_id` (mandatory): The unique job identifier.
-- **Request Example:**
-  ```bash
-  curl -X DELETE "http://127.0.0.1:8000/jobs?consumer_key=engine_llm_task&job_id=job_123"
-  ```
+  - `consumer_key` (string, required): Consumer key associated with the job.
+  - `job_id` (string, required): Unique job ID to acknowledge and delete.
 - **Response (`200 OK`):**
   ```json
   {
     "message": "successfully deleted"
   }
   ```
-- **Response (`404 Not Found` if job does not exist):**
+- **Response (`404 Not Found`):**
   ```json
   {
     "detail": {
@@ -109,93 +103,100 @@ Acknowledges the job from the consumer group (`XACK`), removes it from the Redis
 
 ---
 
-### 2.5 Clean Consumer Groups
-`POST /redis/clean`
-
-Cleans pending or unprocessed stream messages for a specific group or across all registered consumer groups.
-
-- **Request Body (Optional):**
-  ```json
-  {
-    "group_name": "CONSUMER_GROUP_SCREENSHOT_PROCESS",
-    "stream_name": "stream_screenshot_process",
-    "reset_stream": false
-  }
-  ```
-- **Request Example:**
-  ```bash
-  curl -X POST http://127.0.0.1:8000/redis/clean -H "Content-Type: application/json" -d "{}"
-  ```
-- **Response (`200 OK`):**
-  ```json
-  {
-    "message": "successfully cleaned all consumer groups"
-  }
-  ```
-
----
-
-### 2.6 Format Entire Redis
-`POST /redis/format`
-
-Flushes the entire Redis database (`FLUSHDB`).
-
-- **Request Example:**
-  ```bash
-  curl -X POST http://127.0.0.1:8000/redis/format
-  ```
-- **Response (`200 OK`):**
-  ```json
-  {
-    "message": "successfully formatted redis"
-  }
-  ```
-
----
-
-### 2.7 List Consumer Groups & Telemetry
+### 2.5 List Consumer Groups & Telemetry
 `GET /redis/consumer-groups`
 
-Returns the telemetry and state for all registered consumer groups, including active/pending message counts and connected consumers.
+Retrieves status, consumer counts, active message counts, and pending messages across all registered Redis streams.
 
-- **Request Example:**
-  ```bash
-  curl http://127.0.0.1:8000/redis/consumer-groups
-  ```
+- **Query Parameters:**
+  - `raw` (boolean, optional, default: `false`): If `true`, returns a flat list of registered consumer group names.
 - **Response (`200 OK`):**
   ```json
   [
     {
       "group_name": "CONSUMER_GROUP_SCREENSHOT_PROCESS",
-      "stream_name": "stream_screenshot_process",
-      "pending_count": 0,
-      "last_delivered_id": "0-0",
+      "stream_name": "mira:stream:screenshot_process",
+      "consumer_key": "screenshot_process",
       "consumers_count": 1,
-      "active_messages_count": 0
+      "pending_messages_count": 0,
+      "active_messages_count": 0,
+      "total_messages_count": 0,
+      "last_delivered_id": "0-0",
+      "status": "idle",
+      "is_registered": true,
+      "stream_exists": true
     }
   ]
   ```
 
 ---
 
-### 2.8 Delete Consumer Group
+### 2.6 Delete Consumer Group
 `DELETE /redis/consumer-groups/{group_name}`
 
-Deletes a single consumer group and cleans its index.
+Destroys a specific consumer group from its Redis stream.
 
-- **Request Example:**
-  ```bash
-  curl -X DELETE "http://127.0.0.1:8000/redis/consumer-groups/CONSUMER_GROUP_SCREENSHOT_PROCESS"
-  ```
-    "CONSUMER_GROUP_ENGINE_EMBEDDING_TASK",
-    "CONSUMER_GROUP_CLIENT_NOTIFICATION",
-    "CONSUMER_GROUP_VAULT_SECRET_SYNC"
-  ]
+- **Path Parameters:**
+  - `group_name` (string, required): Name of the consumer group to delete.
+- **Query Parameters:**
+  - `stream_name` (string, optional): Associated stream key if non-standard.
+- **Response (`200 OK`):**
+  ```json
+  {
+    "message": "Consumer group 'CONSUMER_GROUP_SCREENSHOT_PROCESS' deleted successfully",
+    "group_name": "CONSUMER_GROUP_SCREENSHOT_PROCESS",
+    "stream_name": "mira:stream:screenshot_process",
+    "destroyed": true
+  }
   ```
 
 ---
 
-## 3. How to Run
+### 2.7 Clean Consumer Groups
+`POST /redis/clean`
+
+Acknowledges and clears pending messages for a single consumer group or across all registered groups.
+
+- **Request Body (JSON, Optional):**
+  - `group_name` (string, optional): Target consumer group name. If omitted, cleans all groups.
+  - `stream_name` (string, optional): Target stream key.
+  - `reset_stream` (boolean, optional, default: `false`): If `true`, resets the stream and consumer group back to ID `0`.
+  ```json
+  {
+    "group_name": "CONSUMER_GROUP_SCREENSHOT_PROCESS",
+    "reset_stream": false
+  }
+  ```
+- **Response (`200 OK`):**
+  ```json
+  {
+    "message": "Successfully cleaned 0 pending message(s) for 'CONSUMER_GROUP_SCREENSHOT_PROCESS'",
+    "group_name": "CONSUMER_GROUP_SCREENSHOT_PROCESS",
+    "stream_name": "mira:stream:screenshot_process",
+    "cleaned_count": 0
+  }
+  ```
+
+---
+
+### 2.8 Format Entire Redis
+`POST /redis/format`
+
+Flushes the entire Redis database (`FLUSHDB`) and reinitializes all registered consumer groups.
+
+- **Request Body**: None
+- **Response (`200 OK`):**
+  ```json
+  {
+    "message": "Successfully formatted Redis and initialized 9 consumer groups",
+    "status": "success",
+    "initialized_groups": 9
+  }
+  ```
+
+---
+
+## 3. Installation & Startup
 
 ### Install Dependencies
 ```bash
@@ -205,6 +206,9 @@ pip install -r requirements.txt
 ### Start Server
 Run from the `Message_Broker/` directory:
 ```bash
-cd Message_Broker
-uvicorn app:app --host 127.0.0.1 --port 8000
+python app.py
+```
+Or directly using Uvicorn:
+```bash
+uvicorn app:app --host 127.0.0.1 --port 9002
 ```

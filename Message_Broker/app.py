@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sys
 if sys.platform == "win32":
-    # Suppress spurious WinError 10054 connection reset tracebacks in asyncio Windows Proactor
     from asyncio.proactor_events import _ProactorBasePipeTransport
 
     _orig_call_connection_lost = _ProactorBasePipeTransport._call_connection_lost
@@ -65,14 +64,6 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(broker_router)
-
-    @app.get("/health")
-    async def health():
-        return {
-            "service": "Message Broker",
-            "status": "online"
-        }
-
     return app
 
 

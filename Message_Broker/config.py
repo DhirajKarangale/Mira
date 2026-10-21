@@ -26,18 +26,6 @@ def load_services_json() -> Dict[str, str]:
 SERVICES: Dict[str, str] = load_services_json()
 
 
-def set_services(services_map: Dict[str, str]) -> None:
-    global SERVICES, VAULT_URL
-    SERVICES.update({k.lower().replace("-", "_"): v.rstrip("/") for k, v in services_map.items()})
-    v_url = get_service_url("vault")
-    if v_url:
-        VAULT_URL = v_url
-
-
-def get_services() -> Dict[str, str]:
-    return dict(SERVICES)
-
-
 def get_service_url(module_name: str, default: Optional[str] = None) -> Optional[str]:
     key = module_name.lower().replace("-", "_")
     if key in SERVICES:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import redis.exceptions
 
@@ -63,7 +63,6 @@ async def get_consumer_groups_details() -> List[Dict[str, Any]]:
     results: List[Dict[str, Any]] = []
     processed_pairs = set()
 
-    # 1. Process all configured consumer groups
     for key, group_name in configured_groups.items():
         stream_name = f"mira:stream:{key}"
         group_entry: Dict[str, Any] = {
@@ -109,7 +108,6 @@ async def get_consumer_groups_details() -> List[Dict[str, Any]]:
         results.append(group_entry)
         processed_pairs.add((stream_name, group_name))
 
-    # 2. Inspect any additional streams in Redis
     try:
         all_stream_keys = await client.keys("mira:stream:*")
         for stream_key in all_stream_keys:
@@ -209,7 +207,6 @@ async def clean_consumer_group(
         raise ValueError(f"Stream for consumer group '{group_name}' not found.")
 
     cleaned_pending = 0
-    # Clean pending entries via xpending_range and xack / xdel
     try:
         pending_list = await client.xpending_range(stream_name, group_name, min="-", max="+", count=5000)
         if pending_list:
@@ -243,7 +240,6 @@ async def clean_consumer_group(
         "stream_name": stream_name,
         "cleaned_count": cleaned_pending,
     }
-
 
 
 async def add_job_to_stream(job_data: Dict[str, Any]) -> Dict[str, str]:

@@ -31,6 +31,3 @@ def log(message: str) -> None:
             file=sys.stderr,
             flush=True
         )
-
-
-send_log = log

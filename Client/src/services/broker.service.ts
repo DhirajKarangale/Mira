@@ -22,7 +22,16 @@ export interface JobResponse {
  * Centralized Message Broker API Service
  * Single source of truth for all communications with Message Broker & Redis.
  */
+export interface ServiceHealth {
+  service: string;
+  status: string;
+}
+
 export const brokerService = {
+  async getHealth(): Promise<ServiceHealth> {
+    const response = await messageBrokerApi.get<ServiceHealth>("/health");
+    return response.data;
+  },
   // -------------------------------------------------------------
   // Redis Telemetry & Stream Management
   // -------------------------------------------------------------
