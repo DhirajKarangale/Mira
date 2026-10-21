@@ -21,9 +21,9 @@ export interface LogEntry {
 
 export interface LogFilters {
   search: string;
-  startDate: string; // YYYY-MM-DD
-  endDate: string; // YYYY-MM-DD
-  moduleName: string; // "all" | "operator" | "engine" | "memory" | "client" | "message_broker"
+  startDate: string;
+  endDate: string;
+  moduleName: string;
 }
 
 export interface LogsResponse {

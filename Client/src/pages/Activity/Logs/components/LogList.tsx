@@ -30,16 +30,12 @@ const MONTH_NAMES = [
   "Dec",
 ];
 
-/**
- * Formats timestamps into readable string: "20 Oct 2026 06:51 pm"
- */
 export const formatLogTimestamp = (raw: string | number): string => {
   if (!raw) return "";
   const rawStr = String(raw).trim();
 
   let day: number, month: number, year: number, hours: number, minutes: number;
 
-  // Handle DD/MM/YYYYTHH:mm:ss or DD-MM-YYYYTHH:mm:ss or DD/MM/YYYY HH:mm:ss
   const ddmmyyyy = rawStr.match(
     /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})[T\s](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/
   );
@@ -122,29 +118,24 @@ export const LogList: FC<LogListProps> = ({ logs, loading = false }) => {
               key={log.id}
               className="group relative flex items-start gap-3 px-3 py-2.5 hover:bg-white/[0.03] transition-colors"
             >
-              {/* ID Badge */}
               <span className="shrink-0 text-[11px] text-zinc-500 font-mono select-none w-10 text-right pt-0.5">
                 #{log.id}
               </span>
 
-              {/* Formatted Timestamp: e.g. "20 Oct 2026 06:51 pm" */}
               <span className="shrink-0 text-[11px] text-zinc-400 select-none pt-0.5 min-w-[145px]">
                 {formattedTimestamp}
               </span>
 
-              {/* Module Badge */}
               <span
                 className={`shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border select-none ${badgeStyle}`}
               >
                 {log.module_name}
               </span>
 
-              {/* Log Message Content */}
               <div className="flex-1 min-w-0 text-zinc-200 break-words leading-relaxed">
                 {log.data}
               </div>
 
-              {/* Quick Copy Button */}
               <button
                 type="button"
                 onClick={() => handleCopy(log)}

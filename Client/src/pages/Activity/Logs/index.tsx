@@ -14,7 +14,6 @@ export const LogsPage: FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Active view driven strictly by React Router URL: /activity/logs/config vs /activity/logs
   const isConfigView = location.pathname.endsWith("/config");
 
   const getTodayString = () => {
@@ -25,7 +24,6 @@ export const LogsPage: FC = () => {
     return `${year}-${month}-${day}`;
   };
 
-  // All filters (search text, module, and date range) stored in filtersDraft
   const [filtersDraft, setFiltersDraft] = useState<LogFilters>({
     search: "",
     startDate: getTodayString(),
@@ -34,7 +32,6 @@ export const LogsPage: FC = () => {
   });
   const [pageDraft, setPageDraft] = useState<number>(1);
 
-  // Debounce both pagination page changes and filter changes together (300ms)
   const debouncedQuery = useDebounce(
     useMemo(
       () => ({
@@ -51,7 +48,6 @@ export const LogsPage: FC = () => {
 
   const PAGE_LIMIT = 50;
 
-  // React Query hook for logs: cached, deduplicated, and background-synced
   const {
     data: logsResponse,
     isLoading,
@@ -72,7 +68,6 @@ export const LogsPage: FC = () => {
   const total = logsResponse?.total ?? 0;
   const loading = isLoading || isFetching;
 
-  // Check if current draft filters differ from defaults (controls filter button dot immediately)
   const isFiltered = useMemo(() => {
     const today = getTodayString();
     return (
@@ -108,10 +103,8 @@ export const LogsPage: FC = () => {
       id="logs-subpage-container"
       className="flex flex-col h-full w-full overflow-hidden select-none bg-zinc-950/40"
     >
-      {/* Top Header with Navigation Tabs (consistent across Activity pages) */}
       <div className="flex-none px-6 py-4 border-b border-white/[0.06] bg-zinc-950/60 backdrop-blur-md">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 max-w-7xl mx-auto">
-          {/* Title and Badge */}
           <div className="flex items-center gap-3.5">
             <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.2)]">
               <Terminal className="w-5 h-5" />
@@ -131,7 +124,6 @@ export const LogsPage: FC = () => {
             </div>
           </div>
 
-          {/* Navigation Tabs (Driven strictly by React Router) */}
           <div className="flex items-center p-1 rounded-xl bg-zinc-900/80 border border-white/[0.08] self-start sm:self-auto shadow-inner">
             <button
               type="button"
@@ -171,14 +163,12 @@ export const LogsPage: FC = () => {
         </div>
       </div>
 
-      {/* Main View Area driven by React Router route */}
       <div className="flex-1 overflow-y-auto px-6 py-6">
         <div className="max-w-7xl mx-auto h-full flex flex-col">
           {isConfigView ? (
             <LogConfigCard onSaved={() => refetch()} />
           ) : (
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden rounded-2xl border border-white/[0.08] bg-zinc-900/30 backdrop-blur-xl shadow-xl">
-              {/* Top Filters Bar */}
               <LogFiltersBar
                 filters={filtersDraft}
                 onFilterChange={handleFilterChange}
@@ -188,7 +178,6 @@ export const LogsPage: FC = () => {
                 loading={loading}
               />
 
-              {/* Syncing Progress Bar with Animating Circle when refreshing with existing data */}
               {loading && logs.length > 0 && (
                 <div className="flex items-center justify-center gap-2 py-1 px-4 bg-amber-950/20 border-b border-amber-500/10 text-amber-300 text-[11px] font-mono shrink-0 animate-in fade-in duration-150">
                   <div className="w-3 h-3 border-2 border-amber-500/30 border-t-amber-400 rounded-full animate-spin" />
@@ -196,10 +185,8 @@ export const LogsPage: FC = () => {
                 </div>
               )}
 
-              {/* Scrollable Logs List */}
               <LogList logs={logs} loading={loading} />
 
-              {/* Bottom Pagination Bar */}
               <LogPagination
                 page={pageDraft}
                 total={total}

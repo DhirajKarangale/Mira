@@ -14,16 +14,17 @@ export interface OperatorStatusResponse {
 }
 
 export interface StoredDataRange {
-  startDate: string; // YYYY-MM-DD
-  endDate: string; // YYYY-MM-DD
+  startDate: string;
+  endDate: string;
   totalDays: number;
   hasData: boolean;
 }
 
 export interface DateRangeFilter {
-  startDate: string; // YYYY-MM-DD
-  endDate: string; // YYYY-MM-DD
+  startDate: string;
+  endDate: string;
 }
+
 
 export interface AppPermission {
   app_name: string;

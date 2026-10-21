@@ -56,7 +56,6 @@ export const ConfirmModal: FC<ConfirmModalProps> = ({
         className="relative w-full max-w-md rounded-2xl border border-white/[0.08] bg-zinc-900/95 p-6 shadow-2xl shadow-black/80 text-zinc-100"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header icon + Close */}
         <div className="flex items-start justify-between gap-4 mb-4">
           <div
             className={cn(
@@ -88,7 +87,6 @@ export const ConfirmModal: FC<ConfirmModalProps> = ({
           </button>
         </div>
 
-        {/* Content */}
         <h3 className="text-lg font-semibold tracking-tight text-white mb-2">
           {title}
         </h3>
@@ -96,7 +94,6 @@ export const ConfirmModal: FC<ConfirmModalProps> = ({
           {description}
         </div>
 
-        {/* Keyword verification if required */}
         {requiresKeyword && (
           <div className="mb-5 space-y-2">
             <label className="text-xs font-medium text-zinc-300">
@@ -117,7 +114,6 @@ export const ConfirmModal: FC<ConfirmModalProps> = ({
           </div>
         )}
 
-        {/* Buttons */}
         <div className="flex items-center justify-end gap-3 pt-2">
           <button
             type="button"

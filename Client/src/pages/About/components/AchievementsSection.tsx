@@ -35,7 +35,6 @@ export const AchievementsSection: FC = () => {
 
   return (
     <div className="rounded-3xl border border-white/[0.08] bg-zinc-900/60 p-6 sm:p-8 backdrop-blur-xl shadow-xl relative overflow-hidden space-y-5">
-      {/* Header */}
       <div className="flex items-center gap-3 pb-4 border-b border-white/[0.06]">
         <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.15)]">
           <Trophy className="w-5 h-5" />
@@ -46,7 +45,6 @@ export const AchievementsSection: FC = () => {
         </div>
       </div>
 
-      {/* Grid of Achievements */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {achievements.map((item) => {
           const Icon = item.icon;

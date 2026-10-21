@@ -71,7 +71,6 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
     );
   }
 
-  // Derive initials
   const initials =
     details?.user_name
       ?.split(" ")
@@ -82,11 +81,9 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Profile Summary Card */}
       <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-6 sm:p-8 backdrop-blur-xl shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
           <div className="flex items-center gap-5">
-            {/* User Initials Avatar */}
             <div className="relative flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 text-white font-bold text-2xl shadow-xl shadow-blue-600/20 border border-white/20 select-none">
               <span>{initials}</span>
               <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-500 border-2 border-zinc-900 flex items-center justify-center">
@@ -128,9 +125,7 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
         </div>
       </div>
 
-      {/* Grid of Profile Details */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Contact Information Card */}
         <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-6 backdrop-blur-xl shadow-xl flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between pb-4 mb-4 border-b border-white/[0.06]">
@@ -146,7 +141,6 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
             </div>
 
             <div className="space-y-4">
-              {/* Email */}
               <div className="group flex items-center justify-between p-3 rounded-xl bg-zinc-800/30 border border-white/[0.04] hover:border-white/[0.1] transition-all">
                 <div className="flex items-center gap-3 min-w-0">
                   <Mail className="w-4 h-4 text-zinc-400 shrink-0" />
@@ -175,7 +169,6 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
                 )}
               </div>
 
-              {/* Phone Number */}
               <div className="group flex items-center justify-between p-3 rounded-xl bg-zinc-800/30 border border-white/[0.04] hover:border-white/[0.1] transition-all">
                 <div className="flex items-center gap-3 min-w-0">
                   <Phone className="w-4 h-4 text-zinc-400 shrink-0" />
@@ -207,7 +200,6 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
           </div>
         </div>
 
-        {/* Location & Regional Coordinates Card */}
         <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-6 backdrop-blur-xl shadow-xl flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between pb-4 mb-4 border-b border-white/[0.06]">
@@ -223,7 +215,6 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* City */}
               <div className="p-3 rounded-xl bg-zinc-800/30 border border-white/[0.04]">
                 <div className="flex items-center gap-2 text-zinc-500 mb-1">
                   <Building2 className="w-3.5 h-3.5" />
@@ -234,7 +225,6 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
                 </div>
               </div>
 
-              {/* State */}
               <div className="p-3 rounded-xl bg-zinc-800/30 border border-white/[0.04]">
                 <div className="flex items-center gap-2 text-zinc-500 mb-1">
                   <MapPin className="w-3.5 h-3.5" />
@@ -245,7 +235,6 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
                 </div>
               </div>
 
-              {/* Country */}
               <div className="p-3 rounded-xl bg-zinc-800/30 border border-white/[0.04]">
                 <div className="flex items-center gap-2 text-zinc-500 mb-1">
                   <Globe className="w-3.5 h-3.5" />
@@ -257,7 +246,6 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
               </div>
             </div>
 
-            {/* Combined location string */}
             <div className="mt-4 p-3 rounded-xl bg-purple-500/[0.04] border border-purple-500/10 flex items-center gap-2.5">
               <Globe className="w-4 h-4 text-purple-400 shrink-0" />
               <span className="text-xs text-zinc-300">
@@ -271,3 +259,4 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
     </div>
   );
 };
+

@@ -69,7 +69,6 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
     const updatedForm = { ...formData, [field]: val };
     setFormData(updatedForm);
 
-    // Validate on change if already touched or non-empty
     const fieldError = validateField(field, val);
     setErrors((prev) => ({
       ...prev,
@@ -107,7 +106,6 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
-    // Mark all fields as touched
     setTouched({
       user_name: true,
       email: true,
@@ -117,7 +115,6 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
       country: true,
     });
 
-    // Run strict full validation
     const currentErrors = validateUserForm(formData);
     setErrors(currentErrors);
 
@@ -188,7 +185,6 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
         </div>
       </div>
 
-      {/* Global submission error banner */}
       {submitError && (
         <div
           id="form-submit-error-banner"
@@ -202,7 +198,6 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
         </div>
       )}
 
-      {/* Section 1: Identity & Primary Info */}
       <div className="space-y-4">
         <h3 className="text-xs font-mono uppercase tracking-wider text-zinc-500 flex items-center gap-2">
           <span>01. Personal Identity</span>
@@ -210,7 +205,6 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {/* User Name */}
           <div className="space-y-1.5">
             <label
               htmlFor="field-user-name"
@@ -258,7 +252,6 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
             )}
           </div>
 
-          {/* Email Address */}
           <div className="space-y-1.5">
             <label
               htmlFor="field-email"
@@ -308,7 +301,6 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
         </div>
       </div>
 
-      {/* Section 2: Contact Number */}
       <div className="space-y-4">
         <h3 className="text-xs font-mono uppercase tracking-wider text-zinc-500 flex items-center gap-2">
           <span>02. Communication</span>
@@ -316,7 +308,6 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {/* Phone Number */}
           <div className="space-y-1.5">
             <label
               htmlFor="field-phone-number"
@@ -366,7 +357,6 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
         </div>
       </div>
 
-      {/* Section 3: Geographic Region */}
       <div className="space-y-4">
         <h3 className="text-xs font-mono uppercase tracking-wider text-zinc-500 flex items-center gap-2">
           <span>03. Geographic Location</span>
@@ -374,7 +364,6 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
         </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-          {/* City */}
           <div className="space-y-1.5">
             <label
               htmlFor="field-city"
@@ -422,7 +411,6 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
             )}
           </div>
 
-          {/* State */}
           <div className="space-y-1.5">
             <label
               htmlFor="field-state"
@@ -470,7 +458,6 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
             )}
           </div>
 
-          {/* Country */}
           <div className="space-y-1.5">
             <label
               htmlFor="field-country"
@@ -520,7 +507,6 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
         </div>
       </div>
 
-      {/* Form Action Controls */}
       <div className="pt-4 border-t border-white/[0.08] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="text-xs text-zinc-500">
           {!formIsValid ? (

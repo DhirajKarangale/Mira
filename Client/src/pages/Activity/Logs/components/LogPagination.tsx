@@ -25,7 +25,6 @@ export const LogPagination: FC<LogPaginationProps> = ({
   const canPrev = page > 1;
   const canNext = page < totalPages;
 
-  // Local state for direct page number typing
   const [pageInput, setPageInput] = useState<string>(String(page));
 
   useEffect(() => {
@@ -57,7 +56,6 @@ export const LogPagination: FC<LogPaginationProps> = ({
     }
   };
 
-  // Build max 5 visible page numbers dynamically centered on current page
   const getPageNumbers = () => {
     const pages: number[] = [];
     const maxButtons = 5;
@@ -85,7 +83,6 @@ export const LogPagination: FC<LogPaginationProps> = ({
 
   return (
     <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-3 py-2 bg-zinc-950/90 border-t border-white/[0.08] backdrop-blur-md text-xs text-zinc-400 select-none shrink-0">
-      {/* Summary item counts & Total Pages display */}
       <div className="flex items-center gap-1.5 font-mono text-[11px] flex-wrap">
         <span>Showing</span>
         <span className="font-semibold text-zinc-200">
@@ -119,9 +116,7 @@ export const LogPagination: FC<LogPaginationProps> = ({
         <span className="font-semibold text-zinc-200">{totalPages}</span>
       </div>
 
-      {/* Pagination Controls */}
       <div className="flex items-center gap-1">
-        {/* First Page */}
         <Button
           type="button"
           variant="outline"
@@ -134,7 +129,6 @@ export const LogPagination: FC<LogPaginationProps> = ({
           <ChevronsLeft className="w-3.5 h-3.5" />
         </Button>
 
-        {/* Previous Page */}
         <Button
           type="button"
           variant="outline"
@@ -148,7 +142,6 @@ export const LogPagination: FC<LogPaginationProps> = ({
           <span className="hidden xs:inline">Prev</span>
         </Button>
 
-        {/* Dynamic Page Number Buttons (Max 5) */}
         <div className="flex items-center gap-1 mx-1">
           {pageNumbers.map((p) => {
             const isCurrent = p === page;
@@ -171,7 +164,6 @@ export const LogPagination: FC<LogPaginationProps> = ({
           })}
         </div>
 
-        {/* Next Page */}
         <Button
           type="button"
           variant="outline"
@@ -185,7 +177,6 @@ export const LogPagination: FC<LogPaginationProps> = ({
           <ChevronRight className="w-3.5 h-3.5" />
         </Button>
 
-        {/* Last Page */}
         <Button
           type="button"
           variant="outline"

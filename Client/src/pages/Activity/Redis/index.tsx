@@ -11,7 +11,6 @@ export const RedisPage: FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Active view driven strictly by React Router URL: /activity/redis/config vs /activity/redis
   const isConfigView = location.pathname.endsWith("/config");
 
   const {
@@ -39,10 +38,8 @@ export const RedisPage: FC = () => {
       id="activity-subpage-redis"
       className="flex flex-col h-full w-full overflow-hidden select-none bg-zinc-950/40"
     >
-      {/* Top Header */}
       <div className="flex-none px-6 py-4 border-b border-white/[0.06] bg-zinc-950/60 backdrop-blur-md">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 max-w-7xl mx-auto">
-          {/* Title and Badge */}
           <div className="flex items-center gap-3.5">
             <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-red-500/10 border border-red-500/25 text-red-400 shadow-[0_0_20px_rgba(239,68,68,0.2)]">
               <Database className="w-5 h-5" />
@@ -62,7 +59,6 @@ export const RedisPage: FC = () => {
             </div>
           </div>
 
-          {/* Navigation Tabs (Driven strictly by React Router) */}
           <div className="flex items-center p-1 rounded-xl bg-zinc-900/80 border border-white/[0.08] self-start sm:self-auto shadow-inner">
             <button
               type="button"
@@ -95,7 +91,6 @@ export const RedisPage: FC = () => {
         </div>
       </div>
 
-      {/* Main Content Viewport */}
       <div className="flex-1 overflow-y-auto px-6 py-6">
         <div className="max-w-7xl mx-auto">
           {errorMessage && (

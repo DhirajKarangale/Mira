@@ -18,10 +18,6 @@ export interface JobResponse {
   [key: string]: unknown;
 }
 
-/**
- * Centralized Message Broker API Service
- * Single source of truth for all communications with Message Broker & Redis.
- */
 export interface ServiceHealth {
   service: string;
   status: string;
@@ -32,14 +28,7 @@ export const brokerService = {
     const response = await messageBrokerApi.get<ServiceHealth>("/health");
     return response.data;
   },
-  // -------------------------------------------------------------
-  // Redis Telemetry & Stream Management
-  // -------------------------------------------------------------
 
-  /**
-   * Fetch active consumer groups and telemetry from Message Broker.
-   * Canonical: GET /redis/consumer-groups
-   */
   async getConsumerGroups(raw: boolean = false): Promise<ConsumerGroup[]> {
     const response = await messageBrokerApi.get<ConsumerGroup[]>("/redis/consumer-groups", {
       params: raw ? { raw: true } : undefined,
@@ -47,10 +36,6 @@ export const brokerService = {
     return response.data;
   },
 
-  /**
-   * Delete a selected Redis consumer group from its stream.
-   * Canonical: DELETE /redis/consumer-groups/{group_name}
-   */
   async deleteConsumerGroup(
     groupName: string,
     streamName?: string
@@ -64,10 +49,6 @@ export const brokerService = {
     return response.data;
   },
 
-  /**
-   * Clean pending or unprocessed messages across a specific or all consumer groups.
-   * Canonical: POST /redis/clean
-   */
   async cleanPendingMessages(
     groupName?: string,
     streamName?: string
@@ -79,32 +60,16 @@ export const brokerService = {
     return response.data;
   },
 
-  /**
-   * Format Redis: Flushes all Redis streams and stream lookup keys.
-   * Canonical: POST /redis/format
-   */
   async formatRedis(): Promise<FormatResult> {
     const response = await messageBrokerApi.post<FormatResult>("/redis/format");
     return response.data;
   },
 
-  // -------------------------------------------------------------
-  // Jobs & Event Bus
-  // -------------------------------------------------------------
-
-  /**
-   * Publish a job payload to the event bus stream.
-   * Canonical: POST /jobs
-   */
   async enqueueJob(job: JobPayload): Promise<JobResponse> {
     const response = await messageBrokerApi.post<JobResponse>("/jobs", job);
     return response.data;
   },
 
-  /**
-   * Dequeue pending jobs from the event bus stream.
-   * Canonical: GET /jobs
-   */
   async getJobs(consumerKey: string, count: number = 1): Promise<JobPayload[]> {
     const response = await messageBrokerApi.get<JobPayload[]>("/jobs", {
       params: { consumer_key: consumerKey, count },
@@ -112,10 +77,6 @@ export const brokerService = {
     return response.data;
   },
 
-  /**
-   * Acknowledge and delete a job from the stream.
-   * Canonical: DELETE /jobs
-   */
   async deleteJob(consumerKey: string, jobId: string): Promise<JobResponse> {
     const response = await messageBrokerApi.delete<JobResponse>("/jobs", {
       params: { consumer_key: consumerKey, job_id: jobId },

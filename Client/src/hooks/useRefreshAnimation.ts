@@ -1,19 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 
 export interface UseRefreshAnimationOptions {
-  /**
-   * Minimum duration in milliseconds for the rotation animation (default: 650ms).
-   * Ensures the user gets satisfying visual feedback even on ultra-fast local network responses.
-   */
   minDurationMs?: number;
 }
 
-/**
- * Custom hook to control refresh buttons.
- * - Triggers continuous rotation (`animate-spin`) until the refresh action finishes.
- * - Guarantees a minimum rotation duration (default: 650ms) so the icon smoothly completes at least one full spin.
- * - Prevents duplicate clicks while refreshing (`isRefreshing = true`).
- */
 export function useRefreshAnimation(
   onRefresh?: () => Promise<unknown> | void,
   options: UseRefreshAnimationOptions = {}

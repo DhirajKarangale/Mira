@@ -7,18 +7,10 @@ import type {
   UpdateAppPermissionResponse,
 } from "./types";
 
-/**
- * Fetch Operator configuration from Vault (e.g. CAPTURE_INTERVAL_SECS, AUTO_START).
- * Uses centralized vaultService (GET /config/operator).
- */
 export async function fetchOperatorConfig(): Promise<OperatorConfigResponse> {
   return vaultService.getConfig<OperatorConfigResponse>("operator");
 }
 
-/**
- * Update Operator configuration in Vault (e.g. toggle AUTO_START or CAPTURE_INTERVAL_SECS).
- * Uses centralized vaultService (POST /config/operator).
- */
 export async function updateOperatorConfig(
   updates: Partial<OperatorConfigResponse>
 ): Promise<OperatorConfigResponse> {
@@ -29,58 +21,30 @@ export async function updateOperatorConfig(
   return result;
 }
 
-/**
- * Synchronize live capture interval with Operator service directly.
- * Uses centralized operatorService (POST /interval).
- */
 export async function syncOperatorInterval(seconds: number): Promise<void> {
   await operatorService.updateInterval(seconds);
 }
 
-/**
- * Fetch current Operator capturing status directly from Operator service.
- * Uses centralized operatorService (GET /status).
- */
 export async function fetchOperatorStatus(): Promise<OperatorStatusResponse> {
   return operatorService.getStatus();
 }
 
-/**
- * Start screen capture loop in Operator service.
- * Uses centralized operatorService (POST /start).
- */
 export async function startCapture(): Promise<void> {
   await operatorService.startCapture();
 }
 
-/**
- * Stop screen capture loop in Operator service.
- * Uses centralized operatorService (POST /stop).
- */
 export async function stopCapture(): Promise<void> {
   await operatorService.stopCapture();
 }
 
-/**
- * Fetch all discovered system applications with capture permissions.
- * Uses centralized operatorService (GET /apps).
- */
 export async function fetchAppPermissions(): Promise<AppPermission[]> {
   return operatorService.getApps();
 }
 
-/**
- * Trigger rescan and synchronization of system applications.
- * Uses centralized operatorService (POST /apps/refresh).
- */
 export async function refreshAppPermissions(): Promise<RefreshAppsResponse> {
   return operatorService.refreshApps();
 }
 
-/**
- * Update an individual application's capture permission status.
- * Uses centralized operatorService (POST /apps/permission).
- */
 export async function updateAppPermission(
   appId: string,
   allowedToCapture: boolean

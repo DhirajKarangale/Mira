@@ -28,7 +28,7 @@ interface PresetOption {
 }
 
 export const MIN_INTERVAL_SECS = 1;
-export const MAX_INTERVAL_SECS = 3600; // 60 minutes (1 hour)
+export const MAX_INTERVAL_SECS = 3600;
 
 const PRESET_OPTIONS: PresetOption[] = [
   { label: "5s", secs: 5, sublabel: "High Freq" },
@@ -52,7 +52,6 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Sync draft when prop updates from Vault
   useEffect(() => {
     if (intervalSecs && intervalSecs >= MIN_INTERVAL_SECS) {
       const valid = Math.min(MAX_INTERVAL_SECS, Math.max(MIN_INTERVAL_SECS, intervalSecs));
@@ -73,7 +72,6 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/[^0-9]/g, "");
 
-    // When erasing completely or field is empty, clamp to MIN (1) and select so user can retype easily
     if (raw === "") {
       setInputVal(String(MIN_INTERVAL_SECS));
       setDraft(MIN_INTERVAL_SECS);
@@ -85,7 +83,6 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
     }
 
     const val = parseInt(raw, 10);
-    // Never allow below MIN_INTERVAL_SECS (1)
     if (isNaN(val) || val < MIN_INTERVAL_SECS) {
       setInputVal(String(MIN_INTERVAL_SECS));
       setDraft(MIN_INTERVAL_SECS);
@@ -96,7 +93,6 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
       return;
     }
 
-    // Never allow above MAX_INTERVAL_SECS (3600)
     if (val > MAX_INTERVAL_SECS) {
       setInputVal(String(MAX_INTERVAL_SECS));
       setDraft(MAX_INTERVAL_SECS);
@@ -183,7 +179,6 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
     }
   };
 
-  // Telemetry estimations
   const capturesPerMin = (60 / Math.max(1, draft)).toFixed(1);
   const capturesPerHour = Math.round(3600 / Math.max(1, draft)).toLocaleString();
   const capturesPerDay = Math.round(86400 / Math.max(1, draft)).toLocaleString();
@@ -193,10 +188,8 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
       id="card-capture-interval"
       className="rounded-3xl border border-white/[0.08] bg-zinc-900/60 p-6 sm:p-8 backdrop-blur-xl shadow-xl relative overflow-hidden space-y-6"
     >
-      {/* Background ambient lighting */}
       <div className="absolute top-0 right-1/4 w-80 h-80 bg-cyan-500/5 rounded-full blur-[90px] pointer-events-none" />
 
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/[0.06]">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.15)] shrink-0">
@@ -218,7 +211,6 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
           </div>
         </div>
 
-        {/* State Badges */}
         <div className="flex items-center gap-2 self-start sm:self-auto">
           {saveSuccess ? (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.2)] animate-in fade-in">
@@ -238,9 +230,7 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
         </div>
       </div>
 
-      {/* Main Content Layout */}
       <div className="space-y-6">
-        {/* Quick Preset Selector */}
         <div className="space-y-2.5">
           <label className="text-xs font-semibold text-zinc-300 flex items-center justify-between">
             <span className="flex items-center gap-1.5">
@@ -279,7 +269,6 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
           </div>
         </div>
 
-        {/* Custom Interval Stepper (Slider removed) */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-5 rounded-2xl bg-white/[0.02] border border-white/[0.06]">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
@@ -342,9 +331,7 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
           </div>
         </div>
 
-        {/* Telemetry & Estimated Footprint Metrics */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {/* Captures per Min */}
           <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/[0.05] flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0">
               <Activity className="w-4 h-4" />
@@ -358,7 +345,6 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
             </div>
           </div>
 
-          {/* Hourly Volume */}
           <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/[0.05] flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
               <Timer className="w-4 h-4" />
@@ -372,7 +358,6 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
             </div>
           </div>
 
-          {/* Daily Volume (shots per day rather than mb) */}
           <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/[0.05] flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
               <CalendarDays className="w-4 h-4" />
@@ -387,7 +372,6 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
           </div>
         </div>
 
-        {/* Live Loop Info Banner */}
         <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-zinc-950/50 border border-white/[0.05] text-xs">
           <div className="flex items-center gap-2">
             <span
@@ -416,7 +400,6 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
           </span>
         </div>
 
-        {/* Error message banner if any */}
         {errorMessage && (
           <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
             <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
@@ -424,7 +407,6 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
           </div>
         )}
 
-        {/* Bottom Actions: Save & Reset */}
         <div className="flex items-center justify-end gap-3 pt-2">
           <button
             type="button"
@@ -473,3 +455,4 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
     </div>
   );
 };
+

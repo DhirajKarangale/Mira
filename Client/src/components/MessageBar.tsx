@@ -6,9 +6,6 @@ import {
 } from "react";
 import { cn } from "@/lib/utils";
 
-/**
- * 10 Predefined colors for the MessageBar component
- */
 export enum MessageBarColor {
   Red = "red",
   Green = "green",
@@ -23,19 +20,14 @@ export enum MessageBarColor {
 }
 
 export interface MessageBarProps {
-  /** The message text or ReactNode to display */
   message: ReactNode;
-  /** One of the 10 predefined colors */
   color: MessageBarColor | `${MessageBarColor}`;
-  /** Optional duration in milliseconds before disappearing (default: 5000ms) */
   duration?: number;
-  /** Optional callback invoked after the message bar has completely transitioned out */
   onDismiss?: () => void;
-  /** Optional custom leading icon or indicator */
   icon?: ReactNode;
-  /** Additional styling or positioning classes */
   className?: string;
 }
+
 
 const COLOR_STYLES: Record<
   MessageBarColor | string,
@@ -116,17 +108,14 @@ export const MessageBar: FC<MessageBarProps> = ({
 
     setIsRendered(true);
 
-    // Trigger appear animation smoothly on next frame
     const appearTimer = requestAnimationFrame(() => {
       setIsVisible(true);
     });
 
-    // Auto disappear after specified duration (5 seconds default)
     const dismissTimer = setTimeout(() => {
       setIsVisible(false);
-    }, Math.max(duration - 300, 500)); // Start fade-out slightly before full unmount
+    }, Math.max(duration - 300, 500));
 
-    // Remove from DOM after exit transition finishes
     const unmountTimer = setTimeout(() => {
       setIsRendered(false);
       onDismiss?.();
@@ -150,7 +139,6 @@ export const MessageBar: FC<MessageBarProps> = ({
       role="status"
       aria-live="polite"
       className={cn(
-        // IMPORTANT: pointer-events-none ensures it is non-interactive and does not block clicks on underlying elements
         "pointer-events-none fixed top-14 left-1/2 -translate-x-1/2 z-50 flex items-center justify-center select-none transition-all duration-300 ease-out",
         isVisible
           ? "opacity-100 translate-y-0 scale-100"
@@ -164,7 +152,6 @@ export const MessageBar: FC<MessageBarProps> = ({
           colorConfig.container
         )}
       >
-        {/* Leading bullet or custom icon */}
         {icon ? (
           <span className="shrink-0">{icon}</span>
         ) : (
@@ -173,9 +160,9 @@ export const MessageBar: FC<MessageBarProps> = ({
           />
         )}
 
-        {/* Message body */}
         <span className="truncate max-w-[80vw]">{message}</span>
       </div>
     </div>
   );
 };
+

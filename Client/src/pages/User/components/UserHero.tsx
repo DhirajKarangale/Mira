@@ -22,7 +22,6 @@ export const UserHero: FC<UserHeroProps> = ({
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-r from-blue-950/20 via-zinc-900/60 to-purple-950/20 p-6 sm:p-8 backdrop-blur-xl shadow-2xl">
-      {/* Decorative gradient glow elements */}
       <div className="absolute -top-24 -left-24 w-72 h-72 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-24 -right-24 w-72 h-72 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
 
@@ -44,7 +43,6 @@ export const UserHero: FC<UserHeroProps> = ({
                 <Database className="w-3 h-3 text-zinc-400" />
                 table: user_details
               </span>
-              {/* Mode indicator badge */}
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-zinc-800 text-zinc-300 border border-white/[0.08]">
                 {mode === "edit" ? (
                   <>

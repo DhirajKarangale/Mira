@@ -16,7 +16,6 @@ export const AppPermissionCard: FC<AppPermissionCardProps> = ({
 }) => {
   const isAllowed = app.allowed_to_capture;
 
-  // Generate consistent vibrant color based on app_name
   const getAvatarGradient = (name: string) => {
     const gradients = [
       "from-blue-600/20 to-cyan-600/20 text-cyan-400 border-cyan-500/30",
@@ -46,9 +45,7 @@ export const AppPermissionCard: FC<AppPermissionCardProps> = ({
           : "bg-zinc-950/40 border-rose-500/20 hover:border-rose-500/30 hover:bg-zinc-950/60 shadow-lg"
       )}
     >
-      {/* Left: App Identity */}
       <div className="flex items-center gap-3.5 min-w-0 pr-4">
-        {/* App Initial / Icon Avatar */}
         <div
           className={cn(
             "flex items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-br border font-bold text-sm shadow-md shrink-0",
@@ -63,7 +60,6 @@ export const AppPermissionCard: FC<AppPermissionCardProps> = ({
             <h3 className="text-sm font-semibold text-zinc-100 truncate tracking-tight group-hover:text-white transition-colors">
               {app.app_name}
             </h3>
-            {/* Status indicator tag */}
             <span
               className={cn(
                 "inline-flex items-center gap-1 px-2 py-0.2 rounded-full text-[10px] font-semibold border shrink-0",
@@ -93,7 +89,6 @@ export const AppPermissionCard: FC<AppPermissionCardProps> = ({
         </div>
       </div>
 
-      {/* Right: Permission Toggle Switch */}
       <div className="flex items-center gap-3 shrink-0">
         <button
           type="button"
@@ -119,7 +114,6 @@ export const AppPermissionCard: FC<AppPermissionCardProps> = ({
             {isAllowed ? "Capture Allowed" : "Capture Blocked"}
           </span>
 
-          {/* Toggle pill */}
           <div
             className={cn(
               "relative w-8 h-4.5 rounded-full transition-colors duration-200 p-0.5",

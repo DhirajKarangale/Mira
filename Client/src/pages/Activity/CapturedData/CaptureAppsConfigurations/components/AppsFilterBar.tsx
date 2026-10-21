@@ -24,7 +24,6 @@ export const AppsFilterBar: FC<AppsFilterBarProps> = ({
 }) => {
   return (
     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-3 rounded-2xl border border-white/[0.08] bg-zinc-900/40 backdrop-blur-xl">
-      {/* Search Input Box */}
       <div className="relative flex-1 min-w-[240px]">
         <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-500">
           <Search className="w-4 h-4" />
@@ -49,9 +48,7 @@ export const AppsFilterBar: FC<AppsFilterBarProps> = ({
         )}
       </div>
 
-      {/* Filter Tabs */}
       <div className="flex items-center gap-1.5 p-1 rounded-xl bg-zinc-850/80 border border-white/[0.06] shrink-0 overflow-x-auto no-scrollbar">
-        {/* All Filter */}
         <button
           type="button"
           id="btn-filter-all"
@@ -75,7 +72,6 @@ export const AppsFilterBar: FC<AppsFilterBarProps> = ({
           </span>
         </button>
 
-        {/* Allowed Filter */}
         <button
           type="button"
           id="btn-filter-allowed"
@@ -99,7 +95,6 @@ export const AppsFilterBar: FC<AppsFilterBarProps> = ({
           </span>
         </button>
 
-        {/* Restricted Filter */}
         <button
           type="button"
           id="btn-filter-restricted"

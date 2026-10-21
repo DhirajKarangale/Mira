@@ -16,7 +16,6 @@ export const UserPage: FC = () => {
   const [mode, setMode] = useState<UserPageMode>("view");
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
 
-  // If query errored, display feedback banner
   const queryErrorMessage = error
     ? (error as any)?.response?.data?.detail?.message ||
       error.message ||
@@ -34,7 +33,6 @@ export const UserPage: FC = () => {
           : "User details updated successfully in Vault!"),
     });
 
-    // Auto-dismiss success notification after 5 seconds
     setTimeout(() => {
       setFeedback((prev) => (prev?.type === "success" ? null : prev));
     }, 5000);
@@ -58,7 +56,6 @@ export const UserPage: FC = () => {
       className="h-full w-full overflow-y-auto select-none bg-gradient-to-b from-[#080c14] via-[#090e18] to-[#04070d] text-zinc-100"
     >
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-6">
-        {/* Hero Header with Vault status and sync button */}
         <UserHero
           mode={mode}
           loading={isLoading || isFetching}
@@ -66,7 +63,6 @@ export const UserPage: FC = () => {
           hasDetails={hasDetails}
         />
 
-        {/* Feedback Alert Toast / Banner */}
         {(feedback || queryErrorMessage) && (
           <div
             id="user-page-feedback-banner"
@@ -96,7 +92,6 @@ export const UserPage: FC = () => {
           </div>
         )}
 
-        {/* Content Body: Loading, View, or Form */}
         {isLoading ? (
           <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-16 flex flex-col items-center justify-center gap-3 backdrop-blur-xl">
             <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
@@ -117,7 +112,6 @@ export const UserPage: FC = () => {
           />
         )}
 
-        {/* Subtle footer info */}
         <div className="pt-6 pb-4 text-center text-xs text-zinc-500 font-mono flex items-center justify-center gap-2">
           <span>MIRA Vault Engine</span>
           <span>•</span>

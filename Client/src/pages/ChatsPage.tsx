@@ -7,12 +7,10 @@ export const ChatsPage: FC = () => {
       id="page-content-chats"
       className="relative flex flex-col items-center justify-center h-full w-full overflow-hidden select-none bg-gradient-to-b from-[#080c14] via-[#090e18] to-[#04070d] text-zinc-100"
     >
-      {/* Ambient background glow elements */}
       <div className="absolute w-[500px] h-[500px] bg-blue-500/10 rounded-full blur-[130px] pointer-events-none -z-10" />
       <div className="absolute -bottom-20 -right-20 w-[400px] h-[400px] bg-cyan-500/10 rounded-full blur-[120px] pointer-events-none -z-10" />
 
       <div className="flex flex-col items-center gap-6 text-center z-10 px-6 max-w-lg">
-        {/* Glowing Icon Container */}
         <div className="relative">
           <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 shadow-[0_0_30px_rgba(59,130,246,0.2)]">
             <MessageSquare className="w-8 h-8" />
@@ -22,7 +20,6 @@ export const ChatsPage: FC = () => {
           </div>
         </div>
 
-        {/* Title & Description */}
         <div className="space-y-2">
           <div className="flex items-center justify-center gap-2">
             <h1 className="text-3xl sm:text-4xl font-bold tracking-tight bg-gradient-to-b from-zinc-100 via-zinc-200 to-zinc-400 bg-clip-text text-transparent">
@@ -37,7 +34,6 @@ export const ChatsPage: FC = () => {
           </p>
         </div>
 
-        {/* Interactive Quick Actions */}
         <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
           <button
             type="button"
@@ -57,7 +53,6 @@ export const ChatsPage: FC = () => {
           </button>
         </div>
 
-        {/* Subtle status indicator */}
         <div className="flex items-center gap-2 text-xs text-zinc-500 font-mono pt-4">
           <MessageCircle className="w-3.5 h-3.5 text-zinc-600" />
           <span>No active chat selected</span>

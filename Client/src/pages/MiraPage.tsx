@@ -21,7 +21,6 @@ export const MiraPage: FC = () => {
       id="page-content-mira"
       className="relative flex flex-col items-center justify-center h-full w-full overflow-hidden select-none"
     >
-      {/* Ambient background glow */}
       <div className="absolute w-[450px] h-[450px] bg-cyan-500/10 rounded-full blur-[120px] pointer-events-none -z-10" />
 
       <div className="flex flex-col items-center gap-5 text-center z-10 px-6 max-w-lg">

@@ -41,7 +41,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedGroup, setCopiedGroup] = useState<string | null>(null);
 
-  // Mutations
   const deleteMutation = useDeleteConsumerGroupMutation();
   const cleanMutation = useCleanPendingMessagesMutation();
   const formatMutation = useFormatRedisMutation();
@@ -49,13 +48,11 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
   const actionLoading =
     deleteMutation.isPending || cleanMutation.isPending || formatMutation.isPending;
 
-  // Modals state
   const [deleteTarget, setDeleteTarget] = useState<ConsumerGroup | null>(null);
   const [cleanTarget, setCleanTarget] = useState<ConsumerGroup | null>(null);
   const [isCleanAllOpen, setIsCleanAllOpen] = useState(false);
   const [isFormatOpen, setIsFormatOpen] = useState(false);
 
-  // Toast / feedback message
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
     text: string;
@@ -68,7 +65,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
     }, 4500);
   };
 
-  // Filter groups by search query
   const filteredGroups = useMemo(() => {
     if (!searchQuery.trim()) return groups;
     const q = searchQuery.toLowerCase().trim();
@@ -80,7 +76,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
     );
   }, [groups, searchQuery]);
 
-  // Aggregate metrics
   const totalPending = useMemo(
     () => groups.reduce((acc, g) => acc + (g.pending_messages_count || 0), 0),
     [groups]
@@ -97,7 +92,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
     setTimeout(() => setCopiedGroup(null), 2000);
   };
 
-  // Handle Delete
   const handleConfirmDelete = async () => {
     if (!deleteTarget) return;
     try {
@@ -116,7 +110,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
     }
   };
 
-  // Handle Clean Single
   const handleConfirmCleanSingle = async () => {
     if (!cleanTarget) return;
     try {
@@ -138,7 +131,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
     }
   };
 
-  // Handle Clean All
   const handleConfirmCleanAll = async () => {
     try {
       const res: CleanResult = await cleanMutation.mutateAsync({});
@@ -156,7 +148,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
     }
   };
 
-  // Handle Format Redis
   const handleConfirmFormat = async () => {
     try {
       const res: FormatResult = await formatMutation.mutateAsync();
@@ -176,7 +167,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
 
   return (
     <div className="w-full space-y-5">
-      {/* Feedback Alert */}
       {feedback && (
         <div
           className={cn(
@@ -201,7 +191,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
         </div>
       )}
 
-      {/* Overview Metrics Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
         <div className="rounded-xl border border-white/[0.08] bg-zinc-900/50 backdrop-blur-sm p-4 relative overflow-hidden">
           <div className="flex items-center justify-between text-zinc-400 mb-2">
@@ -249,9 +238,7 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
         </div>
       </div>
 
-      {/* Controls & Operations Bar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 rounded-2xl border border-white/[0.08] bg-zinc-900/60 backdrop-blur-md">
-        {/* Search */}
         <div className="relative flex-1 max-w-md">
           <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
@@ -263,7 +250,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
           />
         </div>
 
-        {/* Global Operations: Clean All, Format, Refresh */}
         <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap">
           <button
             type="button"
@@ -282,7 +268,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
             <span>{isBusy ? "Refreshing..." : "Refresh"}</span>
           </button>
 
-          {/* Clean Pending Button */}
           <button
             type="button"
             onClick={() => setIsCleanAllOpen(true)}
@@ -294,7 +279,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
             Clean All Pending
           </button>
 
-          {/* Format Redis Button */}
           <button
             type="button"
             onClick={() => setIsFormatOpen(true)}
@@ -308,7 +292,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
         </div>
       </div>
 
-      {/* Consumer Groups List Table */}
       <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/60 backdrop-blur-md overflow-hidden shadow-xl">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
@@ -349,7 +332,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
                       key={`${group.stream_name}-${group.group_name}`}
                       className="hover:bg-white/[0.02] transition-colors group"
                     >
-                      {/* Group Name */}
                       <td className="py-3 px-4 font-mono">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-zinc-100 group-hover:text-red-400 transition-colors">
@@ -373,14 +355,12 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
                         </div>
                       </td>
 
-                      {/* Stream Name */}
                       <td className="py-3 px-4 font-mono text-zinc-400 text-[11px]">
                         <span className="px-2 py-0.5 rounded bg-white/[0.03] border border-white/[0.06] text-zinc-300">
                           {group.stream_name}
                         </span>
                       </td>
 
-                      {/* Active Messages Count */}
                       <td className="py-3 px-3 text-center">
                         <span
                           className={cn(
@@ -394,7 +374,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
                         </span>
                       </td>
 
-                      {/* Pending Messages Count */}
                       <td className="py-3 px-3 text-center">
                         <span
                           className={cn(
@@ -408,14 +387,12 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
                         </span>
                       </td>
 
-                      {/* Workers count */}
                       <td className="py-3 px-3 text-center">
                         <span className="font-mono text-zinc-300">
                           {group.consumers_count ?? 0}
                         </span>
                       </td>
 
-                      {/* Last Delivered ID */}
                       <td className="py-3 px-4 font-mono text-zinc-400 text-[11px]">
                         <span className="text-zinc-500 flex items-center gap-1">
                           <Clock className="w-3 h-3 text-zinc-600" />
@@ -423,10 +400,8 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
                         </span>
                       </td>
 
-                      {/* Row Action Buttons */}
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          {/* Clean Group Button */}
                           <button
                             type="button"
                             onClick={() => setCleanTarget(group)}
@@ -438,7 +413,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
                             Clean
                           </button>
 
-                          {/* Delete Group Button */}
                           <button
                             type="button"
                             onClick={() => setDeleteTarget(group)}
@@ -460,9 +434,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
         </div>
       </div>
 
-      {/* Confirmation Modals */}
-
-      {/* 1. Delete Consumer Group Modal */}
       <ConfirmModal
         isOpen={Boolean(deleteTarget)}
         onClose={() => setDeleteTarget(null)}
@@ -486,7 +457,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
         isLoading={actionLoading}
       />
 
-      {/* 2. Clean Consumer Group Pending Messages Modal */}
       <ConfirmModal
         isOpen={Boolean(cleanTarget)}
         onClose={() => setCleanTarget(null)}
@@ -510,7 +480,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
         isLoading={actionLoading}
       />
 
-      {/* 3. Clean ALL Consumer Groups Modal */}
       <ConfirmModal
         isOpen={isCleanAllOpen}
         onClose={() => setIsCleanAllOpen(false)}
@@ -529,7 +498,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
         isLoading={actionLoading}
       />
 
-      {/* 4. Format Redis Modal (Clear all Redis streams and related data) */}
       <ConfirmModal
         isOpen={isFormatOpen}
         onClose={() => setIsFormatOpen(false)}

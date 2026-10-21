@@ -44,10 +44,8 @@ export const StoredDateRangeCard: FC<StoredDateRangeCardProps> = ({
 
   return (
     <div className="rounded-3xl border border-white/[0.08] bg-zinc-900/60 p-6 sm:p-8 backdrop-blur-xl shadow-xl relative overflow-hidden space-y-6">
-      {/* Background ambient lighting */}
       <div className="absolute top-0 right-10 w-72 h-72 bg-cyan-500/5 rounded-full blur-[80px] pointer-events-none" />
 
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/[0.06]">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.15)]">
@@ -63,7 +61,6 @@ export const StoredDateRangeCard: FC<StoredDateRangeCardProps> = ({
           </div>
         </div>
 
-        {/* Security badge & Actions */}
         <div className="flex items-center gap-3">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20">
             <ShieldCheck className="w-3.5 h-3.5" />
@@ -87,9 +84,7 @@ export const StoredDateRangeCard: FC<StoredDateRangeCardProps> = ({
 
       {dataRange.hasData ? (
         <div className="space-y-4">
-          {/* Unified, Non-Repetitive Date Range Showcase */}
           <div className="p-6 sm:p-7 rounded-2xl bg-zinc-950/70 border border-white/[0.06] flex flex-col md:flex-row items-center justify-between gap-6 shadow-inner">
-            {/* Start Boundary */}
             <div className="flex-1 text-center md:text-left space-y-1">
               <span className="text-[11px] font-mono text-zinc-500 uppercase tracking-wider block">
                 From Date (Earliest Capture)
@@ -102,7 +97,6 @@ export const StoredDateRangeCard: FC<StoredDateRangeCardProps> = ({
               </p>
             </div>
 
-            {/* Central Timeline Span Pill */}
             <div className="flex flex-col items-center justify-center px-4 py-2 shrink-0">
               <div className="flex items-center gap-2 text-xs sm:text-sm font-mono font-bold text-cyan-300 bg-cyan-500/15 px-4 py-1.5 rounded-full border border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.15)] mb-1.5">
                 <Clock className="w-4 h-4 text-cyan-400" />
@@ -114,7 +108,6 @@ export const StoredDateRangeCard: FC<StoredDateRangeCardProps> = ({
               </div>
             </div>
 
-            {/* End Boundary */}
             <div className="flex-1 text-center md:text-right space-y-1">
               <span className="text-[11px] font-mono text-zinc-500 uppercase tracking-wider block">
                 To Date (Latest Capture)
@@ -128,7 +121,6 @@ export const StoredDateRangeCard: FC<StoredDateRangeCardProps> = ({
             </div>
           </div>
 
-          {/* Privacy & Storage Guarantee Note */}
           <div className="flex items-center gap-2.5 p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-xs text-zinc-400">
             <HardDrive className="w-4 h-4 text-zinc-500 shrink-0" />
             <span>

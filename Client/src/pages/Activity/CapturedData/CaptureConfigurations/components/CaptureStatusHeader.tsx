@@ -39,26 +39,22 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-r from-cyan-950/25 via-zinc-900/60 to-blue-950/25 p-4 sm:p-6 backdrop-blur-xl shadow-xl">
-      {/* Background ambient lighting */}
       <div className="absolute -top-24 -left-24 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-24 -right-24 w-72 h-72 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
 
       <div className="relative z-10 flex flex-col xl:flex-row xl:items-center justify-between gap-5">
-        {/* Left: Module Identity & Status Badge */}
         <div className="flex items-start gap-3 sm:gap-4 min-w-0">
           <div className="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/25 text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.15)] shrink-0">
             <MonitorPlay className="w-6 h-6 sm:w-7 sm:h-7" />
           </div>
 
           <div className="space-y-1.5 min-w-0">
-            {/* Header Title & Badges */}
             <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white shrink-0 whitespace-nowrap">
                 Capture Configurations
               </h1>
 
               <div className="flex items-center gap-2 shrink-0">
-                {/* Status Badge: Started vs Stopped with integrated Refresh action */}
                 <div
                   id="capture-status-badge"
                   className={cn(
@@ -83,7 +79,6 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
                     </>
                   )}
 
-                  {/* Integrated Refresh Status Button */}
                   {onRefresh && (
                     <button
                       type="button"
@@ -103,7 +98,6 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
                   )}
                 </div>
 
-                {/* Vault Config tag */}
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono text-zinc-400 bg-white/[0.04] border border-white/[0.06] shrink-0 whitespace-nowrap select-none">
                   <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                   <span>Vault Managed</span>
@@ -118,9 +112,7 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
           </div>
         </div>
 
-        {/* Right Controls: Auto-Start Toggle Switch & Start/Stop Button */}
         <div className="flex items-center gap-3 shrink-0 self-start xl:self-center flex-wrap sm:flex-nowrap">
-          {/* Sleek Auto-Start Switch */}
           <button
             type="button"
             id="btn-toggle-auto-start"
@@ -171,7 +163,6 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
               </div>
             </div>
 
-            {/* Sliding toggle switch track */}
             <div
               className={cn(
                 "relative w-9 h-5 rounded-full transition-colors duration-200 p-0.5 shrink-0",
@@ -191,7 +182,6 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
             </div>
           </button>
 
-          {/* Start / Stop Immediate Capture Button */}
           <button
             type="button"
             id="btn-toggle-capture-status"

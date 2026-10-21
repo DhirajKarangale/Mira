@@ -18,10 +18,6 @@ import type {
   AppPermission,
 } from "./types";
 
-/**
- * Query hook for Operator configuration stored in Vault.
- * Stale time: 1 minute.
- */
 export function useOperatorConfigQuery() {
   return useQuery<OperatorConfigResponse>({
     queryKey: QUERY_KEYS.operator.config,
@@ -30,10 +26,6 @@ export function useOperatorConfigQuery() {
   });
 }
 
-/**
- * Operator capturing status query.
- * Cached for 15 minutes; manual button and mutations handle state changes with zero unnecessary network traffic.
- */
 export function useOperatorStatusQuery() {
   return useQuery<OperatorStatusResponse>({
     queryKey: QUERY_KEYS.operator.status,
@@ -42,9 +34,6 @@ export function useOperatorStatusQuery() {
   });
 }
 
-/**
- * Mutation hook for updating Operator config in Vault (AUTO_START, CAPTURE_INTERVAL_SECS).
- */
 export function useUpdateOperatorConfigMutation() {
   const queryClient = useQueryClient();
 
@@ -58,11 +47,6 @@ export function useUpdateOperatorConfigMutation() {
   });
 }
 
-/**
- * Mutation hook for toggling Operator capturing (Started <-> Stopped).
- * Applies optimistic update on status for instant zero-latency UI feedback,
- * then reconciles with Operator's actual status.
- */
 export function useToggleCaptureMutation() {
   const queryClient = useQueryClient();
 
@@ -98,9 +82,6 @@ export function useToggleCaptureMutation() {
   });
 }
 
-/**
- * Mutation hook for updating live capture interval in Operator.
- */
 export function useSyncIntervalMutation() {
   const queryClient = useQueryClient();
 
@@ -113,11 +94,6 @@ export function useSyncIntervalMutation() {
   });
 }
 
-/**
- * Query hook for all discovered applications and their capture permission statuses.
- * refetchOnMount: true ensures fresh app permissions are retrieved on navigation,
- * preventing stale single-app cache entries.
- */
 export function useAppPermissionsQuery() {
   return useQuery<AppPermission[]>({
     queryKey: QUERY_KEYS.operator.apps,
@@ -127,10 +103,6 @@ export function useAppPermissionsQuery() {
   });
 }
 
-/**
- * Mutation hook for triggering discovery and refresh of system applications.
- * Automatically synchronizes with Vault and updates cached permissions.
- */
 export function useRefreshAppPermissionsMutation() {
   const queryClient = useQueryClient();
 
@@ -142,10 +114,6 @@ export function useRefreshAppPermissionsMutation() {
   });
 }
 
-/**
- * Mutation hook for updating an application's capture permission status.
- * Applies instantaneous optimistic UI feedback, then synchronizes with Operator and Vault.
- */
 export function useUpdateAppPermissionMutation() {
   const queryClient = useQueryClient();
 
@@ -185,4 +153,3 @@ export function useUpdateAppPermissionMutation() {
     },
   });
 }
-

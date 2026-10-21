@@ -34,10 +34,8 @@ export const ContactSection: FC = () => {
 
   return (
     <div className="rounded-3xl border border-white/[0.08] bg-zinc-900/60 p-6 sm:p-8 backdrop-blur-xl shadow-xl relative overflow-hidden space-y-6">
-      {/* Background ambient lighting */}
       <div className="absolute top-0 right-1/4 w-72 h-72 bg-emerald-500/5 rounded-full blur-[80px] pointer-events-none" />
 
-      {/* Header */}
       <div className="flex items-center gap-3 pb-4 border-b border-white/[0.06]">
         <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
           <MessageSquare className="w-5 h-5" />
@@ -52,7 +50,6 @@ export const ContactSection: FC = () => {
         </div>
       </div>
 
-      {/* Category Pillars */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
         {categories.map((cat) => {
           const Icon = cat.icon;
@@ -73,7 +70,6 @@ export const ContactSection: FC = () => {
         })}
       </div>
 
-      {/* Email Contact CTA Banner */}
       <div className="p-5 sm:p-6 rounded-2xl bg-gradient-to-r from-emerald-950/30 via-zinc-950/80 to-cyan-950/30 border border-emerald-500/20 flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-3.5 text-center sm:text-left">
           <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0 hidden sm:flex">

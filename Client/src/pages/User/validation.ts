@@ -1,23 +1,10 @@
 import type { UserFormState, UserFormField, UserFormErrors } from "./types";
 
-/**
- * Validation patterns for User form fields.
- */
-// Letters, spaces, apostrophes, and hyphens (supporting international Latin characters)
 const NAME_REGEX = /^[a-zA-ZÀ-ÿ\s'-]+$/;
-
-// Standard RFC-compliant email address pattern
 const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
-
-// Phone number: optional leading +, digits, spaces, parentheses, hyphens
 const PHONE_CHARS_REGEX = /^\+?[\d\s().-]+$/;
-
-// Location names (City, State, Country): letters, spaces, hyphens, apostrophes, periods
 const LOCATION_NAME_REGEX = /^[a-zA-ZÀ-ÿ\s.'-]+$/;
 
-/**
- * Validates a single field and returns an error message if invalid, or undefined if valid.
- */
 export function validateField(field: UserFormField, value: string): string | undefined {
   const trimmed = value.trim();
 
@@ -121,9 +108,6 @@ export function validateField(field: UserFormField, value: string): string | und
   }
 }
 
-/**
- * Validates all fields in the form and returns a map of errors.
- */
 export function validateUserForm(values: UserFormState): UserFormErrors {
   const errors: UserFormErrors = {};
   const fields: UserFormField[] = [
@@ -145,9 +129,6 @@ export function validateUserForm(values: UserFormState): UserFormErrors {
   return errors;
 }
 
-/**
- * Checks whether the entire form is valid (no errors and all required fields populated).
- */
 export function isFormValid(errors: UserFormErrors, values: UserFormState): boolean {
   const fields: UserFormField[] = [
     "user_name",
@@ -158,11 +139,9 @@ export function isFormValid(errors: UserFormErrors, values: UserFormState): bool
     "country",
   ];
 
-  // Must not have any active error
   const hasErrors = fields.some((f) => !!errors[f]);
   if (hasErrors) return false;
 
-  // All fields must be non-empty and pass validateField
   for (const field of fields) {
     const value = values[field]?.trim() ?? "";
     if (!value) return false;

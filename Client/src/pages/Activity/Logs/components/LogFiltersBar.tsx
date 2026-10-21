@@ -91,7 +91,6 @@ export const LogFiltersBar: FC<LogFiltersBarProps> = ({
   const [isModuleOpen, setIsModuleOpen] = useState(false);
   const moduleDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close module dropdown on outside click or on Escape
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (
@@ -131,7 +130,6 @@ export const LogFiltersBar: FC<LogFiltersBarProps> = ({
   return (
     <div className="relative z-30 flex flex-col gap-2 p-3 sm:p-4 bg-zinc-950/80 border-b border-white/[0.08] backdrop-blur-md shrink-0">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        {/* 1. Text Search (Debounced, without 'debounced' in placeholder) */}
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400 pointer-events-none" />
           <input
@@ -154,7 +152,6 @@ export const LogFiltersBar: FC<LogFiltersBarProps> = ({
           )}
         </div>
 
-        {/* 2. Custom Sleek Calendar Range Picker (No text editing, 100% point-and-click) */}
         <LogDateRangePicker
           startDate={filters.startDate}
           endDate={filters.endDate}
@@ -162,7 +159,6 @@ export const LogFiltersBar: FC<LogFiltersBarProps> = ({
           disabled={loading}
         />
 
-        {/* 3. Custom Sleek Module Select Dropdown */}
         <div className="relative" ref={moduleDropdownRef}>
           <button
             type="button"
@@ -191,7 +187,6 @@ export const LogFiltersBar: FC<LogFiltersBarProps> = ({
             />
           </button>
 
-          {/* Custom Dropdown Menu with Glassmorphism */}
           {isModuleOpen && (
             <div className="absolute top-full left-0 mt-2 z-50 min-w-[260px] py-1.5 bg-[#0b101b]/98 backdrop-blur-xl border border-cyan-500/30 rounded-lg shadow-[0_16px_40px_rgba(0,0,0,0.85),0_0_20px_rgba(6,182,212,0.18)] animate-in fade-in-0 zoom-in-95 duration-150 select-none">
               <div className="flex items-center justify-between px-3 py-1 border-b border-white/[0.08] mb-1">
@@ -262,9 +257,7 @@ export const LogFiltersBar: FC<LogFiltersBarProps> = ({
           )}
         </div>
 
-        {/* 4. Filter Reset Icon Button + Refresh Action with Animating Circle */}
         <div className="flex items-center gap-2 ml-auto">
-          {/* Requirement 5: For filter reset just show filter button. When filters are selected, show one dot. On click, reset filters. */}
           <button
             type="button"
             id="btn-filter-reset"
@@ -288,7 +281,6 @@ export const LogFiltersBar: FC<LogFiltersBarProps> = ({
             )}
           </button>
 
-          {/* Refresh Action rotating until complete and locking clicks */}
           <button
             type="button"
             id="btn-refresh-logs"

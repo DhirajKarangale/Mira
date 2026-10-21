@@ -32,9 +32,6 @@ export const SERVICE_ENDPOINTS: Record<string, string> = {
     "",
 };
 
-/**
- * Create a configured Axios instance for a given base URL.
- */
 export function createServiceClient(
   baseURL: string,
   config?: AxiosRequestConfig
@@ -59,7 +56,6 @@ export function createServiceClient(
   return instance;
 }
 
-// Pre-configured Axios service clients for MIRA
 export const messageBrokerApi = createServiceClient(SERVICE_ENDPOINTS.messageBroker);
 export const vaultApi = createServiceClient(SERVICE_ENDPOINTS.vault);
 export const operatorApi = createServiceClient(SERVICE_ENDPOINTS.operator);
@@ -88,8 +84,3 @@ export function updateServiceEndpoints(urls: Record<string, string>) {
     }
   }
 }
-
-// Default API client (points to Message Broker by default as per architecture)
-export const apiClient = messageBrokerApi;
-
-export default axios;

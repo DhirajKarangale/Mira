@@ -18,24 +18,12 @@ export interface OperatorActionResponse {
   capture_interval_secs?: number;
 }
 
-/**
- * Centralized Operator API Service
- * Single source of truth for all communications with the Rust Operator service.
- */
 export const operatorService = {
-  /**
-   * Fetch health status of the Operator service.
-   * Canonical: GET /health
-   */
   async getHealth(): Promise<{ service: string; status: string }> {
     const response = await operatorApi.get<{ service: string; status: string }>("/health");
     return response.data;
   },
 
-  /**
-   * Fetch current live status of the screen capture engine.
-   * Canonical: GET /status
-   */
   async getStatus(): Promise<OperatorStatusResponse> {
     try {
       const response = await operatorApi.get<OperatorStatusResponse>("/status");
@@ -62,37 +50,21 @@ export const operatorService = {
     }
   },
 
-  /**
-   * Start automated background screen capture loop.
-   * Canonical: POST /start
-   */
   async startCapture(): Promise<OperatorActionResponse> {
     const response = await operatorApi.post<OperatorActionResponse>("/start");
     return response.data;
   },
 
-  /**
-   * Stop automated background screen capture loop.
-   * Canonical: POST /stop
-   */
   async stopCapture(): Promise<OperatorActionResponse> {
     const response = await operatorApi.post<OperatorActionResponse>("/stop");
     return response.data;
   },
 
-  /**
-   * Get current capture interval setting directly from Operator runtime.
-   * Canonical: GET /interval
-   */
   async getInterval(): Promise<OperatorIntervalResponse> {
     const response = await operatorApi.get<OperatorIntervalResponse>("/interval");
     return response.data;
   },
 
-  /**
-   * Update capture interval setting in Operator runtime.
-   * Canonical: POST /interval
-   */
   async updateInterval(seconds: number): Promise<OperatorIntervalResponse> {
     const response = await operatorApi.post<OperatorIntervalResponse>("/interval", {
       capture_interval_secs: seconds,
@@ -100,18 +72,10 @@ export const operatorService = {
     return response.data;
   },
 
-  /**
-   * Delete an archived local screenshot file.
-   * Canonical: POST /delete
-   */
   async deleteScreenshot(imagePath: string): Promise<void> {
     await operatorApi.post("/delete", { image_path: imagePath });
   },
 
-  /**
-   * Fetch all system applications and their capture permission status.
-   * Canonical: GET /apps (Operator primary, Vault fallback)
-   */
   async getApps(): Promise<AppPermission[]> {
     try {
       const response = await operatorApi.get<AppPermission[]>("/apps");
@@ -122,10 +86,6 @@ export const operatorService = {
     }
   },
 
-  /**
-   * Trigger discovery of installed applications and synchronize with Vault.
-   * Canonical: POST /apps/refresh
-   */
   async refreshApps(): Promise<RefreshAppsResponse> {
     try {
       const response = await operatorApi.post<RefreshAppsResponse>("/apps/refresh");
@@ -136,10 +96,6 @@ export const operatorService = {
     }
   },
 
-  /**
-   * Update an application's allowed_to_capture permission status.
-   * Canonical: POST /apps/permission
-   */
   async updateAppPermission(
     appId: string,
     allowedToCapture: boolean

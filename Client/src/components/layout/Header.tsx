@@ -18,7 +18,6 @@ export const Header: FC = () => {
       data-tauri-drag-region
       className="relative flex items-center justify-between h-10 px-3 bg-zinc-950/80 backdrop-blur-md border-b border-white/[0.08] select-none z-50 text-xs shrink-0"
     >
-      {/* Left side: Clickable MIRA Client Brand Button */}
       <button
         type="button"
         id="nav-item-mira"
@@ -68,13 +67,11 @@ export const Header: FC = () => {
           </span>
         </div>
 
-        {/* Subtle active indicator bar at the bottom */}
         {isMiraActive && (
           <span className="absolute bottom-0 left-2 right-2 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent rounded-full" />
         )}
       </button>
 
-      {/* Middle: Navigation Items */}
       <div
         className="flex-1 flex items-center overflow-x-auto no-scrollbar"
         data-tauri-drag-region
@@ -82,7 +79,6 @@ export const Header: FC = () => {
         <NavTabs />
       </div>
 
-      {/* Right side: Native Window Controls */}
       <div className="flex items-center ml-2 -mr-3 h-full">
         <WindowControls />
       </div>

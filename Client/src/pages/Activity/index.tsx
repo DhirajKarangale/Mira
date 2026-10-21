@@ -34,7 +34,6 @@ export const HistoryPage: FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Extract active subtab from current URL e.g. /activity/redis -> "redis"
   const segments = location.pathname.split("/").filter(Boolean);
   const activeSubTab = segments[1] || "captured-data";
 
@@ -43,17 +42,15 @@ export const HistoryPage: FC = () => {
       id="page-activity-container"
       className="flex h-full w-full overflow-hidden select-none"
     >
-      {/* Activity Sidebar for subpages */}
       <Sidebar
         items={HISTORY_SIDEBAR_ITEMS}
-        activeKey={activeSubTab === "message-broker-data" ? "redis" : activeSubTab}
+        activeKey={activeSubTab}
         onSelect={(key) => navigate(`/activity/${key}`)}
         title="Activity"
         defaultCollapsed={false}
         className="border-r border-white/[0.06] bg-zinc-950/60"
       />
 
-      {/* Activity Subpage Viewport Managed by React Router */}
       <div
         id="activity-subpage-viewport"
         className="flex-1 relative h-full w-full overflow-hidden"
@@ -64,7 +61,6 @@ export const HistoryPage: FC = () => {
           <Route path="chats" element={<ChatsPage />} />
           <Route path="logs/*" element={<LogsPage />} />
           <Route path="redis/*" element={<RedisPage />} />
-          <Route path="message-broker-data" element={<Navigate to="/activity/redis" replace />} />
           <Route path="*" element={<Navigate to="captured-data" replace />} />
         </Routes>
       </div>

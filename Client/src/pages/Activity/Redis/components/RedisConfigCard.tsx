@@ -45,7 +45,6 @@ export const RedisConfigCard: FC = () => {
     text: string;
   } | null>(null);
 
-  // Synchronize draft when config updates from Vault
   useEffect(() => {
     if (config) {
       setDraft(config);
@@ -65,7 +64,6 @@ export const RedisConfigCard: FC = () => {
     }));
   };
 
-  // Clamped and validated Port input handlers
   const handlePortChange = (raw: string) => {
     const digits = raw.replace(/[^0-9]/g, "");
     if (digits === "") {
@@ -101,7 +99,6 @@ export const RedisConfigCard: FC = () => {
     setDraft((prev) => ({ ...prev, REDIS_PORT: next }));
   };
 
-  // Clamped and validated DB input handlers
   const handleDbChange = (raw: string) => {
     const digits = raw.replace(/[^0-9]/g, "");
     if (digits === "") {
@@ -147,7 +144,6 @@ export const RedisConfigCard: FC = () => {
     if (!hasChanges || saving) return;
     setStatusMessage(null);
 
-    // Ensure port and db are strictly clamped before save
     const validPort = Math.min(65535, Math.max(1, Number(draft.REDIS_PORT) || 6379));
     const validDb = Math.min(15, Math.max(0, Number(draft.REDIS_DB) || 0));
 
@@ -193,7 +189,6 @@ export const RedisConfigCard: FC = () => {
 
   return (
     <div className="w-full max-w-5xl mx-auto space-y-6">
-      {/* Top Banner / Status */}
       {statusMessage && (
         <div
           className={cn(
@@ -225,7 +220,6 @@ export const RedisConfigCard: FC = () => {
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Section 1: Redis Instance Settings */}
           <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/60 backdrop-blur-md p-6 shadow-xl relative overflow-hidden">
             <div className="absolute top-0 right-0 w-80 h-80 bg-red-500/5 rounded-full blur-[80px] pointer-events-none" />
 
@@ -248,7 +242,6 @@ export const RedisConfigCard: FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {/* REDIS_HOST */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
                   REDIS_HOST
@@ -265,7 +258,6 @@ export const RedisConfigCard: FC = () => {
                 <p className="text-[11px] text-zinc-500">Hostname or IPv4/IPv6 address of the Redis server</p>
               </div>
 
-              {/* REDIS_PORT with Custom Dark Stepper and Clamping */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
@@ -297,7 +289,6 @@ export const RedisConfigCard: FC = () => {
                     )}
                   </div>
 
-                  {/* Dark-mode custom stepper (+ / -) */}
                   <div className="flex items-center bg-zinc-950/80 border border-white/[0.1] rounded-xl p-0.5 shadow-inner">
                     <button
                       type="button"
@@ -321,7 +312,6 @@ export const RedisConfigCard: FC = () => {
                     </button>
                   </div>
 
-                  {/* Quick reset to 6379 button if changed */}
                   {draft.REDIS_PORT !== 6379 && (
                     <button
                       type="button"
@@ -339,7 +329,6 @@ export const RedisConfigCard: FC = () => {
                 <p className="text-[11px] text-zinc-500">TCP port number (automatically clamped between 1 and 65535)</p>
               </div>
 
-              {/* REDIS_DB with Custom Dark Stepper and Presets */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
@@ -365,7 +354,6 @@ export const RedisConfigCard: FC = () => {
                     />
                   </div>
 
-                  {/* Dark-mode custom stepper (+ / -) */}
                   <div className="flex items-center bg-zinc-950/80 border border-white/[0.1] rounded-xl p-0.5 shadow-inner">
                     <button
                       type="button"
@@ -389,7 +377,6 @@ export const RedisConfigCard: FC = () => {
                     </button>
                   </div>
 
-                  {/* Quick DB preset buttons (0, 1, 2) */}
                   <div className="flex items-center gap-1">
                     {[0, 1, 2].map((dbNum) => (
                       <button
@@ -415,7 +402,6 @@ export const RedisConfigCard: FC = () => {
                 <p className="text-[11px] text-zinc-500">Database index number (0 to 15, default: 0)</p>
               </div>
 
-              {/* REDIS_PASSWORD */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
                   REDIS_PASSWORD
@@ -445,7 +431,6 @@ export const RedisConfigCard: FC = () => {
                 <p className="text-[11px] text-zinc-500">Authentication password for protected Redis instances</p>
               </div>
 
-              {/* REDIS_PROTOCOL */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
                   REDIS_PROTOCOL
@@ -484,7 +469,6 @@ export const RedisConfigCard: FC = () => {
                 </p>
               </div>
 
-              {/* REDIS_DECODE_RESPONSES */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
                   REDIS_DECODE_RESPONSES
@@ -514,7 +498,6 @@ export const RedisConfigCard: FC = () => {
             </div>
           </div>
 
-          {/* Section 2: Server Host & Reload Settings */}
           <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/60 backdrop-blur-md p-6 shadow-xl relative overflow-hidden">
             <div className="flex items-center justify-between pb-5 mb-5 border-b border-white/[0.06]">
               <div className="flex items-center gap-3">
@@ -531,7 +514,6 @@ export const RedisConfigCard: FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {/* SERVER_HOST */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
                   SERVER_HOST
@@ -546,7 +528,6 @@ export const RedisConfigCard: FC = () => {
                 <p className="text-[11px] text-zinc-500">Interface host address for Message Broker (e.g. 127.0.0.1 or 0.0.0.0)</p>
               </div>
 
-              {/* SERVER_RELOAD */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
                   SERVER_RELOAD
@@ -574,7 +555,6 @@ export const RedisConfigCard: FC = () => {
             </div>
           </div>
 
-          {/* Action Bar */}
           <div className="flex items-center justify-between p-4 rounded-2xl border border-white/[0.08] bg-zinc-900/40 backdrop-blur-md">
             <div className="flex items-center gap-2">
               <button

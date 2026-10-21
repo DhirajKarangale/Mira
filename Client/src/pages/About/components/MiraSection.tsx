@@ -42,10 +42,8 @@ export const MiraSection: FC = () => {
 
   return (
     <div className="rounded-3xl border border-white/[0.08] bg-zinc-900/60 p-6 sm:p-8 backdrop-blur-xl shadow-xl relative overflow-hidden space-y-6">
-      {/* Background glow accent */}
       <div className="absolute top-0 left-1/3 w-80 h-80 bg-blue-500/5 rounded-full blur-[90px] pointer-events-none" />
 
-      {/* Header */}
       <div className="flex items-center gap-3 pb-4 border-b border-white/[0.06]">
         <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
           <Cpu className="w-5 h-5" />
@@ -58,7 +56,6 @@ export const MiraSection: FC = () => {
         </div>
       </div>
 
-      {/* Overview Paragraph */}
       <div className="space-y-3 text-sm text-zinc-300 leading-relaxed font-normal">
         <p>
           <strong className="text-white font-semibold">MIRA</strong> is an autonomous, multi-agent AI architecture engineered to bridge local desktop automation, high-speed vision/operator loops, and intelligent reasoning engines. Rather than a monolithic process, MIRA is architected as an event-driven constellation of decoupled microservices communicating across low-latency streams.
@@ -68,7 +65,6 @@ export const MiraSection: FC = () => {
         </p>
       </div>
 
-      {/* Modular Microservice Architecture Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-1">
         {modules.map((mod) => {
           const Icon = mod.icon;

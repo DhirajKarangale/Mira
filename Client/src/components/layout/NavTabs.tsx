@@ -66,7 +66,6 @@ export const NavTabs: FC = () => {
             />
             <span className="tracking-wide">{item.label}</span>
 
-            {/* Subtle active indicator bar at the bottom */}
             {isActive && (
               <span className="absolute bottom-0 left-2 right-2 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent rounded-full" />
             )}

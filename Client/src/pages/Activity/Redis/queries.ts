@@ -10,10 +10,6 @@ import {
 import { QUERY_KEYS } from "@/lib/queryClient";
 import type { RedisConfig, ConsumerGroup } from "./types";
 
-/**
- * Query hook for Redis server configurations stored in Vault.
- * Stale time: 5 minutes.
- */
 export function useRedisConfigQuery() {
   return useQuery<RedisConfig>({
     queryKey: QUERY_KEYS.redis.config,
@@ -22,10 +18,6 @@ export function useRedisConfigQuery() {
   });
 }
 
-/**
- * Query hook for Redis consumer groups and stream counts from Message Broker.
- * Cached for 15 minutes. Manual refresh button in ConsumerGroupsCard and mutations handle updates.
- */
 export function useConsumerGroupsQuery() {
   return useQuery<ConsumerGroup[]>({
     queryKey: QUERY_KEYS.redis.consumerGroups,
@@ -34,9 +26,6 @@ export function useConsumerGroupsQuery() {
   });
 }
 
-/**
- * Mutation hook for updating Redis configuration in Vault.
- */
 export function useUpdateRedisConfigMutation() {
   const queryClient = useQueryClient();
 
@@ -49,9 +38,6 @@ export function useUpdateRedisConfigMutation() {
   });
 }
 
-/**
- * Mutation hook for deleting a Redis consumer group from a stream.
- */
 export function useDeleteConsumerGroupMutation() {
   const queryClient = useQueryClient();
 
@@ -64,9 +50,6 @@ export function useDeleteConsumerGroupMutation() {
   });
 }
 
-/**
- * Mutation hook for cleaning pending messages across streams or groups.
- */
 export function useCleanPendingMessagesMutation() {
   const queryClient = useQueryClient();
 
@@ -79,9 +62,6 @@ export function useCleanPendingMessagesMutation() {
   });
 }
 
-/**
- * Mutation hook for formatting / flushing Redis stream data.
- */
 export function useFormatRedisMutation() {
   const queryClient = useQueryClient();
 

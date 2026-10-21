@@ -25,12 +25,10 @@ export const AppsHeader: FC<AppsHeaderProps> = ({
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-r from-blue-950/25 via-zinc-900/60 to-purple-950/25 p-4 sm:p-6 backdrop-blur-xl shadow-xl">
-      {/* Background ambient lighting */}
       <div className="absolute -top-24 -left-24 w-72 h-72 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-24 -right-24 w-72 h-72 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
 
       <div className="relative z-10 flex flex-col xl:flex-row xl:items-center justify-between gap-5">
-        {/* Left: Identity and Description */}
         <div className="flex items-start gap-3 sm:gap-4 min-w-0">
           <div className="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-blue-500/10 border border-blue-500/25 text-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.15)] shrink-0">
             <AppWindow className="w-6 h-6 sm:w-7 sm:h-7" />
@@ -42,7 +40,6 @@ export const AppsHeader: FC<AppsHeaderProps> = ({
                 Capture Apps Configurations
               </h1>
 
-              {/* Stats badges */}
               <div className="flex items-center gap-2 shrink-0 flex-wrap">
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-white/[0.04] border border-white/[0.08] text-zinc-300">
                   <span className="font-mono">{totalApps}</span>
@@ -68,7 +65,6 @@ export const AppsHeader: FC<AppsHeaderProps> = ({
           </div>
         </div>
 
-        {/* Right Action: Refresh Apps Button */}
         <div className="flex items-center gap-3 shrink-0 self-start xl:self-center">
           <button
             type="button"

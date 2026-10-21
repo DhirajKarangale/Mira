@@ -7,7 +7,6 @@ export const ChatsPage: FC = () => {
       id="activity-subpage-chats"
       className="relative flex flex-col items-center justify-center h-full w-full overflow-hidden select-none"
     >
-      {/* Subtle ambient lighting */}
       <div className="absolute w-[400px] h-[400px] bg-blue-500/10 rounded-full blur-[100px] pointer-events-none -z-10" />
 
       <div className="flex flex-col items-center gap-4 text-center z-10 px-6">

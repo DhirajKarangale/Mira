@@ -19,17 +19,11 @@ const INITIAL_DEMO_RANGE: StoredDataRange = {
 };
 
 export const CaptureConfigurationsPage: FC = () => {
-  // Query Vault configuration for Operator (CAPTURE_INTERVAL_SECS, AUTO_START)
   const { data: vaultConfig } = useOperatorConfigQuery();
-
-  // Query Operator live status from cache (staleTime 15m, manual on-demand refresh)
   const { data: operatorStatus, isFetching: statusFetching, refetch: refetchStatus } = useOperatorStatusQuery();
-
-  // Mutations for config updates and start/stop toggling
   const updateConfigMutation = useUpdateOperatorConfigMutation();
   const toggleCaptureMutation = useToggleCaptureMutation();
 
-  // Derive active capturing execution status
   const status: CaptureStatus = useMemo(() => {
     if (!operatorStatus) return "Stopped";
     const isStarted = Boolean(
@@ -40,7 +34,6 @@ export const CaptureConfigurationsPage: FC = () => {
     return isStarted ? "Started" : "Stopped";
   }, [operatorStatus]);
 
-  // Derive capture interval: prefer Vault config, fallback to Operator live status, default to 10s
   const intervalSecs = useMemo(() => {
     if (typeof vaultConfig?.CAPTURE_INTERVAL_SECS === "number") {
       return vaultConfig.CAPTURE_INTERVAL_SECS;
@@ -51,18 +44,13 @@ export const CaptureConfigurationsPage: FC = () => {
     return 10;
   }, [vaultConfig, operatorStatus]);
 
-  // Derive autoStart setting from Vault
   const autoStart = Boolean(vaultConfig?.AUTO_START);
   const autoStartLoading = updateConfigMutation.isPending;
 
-  // Stored captured data date range & days count
   const [storedRange, setStoredRange] = useState<StoredDataRange>(INITIAL_DEMO_RANGE);
   const [deletedSuccess, setDeletedSuccess] = useState<boolean>(false);
-
-  // Modal state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  // Toggle capturing status: Started <-> Stopped directly via Operator mutation
   const handleToggleStatus = async () => {
     if (toggleCaptureMutation.isPending) return;
     const isCurrentlyStarted = status === "Started";
@@ -70,17 +58,14 @@ export const CaptureConfigurationsPage: FC = () => {
     await toggleCaptureMutation.mutateAsync(nextStatus);
   };
 
-  // Toggle Auto-Start setting in Vault silently
   const handleToggleAutoStart = async () => {
     await updateConfigMutation.mutateAsync({ AUTO_START: !autoStart });
   };
 
-  // Handle capture interval update in Vault and sync with Operator
   const handleUpdateInterval = async (newSecs: number) => {
     await updateConfigMutation.mutateAsync({ CAPTURE_INTERVAL_SECS: newSecs });
   };
 
-  // Handle deletion of all captured data
   const handleExecuteDelete = () => {
     setStoredRange({
       startDate: "",
@@ -97,7 +82,6 @@ export const CaptureConfigurationsPage: FC = () => {
       className="h-full w-full overflow-y-auto px-6 py-6 select-none bg-zinc-950/40 text-zinc-100"
     >
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Capturing Status Header with Started/Stopped Badge, Start/Stop Button, and Auto-Start Toggle */}
         <CaptureStatusHeader
           status={status}
           statusLoading={toggleCaptureMutation.isPending}
@@ -109,21 +93,18 @@ export const CaptureConfigurationsPage: FC = () => {
           refreshing={statusFetching}
         />
 
-        {/* Capture Interval Configuration Card */}
         <CaptureIntervalCard
           intervalSecs={intervalSecs}
           onUpdateInterval={handleUpdateInterval}
           isCapturing={status === "Started"}
         />
 
-        {/* Stored Captured Data Range */}
         <StoredDateRangeCard
           dataRange={storedRange}
           onRequestDeleteAll={() => setShowDeleteConfirm(true)}
           deletedSuccess={deletedSuccess}
         />
 
-        {/* Subtle footer info */}
         <div className="pt-4 pb-6 text-center text-xs text-zinc-500 font-mono flex items-center justify-center gap-2 flex-wrap">
           <span>Operator Engine</span>
           <span>•</span>
@@ -135,7 +116,6 @@ export const CaptureConfigurationsPage: FC = () => {
         </div>
       </div>
 
-      {/* Delete Confirmation Alert Modal */}
       <DeleteConfirmModal
         isOpen={showDeleteConfirm}
         totalDays={storedRange.totalDays}

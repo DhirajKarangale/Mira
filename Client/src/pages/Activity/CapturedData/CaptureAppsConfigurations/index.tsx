@@ -29,23 +29,19 @@ export const CaptureAppsConfigurationsPage: FC = () => {
     null
   );
 
-  // Derived counts
   const totalCount = apps.length;
   const allowedCount = useMemo(() => apps.filter((a) => a.allowed_to_capture).length, [apps]);
   const restrictedCount = totalCount - allowedCount;
 
-  // Filtered and searched application list
   const filteredApps = useMemo(() => {
     let result = apps;
 
-    // Filter by allowed / restricted tab
     if (activeFilter === "allowed") {
       result = result.filter((a) => a.allowed_to_capture);
     } else if (activeFilter === "restricted") {
       result = result.filter((a) => !a.allowed_to_capture);
     }
 
-    // Filter by search query
     const q = searchQuery.trim().toLowerCase();
     if (q) {
       result = result.filter(
@@ -58,7 +54,6 @@ export const CaptureAppsConfigurationsPage: FC = () => {
     return result;
   }, [apps, activeFilter, searchQuery]);
 
-  // Handle Refresh Apps action
   const handleRefreshApps = async () => {
     try {
       const res = await refreshMutation.mutateAsync();
@@ -78,7 +73,6 @@ export const CaptureAppsConfigurationsPage: FC = () => {
     }
   };
 
-  // Handle Toggle Permission on individual app
   const handleTogglePermission = async (appId: string, currentAllowed: boolean) => {
     try {
       await updateMutation.mutateAsync({
@@ -101,7 +95,6 @@ export const CaptureAppsConfigurationsPage: FC = () => {
       className="h-full w-full overflow-y-auto px-6 py-6 select-none bg-zinc-950/40 text-zinc-100"
     >
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header with Title, Stats Badges, and Refresh Button */}
         <AppsHeader
           totalApps={totalCount}
           allowedCount={allowedCount}
@@ -110,7 +103,6 @@ export const CaptureAppsConfigurationsPage: FC = () => {
           isRefreshing={refreshMutation.isPending || isFetching}
         />
 
-        {/* Feedback Alert Toast */}
         {(feedback || error) && (
           <div
             id="apps-feedback-banner"
@@ -140,7 +132,6 @@ export const CaptureAppsConfigurationsPage: FC = () => {
           </div>
         )}
 
-        {/* Filter and Search Bar */}
         <AppsFilterBar
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
@@ -151,7 +142,6 @@ export const CaptureAppsConfigurationsPage: FC = () => {
           restrictedCount={restrictedCount}
         />
 
-        {/* Apps Grid / List Content */}
         {isLoading ? (
           <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-16 flex flex-col items-center justify-center gap-3 backdrop-blur-xl">
             <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
@@ -169,7 +159,6 @@ export const CaptureAppsConfigurationsPage: FC = () => {
             ))}
           </div>
         ) : totalCount === 0 ? (
-          /* Empty Discovered Apps State */
           <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-12 text-center backdrop-blur-xl shadow-xl flex flex-col items-center justify-center">
             <div className="w-16 h-16 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mb-4 shadow-[0_0_25px_rgba(59,130,246,0.15)]">
               <Scan className="w-8 h-8" />
@@ -190,7 +179,6 @@ export const CaptureAppsConfigurationsPage: FC = () => {
             </button>
           </div>
         ) : (
-          /* Empty Search / Filter State */
           <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-12 text-center backdrop-blur-xl shadow-xl flex flex-col items-center justify-center">
             <div className="w-14 h-14 rounded-2xl bg-zinc-800/80 border border-white/[0.08] text-zinc-400 flex items-center justify-center mb-3">
               <Search className="w-6 h-6" />
@@ -212,7 +200,6 @@ export const CaptureAppsConfigurationsPage: FC = () => {
           </div>
         )}
 
-        {/* Footer info */}
         <div className="pt-4 pb-6 text-center text-xs text-zinc-500 font-mono flex items-center justify-center gap-2 flex-wrap">
           <span>Application Capture Filter</span>
           <span>•</span>

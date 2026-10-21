@@ -4,50 +4,32 @@ import type { OperatorConfigResponse } from "@/pages/Activity/CapturedData/types
 import type { RedisConfig } from "@/pages/Activity/Redis/types";
 import type { LogConfig, LogEntry, LogFilters, LogsResponse } from "@/pages/Activity/Logs/types";
 
-/**
- * Centralized Vault API Service
- * Single source of truth for all communications with MIRA Vault.
- */
-export const vaultService = {
-  // -------------------------------------------------------------
-  // User Profile Endpoints
-  // -------------------------------------------------------------
+export interface VaultHealth {
+  service: string;
+  status: string;
+}
 
-  /**
-   * Fetch user details from Vault.
-   * Canonical: GET /user
-   */
+export const vaultService = {
+  async getHealth(): Promise<VaultHealth> {
+    const response = await vaultApi.get<VaultHealth>("/health");
+    return response.data;
+  },
+
   async getUserDetails(): Promise<UserDetails> {
     const response = await vaultApi.get<UserDetails>("/user");
     return response.data;
   },
 
-  /**
-   * Save or update user profile in Vault.
-   * Canonical: POST /user
-   */
   async saveUserDetails(data: Partial<UserFormState>): Promise<UserDetails> {
     const response = await vaultApi.post<UserDetails>("/user", data);
     return response.data;
   },
 
-  // -------------------------------------------------------------
-  // System Configurations Endpoints
-  // -------------------------------------------------------------
-
-  /**
-   * Retrieve any module configuration by key from encrypted SQL storage.
-   * Canonical: GET /config/{key}
-   */
   async getConfig<T>(key: string): Promise<T> {
     const response = await vaultApi.get<T>(`/config/${encodeURIComponent(key)}`);
     return response.data;
   },
 
-  /**
-   * Update Operator configurations in Vault.
-   * Canonical: POST /config/operator
-   */
   async updateOperatorConfig(
     updates: Partial<OperatorConfigResponse>
   ): Promise<OperatorConfigResponse> {
@@ -55,10 +37,6 @@ export const vaultService = {
     return response.data;
   },
 
-  /**
-   * Update Message Broker (Redis) configurations in Vault.
-   * Canonical: POST /config/message_broker
-   */
   async updateMessageBrokerConfig(
     updates: Partial<RedisConfig>
   ): Promise<RedisConfig> {
@@ -66,10 +44,6 @@ export const vaultService = {
     return response.data;
   },
 
-  /**
-   * Update Log retention and module stream settings in Vault.
-   * Canonical: POST /config/logs
-   */
   async updateLogConfig(
     updates: Partial<LogConfig>
   ): Promise<LogConfig> {
@@ -77,14 +51,6 @@ export const vaultService = {
     return response.data;
   },
 
-  // -------------------------------------------------------------
-  // Encrypted System Logs Endpoints
-  // -------------------------------------------------------------
-
-  /**
-   * Fetch logs matching query filters and pagination.
-   * Canonical: GET /logs
-   */
   async getLogs(
     filters: LogFilters,
     page: number = 1,
@@ -155,19 +121,11 @@ export const vaultService = {
     };
   },
 
-  /**
-   * Detect OS running on host via Vault.
-   * Canonical: GET /os
-   */
   async getDetectedOs(): Promise<string> {
     const response = await vaultApi.get<string>("/os");
     return response.data;
   },
 
-  /**
-   * Trigger retention cleanup manually.
-   * Canonical: POST /retention/cleanup
-   */
   async triggerRetentionCleanup(): Promise<{
     deleted_expired_count: number;
     deleted_invalid_count: number;

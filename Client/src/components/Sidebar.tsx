@@ -19,33 +19,19 @@ export interface SidebarItem {
 }
 
 export interface SidebarProps {
-  /** Array of sidebar items */
   items: readonly SidebarItem[] | SidebarItem[];
-  /** Currently active item key */
   activeKey?: string;
-  /** Callback invoked with item key when clicked */
   onSelect?: (key: string) => void;
-  /** Controlled collapse state (for large screen in-flow mode) */
   isCollapsed?: boolean;
-  /** Initial collapse state when uncontrolled */
   defaultCollapsed?: boolean;
-  /** Callback fired when collapse state is toggled in large screen mode */
   onToggleCollapse?: (collapsed: boolean) => void;
-  /** Whether the sidebar operates as an overlay (small screens). If undefined, auto-detects via overlayBreakpoint */
   isOverlay?: boolean;
-  /** In overlay mode, whether the drawer is currently open */
   isOverlayOpen?: boolean;
-  /** Callback fired when overlay drawer is requested to close (backdrop click, close button, or item click) */
   onCloseOverlay?: () => void;
-  /** CSS media query breakpoint to auto-detect small screens when isOverlay is not specified (default: "(max-width: 768px)") */
   overlayBreakpoint?: string;
-  /** Optional title shown in the sidebar header when expanded */
   title?: string;
-  /** Optional custom header node */
   header?: ReactNode;
-  /** Optional custom footer node */
   footer?: ReactNode;
-  /** Additional CSS class names */
   className?: string;
 }
 
@@ -65,12 +51,10 @@ export const Sidebar: FC<SidebarProps> = ({
   footer,
   className,
 }) => {
-  // Auto-detect small screen if isOverlay is not explicitly controlled
   const isSmallScreenAuto = useMediaQuery(overlayBreakpoint);
   const isOverlayMode =
     controlledIsOverlay !== undefined ? controlledIsOverlay : isSmallScreenAuto;
 
-  // Uncontrolled state fallbacks
   const [internalCollapsed, setInternalCollapsed] = useState(defaultCollapsed);
   const [internalOverlayOpen, setInternalOverlayOpen] = useState(false);
 
@@ -100,13 +84,11 @@ export const Sidebar: FC<SidebarProps> = ({
   const handleItemClick = (key: string, disabled?: boolean) => {
     if (disabled) return;
     onSelect?.(key);
-    // On small screens / overlay mode, clicking an item automatically closes the overlay
     if (isOverlayMode) {
       handleCloseOverlay();
     }
   };
 
-  // Close overlay on Escape key press
   useEffect(() => {
     if (!isOverlayMode || !isOverlayOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -129,13 +111,9 @@ export const Sidebar: FC<SidebarProps> = ({
     return null;
   };
 
-  // -------------------------------------------------------------
-  // SMALL SCREENS: OVERLAY MODE
-  // -------------------------------------------------------------
   if (isOverlayMode) {
     return (
       <>
-        {/* Semi-transparent Backdrop Overlay */}
         <div
           role="presentation"
           aria-hidden="true"
@@ -148,7 +126,6 @@ export const Sidebar: FC<SidebarProps> = ({
           )}
         />
 
-        {/* Overlay Drawer */}
         <aside
           aria-label="Sidebar navigation drawer"
           aria-hidden={!isOverlayOpen}
@@ -160,7 +137,6 @@ export const Sidebar: FC<SidebarProps> = ({
             className
           )}
         >
-          {/* Overlay Header */}
           <div className="flex items-center justify-between h-12 px-3 border-b border-white/[0.06] overflow-hidden">
             {header ? (
               header
@@ -183,7 +159,6 @@ export const Sidebar: FC<SidebarProps> = ({
             )}
           </div>
 
-          {/* Navigation Items List */}
           <nav
             className="flex-1 py-2 px-2 space-y-1 overflow-y-auto no-scrollbar"
             role="menu"
@@ -233,7 +208,6 @@ export const Sidebar: FC<SidebarProps> = ({
             })}
           </nav>
 
-          {/* Overlay Footer */}
           {footer && (
             <div className="p-2 border-t border-white/[0.06] overflow-hidden">
               {footer}
@@ -244,9 +218,6 @@ export const Sidebar: FC<SidebarProps> = ({
     );
   }
 
-  // -------------------------------------------------------------
-  // LARGE SCREENS: IN-FLOW LAYOUT MODE
-  // -------------------------------------------------------------
   return (
     <aside
       aria-label="Sidebar navigation"
@@ -256,7 +227,6 @@ export const Sidebar: FC<SidebarProps> = ({
         className
       )}
     >
-      {/* Sidebar Header */}
       <div className="flex items-center justify-between h-12 px-3 border-b border-white/[0.06] overflow-hidden">
         {header ? (
           header
@@ -288,7 +258,6 @@ export const Sidebar: FC<SidebarProps> = ({
         )}
       </div>
 
-      {/* Navigation Items List */}
       <nav
         className="flex-1 py-2 px-2 space-y-1 overflow-y-auto no-scrollbar"
         role="menu"
@@ -351,7 +320,6 @@ export const Sidebar: FC<SidebarProps> = ({
         })}
       </nav>
 
-      {/* Optional Sidebar Footer */}
       {footer && (
         <div className="p-2 border-t border-white/[0.06] overflow-hidden">
           {footer}
@@ -360,3 +328,4 @@ export const Sidebar: FC<SidebarProps> = ({
     </aside>
   );
 };
+

@@ -25,7 +25,6 @@ export const DeleteConfirmModal: FC<DeleteConfirmModalProps> = ({
 }) => {
   const [step, setStep] = useState<DeleteModalStep>("confirm");
 
-  // Reset to confirm step whenever modal opens
   useEffect(() => {
     if (isOpen) {
       setStep("confirm");
@@ -36,19 +35,13 @@ export const DeleteConfirmModal: FC<DeleteConfirmModalProps> = ({
 
   const handleStartDelete = async () => {
     setStep("deleting");
-
-    // 3-second demo delay as explicitly requested
     await new Promise((resolve) => setTimeout(resolve, 3000));
-
-    // Execute deletion logic in parent
     await onExecuteDelete();
-
-    // Transition modal into success state
     setStep("success");
   };
 
   const handleModalClose = () => {
-    if (step === "deleting") return; // Prevent closing while in progress
+    if (step === "deleting") return;
     onClose();
   };
 
@@ -61,16 +54,13 @@ export const DeleteConfirmModal: FC<DeleteConfirmModalProps> = ({
         className="relative w-full max-w-lg rounded-3xl border border-white/[0.1] bg-zinc-950 p-6 sm:p-7 shadow-2xl space-y-5 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Glow */}
         <div
           className={`absolute top-0 right-0 w-48 h-48 rounded-full blur-3xl pointer-events-none transition-colors duration-300 ${step === "success" ? "bg-emerald-500/10" : "bg-rose-500/10"
             }`}
         />
 
-        {/* ================= STEP 1: CONFIRM ================= */}
         {step === "confirm" && (
           <div className="space-y-5 animate-in fade-in">
-            {/* Modal Header */}
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3.5">
                 <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 shrink-0 shadow-[0_0_20px_rgba(244,63,94,0.15)]">
@@ -95,7 +85,6 @@ export const DeleteConfirmModal: FC<DeleteConfirmModalProps> = ({
               </button>
             </div>
 
-            {/* Privacy & Security Warning Callout */}
             <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-200 space-y-2">
               <div className="flex items-center gap-2 font-semibold text-xs uppercase tracking-wider text-amber-300">
                 <ShieldAlert className="w-4 h-4 shrink-0 text-amber-400" />
@@ -109,7 +98,6 @@ export const DeleteConfirmModal: FC<DeleteConfirmModalProps> = ({
               </p>
             </div>
 
-            {/* Action Controls */}
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/[0.08]">
               <button
                 type="button"
@@ -131,7 +119,6 @@ export const DeleteConfirmModal: FC<DeleteConfirmModalProps> = ({
           </div>
         )}
 
-        {/* ================= STEP 2: DELETING (IN PROGRESS) ================= */}
         {step === "deleting" && (
           <div className="py-8 text-center space-y-4 animate-in fade-in">
             <div className="w-16 h-16 rounded-3xl bg-rose-500/10 border border-rose-500/25 text-rose-400 flex items-center justify-center mx-auto shadow-[0_0_25px_rgba(244,63,94,0.2)]">
@@ -147,7 +134,6 @@ export const DeleteConfirmModal: FC<DeleteConfirmModalProps> = ({
               </p>
             </div>
 
-            {/* Simulated progress pulse bar */}
             <div className="w-48 h-1.5 bg-zinc-800 rounded-full mx-auto overflow-hidden">
               <div className="w-full h-full bg-rose-500 rounded-full animate-pulse" />
             </div>
@@ -158,7 +144,6 @@ export const DeleteConfirmModal: FC<DeleteConfirmModalProps> = ({
           </div>
         )}
 
-        {/* ================= STEP 3: SUCCESS ================= */}
         {step === "success" && (
           <div className="py-4 text-center space-y-5 animate-in fade-in">
             <div className="w-16 h-16 rounded-3xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 flex items-center justify-center mx-auto shadow-[0_0_25px_rgba(16,185,129,0.25)]">
@@ -174,7 +159,6 @@ export const DeleteConfirmModal: FC<DeleteConfirmModalProps> = ({
               </p>
             </div>
 
-            {/* Single Close Button */}
             <div className="pt-3 border-t border-white/[0.08] flex justify-center">
               <button
                 type="button"
@@ -191,3 +175,5 @@ export const DeleteConfirmModal: FC<DeleteConfirmModalProps> = ({
     </div>
   );
 };
+
+export default DeleteConfirmModal;

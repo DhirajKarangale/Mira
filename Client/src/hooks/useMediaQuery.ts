@@ -1,11 +1,5 @@
 import { useState, useEffect } from "react";
 
-/**
- * Custom hook to detect media query matches with SSR/browser safety.
- *
- * @param query CSS media query string (e.g. "(max-width: 768px)")
- * @returns boolean indicating whether media query matches
- */
 export function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState<boolean>(() => {
     if (typeof window !== "undefined" && window.matchMedia) {

@@ -80,7 +80,6 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
     message: string;
   } | null>(null);
 
-  // Synchronize draft state when serverConfig resolves or updates
   useEffect(() => {
     if (serverConfig) {
       setConfig(serverConfig);
@@ -101,7 +100,6 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
     });
   };
 
-  // Master Toggle for "Show in Console" across all 5 modules
   const allShowActive = Boolean(
     config && MODULE_DEFINITIONS.every((m) => config[m.showKey])
   );
@@ -118,7 +116,6 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
     });
   };
 
-  // Master Toggle for "Persist to Vault" across all 5 modules
   const allStoreActive = Boolean(
     config && MODULE_DEFINITIONS.every((m) => config[m.storeKey])
   );
@@ -150,7 +147,6 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
   const handleRetentionInputChange = (raw: string) => {
     if (!config) return;
     const cleaned = raw.replace(/[^0-9]/g, "");
-    // If empty or tried to reduce below 1 digit, set to 1
     if (cleaned === "" || cleaned === "0") {
       handleRetentionChange(1);
       return;
@@ -221,7 +217,6 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
 
   return (
     <div className="w-full space-y-6">
-      {/* Top Banner / Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/[0.08]">
         <div>
           <h2 className="text-base sm:text-lg font-bold tracking-tight text-zinc-100 flex items-center gap-2">
@@ -260,7 +255,6 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
         </div>
       </div>
 
-      {/* Feedback Banner */}
       {feedback && (
         <div
           className={`flex items-center gap-2.5 p-3 rounded-lg text-xs font-medium border transition-all ${
@@ -278,7 +272,6 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
         </div>
       )}
 
-      {/* 1. Retention Period Control with Custom Number Stepper */}
       <div className="p-4 rounded-xl border border-white/[0.08] bg-zinc-900/40 backdrop-blur-sm space-y-3.5">
         <div className="flex items-center gap-2.5">
           <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
@@ -294,9 +287,7 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
           </div>
         </div>
 
-        {/* Custom Stepper (No white native arrows) + Quick Presets */}
         <div className="flex flex-wrap items-center gap-3 pt-1">
-          {/* Custom Styled Number Stepper */}
           <div className="inline-flex items-center bg-zinc-950 border border-white/15 rounded-lg p-0.5 shadow-inner">
             <button
               type="button"
@@ -340,7 +331,6 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
 
           <div className="h-4 w-px bg-white/10 hidden sm:block mx-1" />
 
-          {/* Quick preset chips */}
           <div className="flex items-center gap-1.5 flex-wrap">
             {PRESET_DAYS.map((preset) => {
               const isActive = config.retention_period === preset;
@@ -364,7 +354,6 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
         </div>
       </div>
 
-      {/* 2. Module Logs Configuration Grid with Master Toggles */}
       <div className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-white/[0.08]">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-300 flex items-center gap-2">
@@ -372,9 +361,7 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
             <span>Module Log Routing & Capture Toggles</span>
           </h3>
 
-          {/* Master Toggles: Show All & Store All */}
           <div className="flex items-center gap-2.5 flex-wrap">
-            {/* Master Show in Console */}
             <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-zinc-900/90 border border-white/10 shadow-sm">
               <span className="text-xs text-zinc-300 font-medium">Show All:</span>
               <button
@@ -402,7 +389,6 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
               </button>
             </div>
 
-            {/* Master Store to Disk */}
             <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-zinc-900/90 border border-white/10 shadow-sm">
               <span className="text-xs text-zinc-300 font-medium">Store All:</span>
               <button
@@ -443,7 +429,6 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
                 key={mod.id}
                 className="p-4 rounded-xl border border-white/[0.08] bg-zinc-900/30 backdrop-blur-sm space-y-3.5 hover:border-white/20 transition-colors"
               >
-                {/* Module Header */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <div
@@ -462,9 +447,7 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
                   </div>
                 </div>
 
-                {/* Toggles */}
                 <div className="space-y-2 pt-1 border-t border-white/[0.06]">
-                  {/* Show Logs Toggle */}
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex flex-col">
                       <span className="text-zinc-200 font-medium">Show in Console</span>
@@ -491,7 +474,6 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
                     </button>
                   </div>
 
-                  {/* Store Logs Toggle */}
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex flex-col">
                       <span className="text-zinc-200 font-medium">Persist to Vault</span>

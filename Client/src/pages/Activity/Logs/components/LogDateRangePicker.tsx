@@ -8,8 +8,8 @@ import {
 import { cn } from "@/lib/utils";
 
 interface LogDateRangePickerProps {
-  startDate: string; // YYYY-MM-DD
-  endDate: string; // YYYY-MM-DD
+  startDate: string;
+  endDate: string;
   onChange: (range: { startDate: string; endDate: string }) => void;
   disabled?: boolean;
 }
@@ -80,23 +80,19 @@ export const LogDateRangePicker: FC<LogDateRangePickerProps> = ({
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Month navigation state
   const initialDate = useMemo(() => parseYYYYMMDD(startDate), [startDate]);
   const [currentYear, setCurrentYear] = useState<number>(initialDate.getFullYear());
   const [currentMonth, setCurrentMonth] = useState<number>(initialDate.getMonth());
 
-  // Interactive selection state within the calendar
   const [rangeStart, setRangeStart] = useState<string>(startDate);
   const [rangeEnd, setRangeEnd] = useState<string>(endDate);
   const [isSelectingEnd, setIsSelectingEnd] = useState<boolean>(false);
 
-  // Synchronize when props change
   useEffect(() => {
     setRangeStart(startDate);
     setRangeEnd(endDate);
   }, [startDate, endDate]);
 
-  // Click-outside and Escape key listener
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (
@@ -139,7 +135,6 @@ export const LogDateRangePicker: FC<LogDateRangePickerProps> = ({
     }
   };
 
-  // Quick Preset Actions
   const handleSelectPreset = (daysBack: number) => {
     const today = new Date();
     const endStr = formatYYYYMMDD(today);
@@ -170,15 +165,12 @@ export const LogDateRangePicker: FC<LogDateRangePickerProps> = ({
     setIsOpen(false);
   };
 
-  // Day Selection Logic
   const handleDayClick = (dayStr: string) => {
     if (!isSelectingEnd) {
-      // First click: sets start date and prepares for range
       setRangeStart(dayStr);
       setRangeEnd(dayStr);
       setIsSelectingEnd(true);
     } else {
-      // Second click: sets end date
       let newStart = rangeStart;
       let newEnd = dayStr;
       if (newEnd < newStart) {
@@ -193,7 +185,6 @@ export const LogDateRangePicker: FC<LogDateRangePickerProps> = ({
     }
   };
 
-  // Generate calendar grid days for current month
   const calendarDays = useMemo(() => {
     const firstDayIndex = new Date(currentYear, currentMonth, 1).getDay();
     const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
@@ -208,7 +199,6 @@ export const LogDateRangePicker: FC<LogDateRangePickerProps> = ({
 
     const todayStr = formatYYYYMMDD(new Date());
 
-    // Leading days from previous month
     for (let i = firstDayIndex - 1; i >= 0; i--) {
       const dayNum = prevMonthDays - i;
       const d = new Date(currentYear, currentMonth - 1, dayNum);
@@ -221,7 +211,6 @@ export const LogDateRangePicker: FC<LogDateRangePickerProps> = ({
       });
     }
 
-    // Days in current month
     for (let i = 1; i <= daysInMonth; i++) {
       const d = new Date(currentYear, currentMonth, i);
       const str = formatYYYYMMDD(d);
@@ -233,7 +222,6 @@ export const LogDateRangePicker: FC<LogDateRangePickerProps> = ({
       });
     }
 
-    // Trailing days from next month to fill grid
     const totalSlots = Math.ceil(days.length / 7) * 7;
     const remaining = totalSlots - days.length;
     for (let i = 1; i <= remaining; i++) {
@@ -255,14 +243,12 @@ export const LogDateRangePicker: FC<LogDateRangePickerProps> = ({
 
   return (
     <div className="relative inline-block" ref={containerRef}>
-      {/* Trigger Button showing selected dates (Clickable, No typing!) */}
       <button
         type="button"
         id="btn-open-calendar-popover"
         onClick={() => {
           if (!disabled) {
             setIsOpen((prev) => !prev);
-            // Center month on current start date
             const sDate = parseYYYYMMDD(startDate);
             setCurrentYear(sDate.getFullYear());
             setCurrentMonth(sDate.getMonth());
@@ -300,10 +286,8 @@ export const LogDateRangePicker: FC<LogDateRangePickerProps> = ({
         />
       </button>
 
-      {/* Sleek Custom Dark Calendar Popover */}
       {isOpen && (
         <div className="absolute top-full left-0 mt-2 z-50 w-[310px] p-3.5 bg-[#0b101c]/98 backdrop-blur-2xl border border-cyan-500/30 rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.9),0_0_20px_rgba(6,182,212,0.18)] animate-in fade-in-0 zoom-in-95 duration-150 select-none">
-          {/* Quick Presets Strip */}
           <div className="flex items-center justify-between gap-1 pb-3 mb-3 border-b border-white/[0.08]">
             <button
               type="button"
@@ -335,7 +319,6 @@ export const LogDateRangePicker: FC<LogDateRangePickerProps> = ({
             </button>
           </div>
 
-          {/* Month & Year Navigation Header */}
           <div className="flex items-center justify-between mb-3 px-1">
             <button
               type="button"
@@ -360,7 +343,6 @@ export const LogDateRangePicker: FC<LogDateRangePickerProps> = ({
             </button>
           </div>
 
-          {/* Days of Week Header */}
           <div className="grid grid-cols-7 gap-1 text-center mb-1">
             {WEEKDAY_NAMES.map((name) => (
               <span
@@ -372,7 +354,6 @@ export const LogDateRangePicker: FC<LogDateRangePickerProps> = ({
             ))}
           </div>
 
-          {/* Days Grid */}
           <div className="grid grid-cols-7 gap-1">
             {calendarDays.map((item) => {
               const isStart = item.dateStr === rangeStart;
@@ -409,7 +390,6 @@ export const LogDateRangePicker: FC<LogDateRangePickerProps> = ({
             })}
           </div>
 
-          {/* Instructions & Range Confirmation */}
           <div className="mt-3 pt-2.5 border-t border-white/[0.08] flex items-center justify-between text-[11px] text-zinc-400">
             <span className="font-mono text-[10px] text-zinc-400 truncate">
               {isSelectingEnd

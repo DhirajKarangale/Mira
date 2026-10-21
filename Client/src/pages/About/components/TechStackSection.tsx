@@ -65,7 +65,6 @@ export const TechStackSection: FC = () => {
 
   return (
     <div className="rounded-3xl border border-white/[0.08] bg-zinc-900/60 p-6 sm:p-8 backdrop-blur-xl shadow-xl relative overflow-hidden space-y-6">
-      {/* Header */}
       <div className="flex items-center gap-3 pb-4 border-b border-white/[0.06]">
         <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.15)]">
           <Code2 className="w-5 h-5" />
@@ -76,7 +75,6 @@ export const TechStackSection: FC = () => {
         </div>
       </div>
 
-      {/* Grid of Categories */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {categories.map((cat) => {
           const Icon = cat.icon;
@@ -94,7 +92,6 @@ export const TechStackSection: FC = () => {
                 </h3>
               </div>
 
-              {/* Skills Tags */}
               <div className="flex flex-wrap gap-2 pt-1">
                 {cat.skills.map((skill) => (
                   <span

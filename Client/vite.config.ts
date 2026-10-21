@@ -24,14 +24,11 @@ try {
       if (parsed.hostname && !clientHost) clientHost = parsed.hostname;
     }
   }
-} catch {
-  // ignore
-}
+} catch {}
 
 if (process.env.PORT) clientPort = Number(process.env.PORT);
 if (process.env.VITE_PORT) clientPort = Number(process.env.VITE_PORT);
 
-// https://vite.dev/config/
 export default defineConfig(() => ({
   plugins: [react(), tailwindcss()],
   define: {
@@ -42,9 +39,7 @@ export default defineConfig(() => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
-  // 2. tauri expects a fixed port, fail if that port is not available
   server: {
     port: clientPort,
     strictPort: !!clientPort,
@@ -60,8 +55,8 @@ export default defineConfig(() => ({
         }
       : undefined,
     watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],
     },
   },
 }));
+
