@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { Header } from "@/components/layout/Header";
 import {
   MiraPage,
+  ChatsPage,
   UserPage,
   LlmConfigsPage,
   HistoryPage,
@@ -24,6 +25,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/mira" replace />} />
           <Route path="/mira" element={<MiraPage />} />
+          <Route path="/chats" element={<ChatsPage />} />
           <Route path="/user" element={<UserPage />} />
           <Route path="/ai-configs" element={<LlmConfigsPage />} />
           <Route path="/screen-capturing" element={<Navigate to="/history/captured-data" replace />} />

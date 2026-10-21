@@ -1,4 +1,5 @@
 export { MiraPage } from "./MiraPage";
+export { ChatsPage } from "./ChatsPage";
 export { UserPage } from "./UserPage";
 export { LlmConfigsPage } from "./LlmConfigsPage";
 export { ScreenCapturingPage } from "./ScreenCapturingPage";

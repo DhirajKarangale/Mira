@@ -7,6 +7,7 @@ import {
   Monitor,
   History,
   Info,
+  MessageSquare,
   type LucideIcon,
 } from "lucide-react";
 import { NAV_ITEMS } from "@/types/navigation";
@@ -15,6 +16,7 @@ import { cn } from "@/lib/utils";
 const ICON_MAP: Record<string, LucideIcon> = {
   Sparkles,
   User,
+  MessageSquare,
   Cpu: Sliders,
   Monitor,
   History,
