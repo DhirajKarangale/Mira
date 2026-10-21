@@ -45,5 +45,9 @@ export const QUERY_KEYS = {
     configs: ["vault", "ai", "configs"] as const,
     config: (provider: string) => ["vault", "ai", "config", provider.toLowerCase()] as const,
   },
+  engine: {
+    all: ["vault", "engine"] as const,
+    workers: ["vault", "engine", "workers"] as const,
+  },
 } as const;
 

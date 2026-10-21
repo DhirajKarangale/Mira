@@ -28,6 +28,16 @@ export interface AIConfigUpdateRequest {
   total_keys?: number;
 }
 
+export interface EngineWorkersConfig {
+  embedding_workers: number;
+  llm_workers: number;
+}
+
+export interface EngineWorkersUpdateRequest {
+  embedding_workers?: number;
+  llm_workers?: number;
+}
+
 export const vaultService = {
   async getHealth(): Promise<VaultHealth> {
     const response = await vaultApi.get<VaultHealth>("/health");
@@ -201,6 +211,18 @@ export const vaultService = {
 
   async updateAIPriorities(priorities: string[]): Promise<string[]> {
     const response = await vaultApi.put<string[]>("/ai/priorities", priorities);
+    return response.data;
+  },
+
+  async getEngineWorkers(): Promise<EngineWorkersConfig> {
+    const response = await vaultApi.get<EngineWorkersConfig>("/engine/workers");
+    return response.data;
+  },
+
+  async updateEngineWorkers(
+    updates: EngineWorkersUpdateRequest
+  ): Promise<EngineWorkersConfig> {
+    const response = await vaultApi.put<EngineWorkersConfig>("/engine/workers", updates);
     return response.data;
   },
 };

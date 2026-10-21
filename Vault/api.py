@@ -666,3 +666,82 @@ async def update_ai_priorities_endpoint(payload: Union[List[str], AIPrioritiesUp
         )
 
 
+# ============================================================================
+# Engine Workers Endpoints
+# ============================================================================
+
+class EngineWorkersConfig(BaseModel):
+    embedding_workers: int = Field(default=1, ge=1, le=50, description="Embedding workers (1-50)")
+    llm_workers: int = Field(default=1, ge=1, le=50, description="LLM workers (1-50)")
+
+
+class EngineWorkersUpdateRequest(BaseModel):
+    embedding_workers: Optional[int] = Field(default=None, ge=1, le=50, description="Embedding workers (1-50)")
+    llm_workers: Optional[int] = Field(default=None, ge=1, le=50, description="LLM workers (1-50)")
+
+
+@router.get(
+    "/engine/workers",
+    response_model=EngineWorkersConfig,
+    status_code=status.HTTP_200_OK,
+    summary="Get Engine Workers Configuration"
+)
+@router.get(
+    "/config/engine/workers",
+    response_model=EngineWorkersConfig,
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False
+)
+async def get_engine_workers_endpoint():
+    try:
+        return config_storage.get_engine_workers()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to retrieve engine workers config: {str(e)}"}
+        )
+
+
+@router.put(
+    "/engine/workers",
+    response_model=EngineWorkersConfig,
+    status_code=status.HTTP_200_OK,
+    summary="Update Engine Workers Configuration"
+)
+@router.post(
+    "/engine/workers",
+    response_model=EngineWorkersConfig,
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False
+)
+@router.put(
+    "/config/engine/workers",
+    response_model=EngineWorkersConfig,
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False
+)
+@router.post(
+    "/config/engine/workers",
+    response_model=EngineWorkersConfig,
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False
+)
+async def update_engine_workers_endpoint(payload: Union[EngineWorkersUpdateRequest, Dict[str, Any]]):
+    try:
+        data = payload.model_dump(exclude_unset=True) if hasattr(payload, "model_dump") else (
+            payload.dict(exclude_unset=True) if hasattr(payload, "dict") else dict(payload)
+        )
+        return config_storage.update_engine_workers(data)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": str(e)}
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to update engine workers config: {str(e)}"}
+        )
+
+
+

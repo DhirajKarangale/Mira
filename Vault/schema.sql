@@ -63,3 +63,9 @@ CREATE TABLE IF NOT EXISTS ai_priorities (
     priorities TEXT DEFAULT '[]'
 );
 
+CREATE TABLE IF NOT EXISTS engine_workers (
+    id INTEGER PRIMARY KEY,
+    embedding_workers INTEGER DEFAULT 1,
+    llm_workers INTEGER DEFAULT 1
+);
+

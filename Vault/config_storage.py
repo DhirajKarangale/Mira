@@ -178,6 +178,8 @@ def get_configuration(key: str) -> Dict[str, Any]:
         return {
             "priorities": get_ai_priorities()
         }
+    elif normalized_key in ("engine", "engine_workers", "workers"):
+        return get_engine_workers()
 
     if normalized_key in _PARSED_SCHEMA:
         table_name = normalized_key
@@ -241,6 +243,8 @@ def update_configuration(table_name: str, updates: Dict[str, Any]) -> Dict[str, 
         normalized_table = "message_broker"
     elif normalized_table in ("user", "users"):
         normalized_table = "user_details"
+    elif normalized_table in ("engine", "engine_workers"):
+        return update_engine_workers(updates)
     if normalized_table not in _PARSED_SCHEMA:
         raise KeyError(f"Unknown configuration group '{table_name}'")
 
@@ -744,3 +748,80 @@ def update_ai_priorities(new_priorities: List[str]) -> List[str]:
 
     logger.info(f"Updated LLM provider priorities: {cleaned_order}")
     return cleaned_order
+
+
+def get_engine_workers() -> Dict[str, int]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+
+    exists = _DB_CONN.execute(
+        "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='engine_workers'"
+    ).fetchone()[0]
+    if not exists:
+        return {"embedding_workers": 1, "llm_workers": 1}
+
+    row = _DB_CONN.execute("SELECT embedding_workers, llm_workers FROM engine_workers LIMIT 1").fetchone()
+    if not row:
+        _DB_CONN.execute("INSERT INTO engine_workers (embedding_workers, llm_workers) VALUES (1, 1)")
+        _DB_CONN.commit()
+        save_config_storage()
+        return {"embedding_workers": 1, "llm_workers": 1}
+
+    emb = row[0] if row[0] is not None else 1
+    llm = row[1] if row[1] is not None else 1
+    return {
+        "embedding_workers": int(emb),
+        "llm_workers": int(llm)
+    }
+
+
+def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, int]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+
+    if not isinstance(updates, dict):
+        raise ValueError("Payload must be a dictionary or object containing worker settings.")
+
+    current = get_engine_workers()
+    new_embedding = current["embedding_workers"]
+    new_llm = current["llm_workers"]
+
+    if "embedding_workers" in updates and updates["embedding_workers"] is not None:
+        val = updates["embedding_workers"]
+        if isinstance(val, bool) or not isinstance(val, int):
+            raise ValueError("embedding_workers must be an integer between 1 and 50.")
+        if val < 1 or val > 50:
+            raise ValueError("embedding_workers must be an integer between 1 and 50 inclusive.")
+        new_embedding = val
+
+    if "llm_workers" in updates and updates["llm_workers"] is not None:
+        val = updates["llm_workers"]
+        if isinstance(val, bool) or not isinstance(val, int):
+            raise ValueError("llm_workers must be an integer between 1 and 50.")
+        if val < 1 or val > 50:
+            raise ValueError("llm_workers must be an integer between 1 and 50 inclusive.")
+        new_llm = val
+
+    cursor = _DB_CONN.execute("SELECT id FROM engine_workers LIMIT 1")
+    row = cursor.fetchone()
+    if row:
+        _DB_CONN.execute(
+            "UPDATE engine_workers SET embedding_workers = ?, llm_workers = ? WHERE id = ?",
+            (new_embedding, new_llm, row[0])
+        )
+    else:
+        _DB_CONN.execute(
+            "INSERT INTO engine_workers (embedding_workers, llm_workers) VALUES (?, ?)",
+            (new_embedding, new_llm)
+        )
+    _DB_CONN.commit()
+    save_config_storage()
+
+    logger.info(f"Updated engine workers configuration: embedding_workers={new_embedding}, llm_workers={new_llm}")
+    return {
+        "embedding_workers": new_embedding,
+        "llm_workers": new_llm
+    }
+

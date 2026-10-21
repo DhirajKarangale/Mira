@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, type FC } from "react";
+import { useState, useMemo, type FC } from "react";
 import {
   Loader2,
   AlertCircle,
@@ -8,6 +8,7 @@ import {
   Sparkles,
   RefreshCw,
   Zap,
+  Sliders,
 } from "lucide-react";
 import {
   useAIProvidersQuery,
@@ -15,13 +16,16 @@ import {
   useUpdateAIConfigMutation,
   useAIPrioritiesQuery,
   useUpdateAIPrioritiesMutation,
+  useEngineWorkersQuery,
+  useUpdateEngineWorkersMutation,
 } from "./queries";
 import { ProviderOverviewCard } from "./components/ProviderOverviewCard";
 import { AddApiKeyCard } from "./components/AddApiKeyCard";
 import { ApiKeyList } from "./components/ApiKeyList";
 import { ProviderPriorityCard } from "./components/ProviderPriorityCard";
+import { EngineWorkersCard } from "./components/EngineWorkersCard";
 import { getProviderMeta, type FeedbackNotification } from "./types";
-import type { AIConfig } from "@/services";
+import type { AIConfig, EngineWorkersUpdateRequest } from "@/services";
 import { cn } from "@/lib/utils";
 
 export const AiConfigsPage: FC = () => {
@@ -48,10 +52,19 @@ export const AiConfigsPage: FC = () => {
     refetch: refetchConfigs,
   } = useAIConfigsQuery();
 
+  const {
+    data: engineWorkers,
+    isLoading: isEngineLoading,
+    isFetching: isEngineFetching,
+    refetch: refetchEngineWorkers,
+    error: engineError,
+  } = useEngineWorkersQuery();
+
   const updateMutation = useUpdateAIConfigMutation();
   const updatePrioritiesMutation = useUpdateAIPrioritiesMutation();
+  const updateEngineMutation = useUpdateEngineWorkersMutation();
 
-  const [activeProvider, setActiveProvider] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<string>("engine-workers");
   const [feedback, setFeedback] = useState<FeedbackNotification | null>(null);
 
   // Compute canonical ordered list of providers based on priority sequence
@@ -79,13 +92,6 @@ export const AiConfigsPage: FC = () => {
     return result;
   }, [providers, priorities]);
 
-  // Set default active provider once loaded
-  useEffect(() => {
-    if (orderedProviders.length > 0 && (!activeProvider || !orderedProviders.includes(activeProvider))) {
-      setActiveProvider(orderedProviders[0]);
-    }
-  }, [orderedProviders, activeProvider]);
-
   // Map configs by provider key
   const configsMap = useMemo(() => {
     const map: Record<string, AIConfig> = {};
@@ -97,6 +103,8 @@ export const AiConfigsPage: FC = () => {
     return map;
   }, [configs]);
 
+  const isEngineTab = activeTab === "engine-workers";
+  const activeProvider = !isEngineTab ? activeTab : "";
   const activeConfig = activeProvider ? configsMap[activeProvider.toLowerCase()] || null : null;
   const activeKeys = activeConfig?.keys || [];
   const currentKeyIndex = activeConfig?.current_key ?? 0;
@@ -111,13 +119,23 @@ export const AiConfigsPage: FC = () => {
   };
 
   const handleRefresh = async () => {
-    await Promise.all([refetchProviders(), refetchPriorities(), refetchConfigs()]);
-    showFeedback("info", "Synchronized latest AI credentials & priority order from Vault.");
+    await Promise.all([
+      refetchProviders(),
+      refetchPriorities(),
+      refetchConfigs(),
+      refetchEngineWorkers(),
+    ]);
+    showFeedback("info", "Synchronized latest Engine workers & AI configurations from Vault.");
   };
 
   const handleSavePriorities = async (newOrder: string[]) => {
     await updatePrioritiesMutation.mutateAsync(newOrder);
     showFeedback("success", "LLM provider priority sequence updated and saved in Vault.");
+  };
+
+  const handleSaveEngineWorkers = async (updates: EngineWorkersUpdateRequest) => {
+    await updateEngineMutation.mutateAsync(updates);
+    showFeedback("success", "Engine worker concurrency updated successfully in Vault.");
   };
 
   const handleAddKey = async (newKey: string, makeActive: boolean) => {
@@ -199,6 +217,7 @@ export const AiConfigsPage: FC = () => {
   };
 
   const handleScrollToAdd = () => {
+    if (!activeProvider) return;
     const element = document.getElementById(`card-add-key-${activeProvider}`);
     if (element) {
       element.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -207,8 +226,10 @@ export const AiConfigsPage: FC = () => {
     }
   };
 
-  const isLoading = isProvidersLoading || isConfigsLoading || isPrioritiesLoading;
-  const isFetching = isProvidersFetching || isConfigsFetching || isPrioritiesFetching;
+  const isLoading =
+    isProvidersLoading || isConfigsLoading || isPrioritiesLoading || isEngineLoading;
+  const isFetching =
+    isProvidersFetching || isConfigsFetching || isPrioritiesFetching || isEngineFetching;
 
   const getProviderIcon = (providerName: string) => {
     const lower = providerName.toLowerCase();
@@ -240,17 +261,36 @@ export const AiConfigsPage: FC = () => {
                 </span>
               </div>
               <p className="text-xs text-zinc-400 mt-0.5">
-                Encrypted LLM inference API credentials, active key rotation, and multi-key redundancy
+                Encrypted LLM inference API credentials, provider priorities, and Engine worker concurrency
               </p>
             </div>
           </div>
 
-          {/* Provider Tabs Switcher (matching Activity/Logs tab selector) */}
+          {/* Switcher: Engine Workers + Provider Tabs */}
           <div className="flex items-center gap-2">
             <div className="flex items-center p-1 rounded-xl bg-zinc-900/80 border border-white/[0.08] self-start sm:self-auto shadow-inner">
+              {/* Separate Tab: Engine Workers */}
+              <button
+                type="button"
+                id="tab-btn-engine-workers"
+                onClick={() => setActiveTab("engine-workers")}
+                className={cn(
+                  "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
+                  isEngineTab
+                    ? "bg-cyan-600 text-white shadow-sm font-semibold shadow-cyan-950/60"
+                    : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
+                )}
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                <span>Engine Workers</span>
+              </button>
+
+              <div className="h-4 w-px bg-white/10 mx-1" />
+
+              {/* Provider Tabs Switcher (matching Activity/Logs tab selector) */}
               {orderedProviders.map((p, index) => {
                 const meta = getProviderMeta(p);
-                const isActive = activeProvider.toLowerCase() === p.toLowerCase();
+                const isActive = activeTab === p.toLowerCase();
                 const cfg = configsMap[p.toLowerCase()];
                 const count = cfg?.total_keys ?? cfg?.keys?.length ?? 0;
                 const Icon = getProviderIcon(p);
@@ -260,7 +300,7 @@ export const AiConfigsPage: FC = () => {
                     key={p}
                     type="button"
                     id={`tab-btn-provider-${p}`}
-                    onClick={() => setActiveProvider(p)}
+                    onClick={() => setActiveTab(p.toLowerCase())}
                     className={cn(
                       "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
                       isActive
@@ -313,7 +353,7 @@ export const AiConfigsPage: FC = () => {
       <div className="flex-1 overflow-y-auto px-6 py-6">
         <div className="max-w-7xl mx-auto space-y-6">
           {/* Feedback Alert Toast */}
-          {(feedback || providersError || prioritiesError) && (
+          {(feedback || providersError || prioritiesError || engineError) && (
             <div
               id="ai-config-feedback-banner"
               className={`flex items-start justify-between gap-3 p-4 rounded-xl border backdrop-blur-md transition-all animate-in fade-in ${
@@ -336,8 +376,10 @@ export const AiConfigsPage: FC = () => {
                   {feedback?.message ||
                     (providersError as any)?.response?.data?.detail?.message ||
                     (prioritiesError as any)?.response?.data?.detail?.message ||
+                    (engineError as any)?.response?.data?.detail?.message ||
                     (providersError as Error)?.message ||
                     (prioritiesError as Error)?.message ||
+                    (engineError as Error)?.message ||
                     "Could not connect to Vault to fetch AI configurations."}
                 </span>
               </div>
@@ -352,24 +394,36 @@ export const AiConfigsPage: FC = () => {
           )}
 
           {/* Body Content */}
-          {isLoading && orderedProviders.length === 0 ? (
+          {isLoading && orderedProviders.length === 0 && !engineWorkers ? (
             <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-16 flex flex-col items-center justify-center gap-3 backdrop-blur-xl">
               <Loader2 className="w-8 h-8 animate-spin text-cyan-400" />
               <p className="text-sm text-zinc-400 font-mono">Synchronizing with Vault...</p>
             </div>
-          ) : orderedProviders.length > 0 ? (
+          ) : isEngineTab ? (
+            /* TAB 1: Engine Workers & LLM Priority/Failover Sequence */
             <div className="space-y-6 animate-in fade-in duration-200">
-              {/* Priority Sequence Manager */}
+              {/* 1. Engine Worker Concurrency Configuration */}
+              <EngineWorkersCard
+                config={engineWorkers}
+                isLoading={isEngineLoading}
+                onSave={handleSaveEngineWorkers}
+                disabled={updateEngineMutation.isPending}
+              />
+
+              {/* 2. Moved LLM Priority & Failover Sequence Manager */}
               <ProviderPriorityCard
                 providers={orderedProviders}
                 priorities={priorities}
                 configsMap={configsMap}
                 onSavePriorities={handleSavePriorities}
-                onSelectProvider={(p) => setActiveProvider(p)}
-                activeProvider={activeProvider}
+                onSelectProvider={(p) => setActiveTab(p.toLowerCase())}
+                activeProvider=""
                 disabled={updatePrioritiesMutation.isPending}
               />
-
+            </div>
+          ) : activeProvider ? (
+            /* TAB 2..N: Individual Provider API Key Management (Priority component removed from here) */
+            <div className="space-y-6 animate-in fade-in duration-200">
               {/* 1. Overview Card: Total Keys & Highlighted Current Key Count */}
               <ProviderOverviewCard
                 provider={activeProvider}
@@ -411,9 +465,9 @@ export const AiConfigsPage: FC = () => {
           <div className="pt-4 pb-2 text-center text-xs text-zinc-500 font-mono flex items-center justify-center gap-2">
             <span>MIRA Vault Engine</span>
             <span>•</span>
-            <span>Encrypted LLM Keyring</span>
+            <span>Worker Concurrency Manager</span>
             <span>•</span>
-            <span>Zero Plaintext Logs</span>
+            <span>Encrypted LLM Keyring</span>
           </div>
         </div>
       </div>

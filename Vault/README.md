@@ -512,6 +512,44 @@ Updates the priority sequence of all configured LLM providers.
 
 ---
 
+### 2.24 Get Engine Workers
+`GET /engine/workers` (or `GET /config/engine/workers`)
+
+Retrieves the current background worker concurrency configuration for embeddings and LLM inference.
+
+- **Response (`200 OK`):**
+  ```json
+  {
+    "embedding_workers": 1,
+    "llm_workers": 1
+  }
+  ```
+
+---
+
+### 2.25 Update Engine Workers
+`PUT /engine/workers` (or `POST /engine/workers`, `PUT /config/engine/workers`)
+
+Updates the background worker concurrency counts.
+- Validates that both `embedding_workers` and `llm_workers` are integers between `1` and `50`, inclusive.
+
+- **Request Body:**
+  ```json
+  {
+    "embedding_workers": 4,
+    "llm_workers": 2
+  }
+  ```
+- **Response (`200 OK`):**
+  ```json
+  {
+    "embedding_workers": 4,
+    "llm_workers": 2
+  }
+  ```
+
+---
+
 ## 3. How to Run
 
 ### Install Dependencies
