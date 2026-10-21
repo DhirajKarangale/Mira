@@ -220,7 +220,12 @@ async fn delete_screenshot_handler(
 }
 
 async fn get_apps_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let apps = state.permissions.get_all_apps().await;
+    let mut apps = state.permissions.get_all_apps().await;
+    if apps.is_empty() {
+        if let Ok(_) = state.permissions.sync_with_vault().await {
+            apps = state.permissions.get_all_apps().await;
+        }
+    }
     (StatusCode::OK, Json(apps))
 }
 

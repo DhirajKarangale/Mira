@@ -115,13 +115,15 @@ export function useSyncIntervalMutation() {
 
 /**
  * Query hook for all discovered applications and their capture permission statuses.
- * Stale time: 15 minutes. Manual Refresh Apps button handles on-demand re-scans.
+ * refetchOnMount: true ensures fresh app permissions are retrieved on navigation,
+ * preventing stale single-app cache entries.
  */
 export function useAppPermissionsQuery() {
   return useQuery<AppPermission[]>({
     queryKey: QUERY_KEYS.operator.apps,
     queryFn: fetchAppPermissions,
-    staleTime: 15 * 60 * 1000,
+    staleTime: 60 * 1000,
+    refetchOnMount: true,
   });
 }
 
