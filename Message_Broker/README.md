@@ -8,7 +8,7 @@ The **Message Broker** is the centralized asynchronous communication hub connect
 
 - **Asynchronous Ingestion**: Ingests tasks via `POST /jobs` and appends them to Redis Streams (`XADD`).
 - **Consumer Group Dispatch**: Dispatches jobs in batches (up to 10) to workers via `GET /jobs`.
-- **Job Deletion**: Removes jobs by `job_id` and acknowledges them (`XACK` + `XDEL`) via `GET /jobs/delete`.
+- **Job Deletion**: Removes jobs by `job_id` and acknowledges them (`XACK` + `XDEL`) via `DELETE /jobs`.
 - **Maintenance Operations**: Cleans all consumer groups or formats the entire Redis database.
 
 ---
@@ -18,7 +18,7 @@ The **Message Broker** is the centralized asynchronous communication hub connect
 Every endpoint has strictly one way to be called.
 
 ### 2.1 Service Health
-`GET /` or `GET /health`
+`GET /health`
 
 - **Response:**
   ```json
@@ -81,7 +81,7 @@ Reads pending jobs from the stream via consumer groups.
 ---
 
 ### 2.4 Delete Job
-`GET /jobs/delete`
+`DELETE /jobs`
 
 Acknowledges the job from the consumer group (`XACK`), removes it from the Redis stream (`XDEL`), and cleans the internal lookup index.
 
@@ -90,7 +90,7 @@ Acknowledges the job from the consumer group (`XACK`), removes it from the Redis
   - `job_id` (mandatory): The unique job identifier.
 - **Request Example:**
   ```bash
-  curl "http://127.0.0.1:8000/jobs/delete?consumer_key=engine_llm_task&job_id=job_123"
+  curl -X DELETE "http://127.0.0.1:8000/jobs?consumer_key=engine_llm_task&job_id=job_123"
   ```
 - **Response (`200 OK`):**
   ```json
@@ -109,14 +109,22 @@ Acknowledges the job from the consumer group (`XACK`), removes it from the Redis
 
 ---
 
-### 2.5 Clean All Consumer Groups
-`GET /consumer-groups/clean`
+### 2.5 Clean Consumer Groups
+`POST /redis/clean`
 
-Deletes all stream data for all registered consumer groups and recreates empty groups.
+Cleans pending or unprocessed stream messages for a specific group or across all registered consumer groups.
 
+- **Request Body (Optional):**
+  ```json
+  {
+    "group_name": "CONSUMER_GROUP_SCREENSHOT_PROCESS",
+    "stream_name": "stream_screenshot_process",
+    "reset_stream": false
+  }
+  ```
 - **Request Example:**
   ```bash
-  curl http://127.0.0.1:8000/consumer-groups/clean
+  curl -X POST http://127.0.0.1:8000/redis/clean -H "Content-Type: application/json" -d "{}"
   ```
 - **Response (`200 OK`):**
   ```json
@@ -128,13 +136,13 @@ Deletes all stream data for all registered consumer groups and recreates empty g
 ---
 
 ### 2.6 Format Entire Redis
-`GET /redis/format`
+`POST /redis/format`
 
 Flushes the entire Redis database (`FLUSHDB`).
 
 - **Request Example:**
   ```bash
-  curl http://127.0.0.1:8000/redis/format
+  curl -X POST http://127.0.0.1:8000/redis/format
   ```
 - **Response (`200 OK`):**
   ```json
@@ -145,24 +153,40 @@ Flushes the entire Redis database (`FLUSHDB`).
 
 ---
 
-### 2.7 List Consumer Groups
-`GET /consumer-groups`
+### 2.7 List Consumer Groups & Telemetry
+`GET /redis/consumer-groups`
 
-Returns the list of all registered consumer group names.
+Returns the telemetry and state for all registered consumer groups, including active/pending message counts and connected consumers.
 
 - **Request Example:**
   ```bash
-  curl http://127.0.0.1:8000/consumer-groups
+  curl http://127.0.0.1:8000/redis/consumer-groups
   ```
 - **Response (`200 OK`):**
   ```json
   [
-    "CONSUMER_GROUP_SCREENSHOT_PROCESS",
-    "CONSUMER_GROUP_OCR_EXTRACTION",
-    "CONSUMER_GROUP_COLLECTOR_BATCH",
-    "CONSUMER_GROUP_MEMORY_STORE",
-    "CONSUMER_GROUP_MEMORY_RECALL",
-    "CONSUMER_GROUP_ENGINE_LLM_TASK",
+    {
+      "group_name": "CONSUMER_GROUP_SCREENSHOT_PROCESS",
+      "stream_name": "stream_screenshot_process",
+      "pending_count": 0,
+      "last_delivered_id": "0-0",
+      "consumers_count": 1,
+      "active_messages_count": 0
+    }
+  ]
+  ```
+
+---
+
+### 2.8 Delete Consumer Group
+`DELETE /redis/consumer-groups/{group_name}`
+
+Deletes a single consumer group and cleans its index.
+
+- **Request Example:**
+  ```bash
+  curl -X DELETE "http://127.0.0.1:8000/redis/consumer-groups/CONSUMER_GROUP_SCREENSHOT_PROCESS"
+  ```
     "CONSUMER_GROUP_ENGINE_EMBEDDING_TASK",
     "CONSUMER_GROUP_CLIENT_NOTIFICATION",
     "CONSUMER_GROUP_VAULT_SECRET_SYNC"

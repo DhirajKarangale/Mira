@@ -1,179 +1,56 @@
-import { vaultApi, operatorApi } from "@/lib/api";
+import { vaultService, operatorService } from "@/services";
 import type { OperatorConfigResponse, OperatorStatusResponse } from "./types";
 
 /**
  * Fetch Operator configuration from Vault (e.g. CAPTURE_INTERVAL_SECS, AUTO_START).
+ * Uses centralized vaultService (GET /config/operator).
  */
 export async function fetchOperatorConfig(): Promise<OperatorConfigResponse> {
-  const response = await vaultApi.get<OperatorConfigResponse>("/config/operator");
-  return response.data;
+  return vaultService.getConfig<OperatorConfigResponse>("operator");
 }
 
 /**
  * Update Operator configuration in Vault (e.g. toggle AUTO_START or CAPTURE_INTERVAL_SECS).
+ * Uses centralized vaultService (POST /config/operator).
  */
 export async function updateOperatorConfig(
   updates: Partial<OperatorConfigResponse>
 ): Promise<OperatorConfigResponse> {
-  const response = await vaultApi.post<OperatorConfigResponse>("/config/operator", updates);
+  const result = await vaultService.updateOperatorConfig(updates);
   if (typeof updates.CAPTURE_INTERVAL_SECS === "number") {
-    syncOperatorInterval(updates.CAPTURE_INTERVAL_SECS).catch(() => {});
+    operatorService.updateInterval(updates.CAPTURE_INTERVAL_SECS).catch(() => {});
   }
-  return response.data;
+  return result;
 }
 
 /**
  * Synchronize live capture interval with Operator service directly.
+ * Uses centralized operatorService (POST /interval).
  */
 export async function syncOperatorInterval(seconds: number): Promise<void> {
-  try {
-    await operatorApi.post("/interval", { capture_interval_secs: seconds });
-    return;
-  } catch {
-    // fallback to direct browser fetch
-  }
-
-  const currentHost =
-    typeof window !== "undefined" && window.location.hostname
-      ? window.location.hostname
-      : "127.0.0.1";
-
-  for (const url of [
-    `http://${currentHost}:8002/interval`,
-    "http://127.0.0.1:8002/interval",
-    "http://localhost:8002/interval",
-  ]) {
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ capture_interval_secs: seconds }),
-      });
-      if (res.ok) return;
-    } catch {
-      // try next
-    }
-  }
+  await operatorService.updateInterval(seconds);
 }
 
 /**
  * Fetch current Operator capturing status directly from Operator service.
+ * Uses centralized operatorService (GET /status).
  */
 export async function fetchOperatorStatus(): Promise<OperatorStatusResponse> {
-  // 1. Primary: Try Axios operatorApi instance
-  try {
-    const response = await operatorApi.get<OperatorStatusResponse>("/status");
-    const data = response.data;
-    if (data && (typeof data.is_running === "boolean" || typeof data.is_capturing === "boolean" || data.status)) {
-      const isCapturing = Boolean(
-        data.is_running ||
-        data.is_capturing ||
-        (typeof data.status === "string" && data.status.toLowerCase() === "started")
-      );
-      return {
-        ...data,
-        is_running: isCapturing,
-        is_capturing: isCapturing,
-        status: isCapturing ? "started" : "stopped",
-      };
-    }
-  } catch (err) {
-    console.warn("operatorApi.get('/status') failed, trying direct browser fallbacks...", err);
-  }
-
-  // 2. Secondary: Fallback to direct fetch in browser (resolving host dynamically)
-  const currentHost =
-    typeof window !== "undefined" && window.location.hostname
-      ? window.location.hostname
-      : "127.0.0.1";
-
-  const candidateUrls = Array.from(
-    new Set([
-      `http://${currentHost}:8002/status`,
-      "http://127.0.0.1:8002/status",
-      "http://localhost:8002/status",
-    ])
-  );
-
-  for (const url of candidateUrls) {
-    try {
-      const res = await fetch(url, { method: "GET" });
-      if (res.ok) {
-        const data = await res.json();
-        const isCapturing = Boolean(
-          data.is_running ||
-          data.is_capturing ||
-          (typeof data.status === "string" && data.status.toLowerCase() === "started")
-        );
-        return {
-          ...data,
-          is_running: isCapturing,
-          is_capturing: isCapturing,
-          status: isCapturing ? "started" : "stopped",
-        };
-      }
-    } catch {
-      // try next candidate
-    }
-  }
-
-  return {
-    status: "stopped",
-    is_running: false,
-    is_capturing: false,
-    auto_start: false,
-    capture_interval_secs: 10,
-  };
+  return operatorService.getStatus();
 }
 
 /**
  * Start screen capture loop in Operator service.
+ * Uses centralized operatorService (POST /start).
  */
 export async function startCapture(): Promise<void> {
-  try {
-    await operatorApi.get("/start");
-    return;
-  } catch {
-    // fallback to direct fetch
-  }
-
-  const currentHost =
-    typeof window !== "undefined" && window.location.hostname
-      ? window.location.hostname
-      : "127.0.0.1";
-
-  for (const url of [`http://${currentHost}:8002/start`, "http://127.0.0.1:8002/start", "http://localhost:8002/start"]) {
-    try {
-      const res = await fetch(url, { method: "GET" });
-      if (res.ok) return;
-    } catch {
-      // try next
-    }
-  }
+  await operatorService.startCapture();
 }
 
 /**
  * Stop screen capture loop in Operator service.
+ * Uses centralized operatorService (POST /stop).
  */
 export async function stopCapture(): Promise<void> {
-  try {
-    await operatorApi.get("/stop");
-    return;
-  } catch {
-    // fallback to direct fetch
-  }
-
-  const currentHost =
-    typeof window !== "undefined" && window.location.hostname
-      ? window.location.hostname
-      : "127.0.0.1";
-
-  for (const url of [`http://${currentHost}:8002/stop`, "http://127.0.0.1:8002/stop", "http://localhost:8002/stop"]) {
-    try {
-      const res = await fetch(url, { method: "GET" });
-      if (res.ok) return;
-    } catch {
-      // try next
-    }
-  }
+  await operatorService.stopCapture();
 }

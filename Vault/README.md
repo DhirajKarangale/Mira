@@ -16,7 +16,7 @@ The **Vault** is the centralized service for secret management, configuration st
 ## 2. API Reference
 
 ### 2.1 Service Health
-`GET /` or `GET /health`
+`GET /health`
 
 - **Response (`200 OK`):**
   ```json
@@ -128,6 +128,38 @@ Detects the host operating system and returns its name and version.
   ```json
   "Windows 11"
   ```
+
+---
+ 
+### 2.7 User Profile
+`GET /user`
+`POST /user`
+
+Manages user profile data stored in the encrypted database.
+- `GET /user`: Retrieves current profile data.
+- `POST /user`: Saves or updates user profile fields.
+
+- **Request Body for `POST /user`:**
+  ```json
+  {
+    "user_name": "Dhiraj",
+    "email": "dakarangale02@gmail.com",
+    "phone_number": "+91 7620320595",
+    "city": "Pune",
+    "state": "Maharashtra",
+    "country": "India"
+  }
+  ```
+
+---
+
+### 2.8 Update Module Configuration
+`POST /config/{module}`
+
+Updates configuration for a specific module (`logs`, `message_broker`, `operator`).
+- `POST /config/logs`
+- `POST /config/message_broker`
+- `POST /config/operator`
 
 ---
 

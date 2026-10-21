@@ -4,7 +4,7 @@ import { Sliders } from "lucide-react";
 export const LlmConfigsPage: FC = () => {
   return (
     <div
-      id="page-content-llm-configs"
+      id="page-content-ai-configs"
       className="relative flex flex-col items-center justify-center h-full w-full overflow-hidden select-none"
     >
       {/* Ambient background glow */}
@@ -15,7 +15,7 @@ export const LlmConfigsPage: FC = () => {
           <Sliders className="w-8 h-8" />
         </div>
         <h1 className="text-4xl sm:text-5xl font-bold tracking-tight bg-gradient-to-b from-zinc-100 via-zinc-200 to-zinc-400 bg-clip-text text-transparent">
-          LLM Configs
+          AI Configs
         </h1>
       </div>
     </div>

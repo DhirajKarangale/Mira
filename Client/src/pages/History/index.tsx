@@ -9,14 +9,14 @@ import { RedisPage } from "./Redis";
 
 const HISTORY_SIDEBAR_ITEMS: readonly SidebarItem[] = [
   {
-    key: "captured-data",
-    name: "Captured Data",
-    icon: MonitorPlay,
-  },
-  {
     key: "chats",
     name: "Chats",
     icon: MessageSquare,
+  },
+  {
+    key: "captured-data",
+    name: "Captured Data",
+    icon: MonitorPlay,
   },
   {
     key: "redis",

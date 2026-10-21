@@ -77,9 +77,8 @@ def create_app() -> FastAPI:
 
     app.include_router(vault_router)
 
-    @app.get("/")
     @app.get("/health")
-    async def root():
+    async def health():
         return {
             "service": "Vault",
             "status": "online"

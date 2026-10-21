@@ -1,33 +1,24 @@
-import { vaultApi } from "@/lib/api";
+import { vaultService } from "@/services";
 import type { UserDetails, UserFormState } from "./types";
 
 /**
  * Retrieve user details from Vault.
- * Uses Axios client configured for Vault (http://127.0.0.1:8001).
+ * Uses centralized vaultService (GET /user).
  */
 export async function fetchUserDetails(): Promise<UserDetails> {
-  const response = await vaultApi.get<UserDetails>("/user");
-  return response.data;
+  return vaultService.getUserDetails();
 }
 
 /**
- * Add or save user details in Vault.
- * Uses Axios client configured for Vault.
+ * Save user details in Vault (create or update).
+ * Uses centralized vaultService (POST /user).
  */
-export async function addUserDetails(
-  data: UserFormState
-): Promise<UserDetails> {
-  const response = await vaultApi.post<UserDetails>("/user", data);
-  return response.data;
-}
-
-/**
- * Update existing user details in Vault.
- * Uses Axios client configured for Vault.
- */
-export async function updateUserDetails(
+export async function saveUserDetails(
   data: Partial<UserFormState>
 ): Promise<UserDetails> {
-  const response = await vaultApi.put<UserDetails>("/user", data);
-  return response.data;
+  return vaultService.saveUserDetails(data);
 }
+
+// Aliases for compatibility
+export const addUserDetails = saveUserDetails;
+export const updateUserDetails = saveUserDetails;

@@ -1,7 +1,7 @@
 export type NavTabId =
   | "mira"
   | "user"
-  | "llm-configs"
+  | "ai-configs"
   | "history"
   | "about";
 
@@ -15,13 +15,13 @@ export interface NavItem {
 export const NAV_ITEMS: readonly NavItem[] = [
   {
     id: "user",
-    label: "User",
+    label: "Me",
     description: "User profiles, preferences, and identity settings",
     iconName: "User",
   },
   {
-    id: "llm-configs",
-    label: "LLM Configs",
+    id: "ai-configs",
+    label: "AI Configs",
     description: "Model parameters, providers, and reasoning settings",
     iconName: "Cpu",
   },
@@ -33,7 +33,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   },
   {
     id: "about",
-    label: "About",
+    label: "About us",
     description: "System version, architecture status, and metadata",
     iconName: "Info",
   },

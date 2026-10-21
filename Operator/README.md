@@ -19,7 +19,7 @@ The **Operator** is the high-performance desktop capture and system automation s
 Every endpoint has strictly one way to be called.
 
 ### 2.1 Service Health
-`GET /` or `GET /health`
+`GET /health`
 
 - **Response (`200 OK`):**
   ```json
@@ -32,7 +32,7 @@ Every endpoint has strictly one way to be called.
 ---
 
 ### 2.2 Start Screenshot Capture
-`GET /start`
+`POST /start`
 
 Initiates the continuous background capture loop ticking every `CAPTURE_INTERVAL_SECS`.
 
@@ -56,7 +56,7 @@ Initiates the continuous background capture loop ticking every `CAPTURE_INTERVAL
 ---
 
 ### 2.3 Stop Screenshot Capture
-`GET /stop`
+`POST /stop`
 
 Cleanly signals the background capture task to terminate.
 

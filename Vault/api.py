@@ -94,14 +94,6 @@ async def update_logs_config(request: LogConfigUpdateRequest):
         )
 
 
-@router.post(
-    "/logs/config",
-    status_code=status.HTTP_200_OK
-)
-async def update_logs_config_alias(request: LogConfigUpdateRequest):
-    return await update_logs_config(request)
-
-
 class RedisConfigUpdateRequest(BaseModel):
     REDIS_HOST: Optional[str] = None
     REDIS_PORT: Optional[int] = Field(None, ge=1, le=65535)
@@ -132,24 +124,12 @@ async def update_message_broker_config(request: RedisConfigUpdateRequest):
         )
 
 
-@router.post(
-    "/config/redis",
-    status_code=status.HTTP_200_OK
-)
-async def update_redis_config(request: RedisConfigUpdateRequest):
-    return await update_message_broker_config(request)
-
-
 class OperatorConfigUpdateRequest(BaseModel):
     CAPTURE_INTERVAL_SECS: Optional[int] = Field(None, ge=1, le=3600)
     AUTO_START: Optional[bool] = None
 
 
 @router.post(
-    "/config/operator",
-    status_code=status.HTTP_200_OK
-)
-@router.put(
     "/config/operator",
     status_code=status.HTTP_200_OK
 )
@@ -167,15 +147,6 @@ async def update_operator_config(request: OperatorConfigUpdateRequest):
 
 
 class UserDetailsRequest(BaseModel):
-    user_name: str = Field(..., min_length=1)
-    email: str = Field(..., min_length=3)
-    phone_number: str = Field(..., min_length=1)
-    city: str = Field(..., min_length=1)
-    state: str = Field(..., min_length=1)
-    country: str = Field(..., min_length=1)
-
-
-class UserDetailsUpdateRequest(BaseModel):
     user_name: Optional[str] = None
     email: Optional[str] = None
     phone_number: Optional[str] = None
@@ -185,7 +156,6 @@ class UserDetailsUpdateRequest(BaseModel):
 
 
 @router.get("/user", status_code=status.HTTP_200_OK)
-@router.get("/user/details", status_code=status.HTTP_200_OK)
 async def get_user_details():
     try:
         data = config_storage.get_configuration("user_details")
@@ -202,17 +172,21 @@ async def get_user_details():
 
 
 @router.post("/user", status_code=status.HTTP_200_OK)
-@router.post("/user/details", status_code=status.HTTP_200_OK)
-async def add_or_set_user_details(request: UserDetailsRequest):
+async def save_user_details(request: UserDetailsRequest):
     try:
+        raw_updates = request.model_dump(exclude_unset=True)
         updates = {
-            "user_name": request.user_name.strip(),
-            "email": request.email.strip(),
-            "phone_number": request.phone_number.strip(),
-            "city": request.city.strip(),
-            "state": request.state.strip(),
-            "country": request.country.strip(),
+            k: v.strip() if isinstance(v, str) else v
+            for k, v in raw_updates.items()
+            if v is not None
         }
+        if not updates:
+            data = config_storage.get_configuration("user_details")
+            return {
+                **data,
+                "exists": any(v is not None and str(v).strip() != "" for v in data.values())
+            }
+
         updated = config_storage.update_configuration("user_details", updates)
         return {
             **updated,
@@ -223,33 +197,6 @@ async def add_or_set_user_details(request: UserDetailsRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": f"Failed to save user details: {str(e)}"}
-        )
-
-
-@router.put("/user", status_code=status.HTTP_200_OK)
-@router.put("/user/details", status_code=status.HTTP_200_OK)
-async def update_user_details(request: UserDetailsUpdateRequest):
-    try:
-        raw_updates = request.model_dump(exclude_unset=True)
-        updates = {
-            k: v.strip() if isinstance(v, str) else v
-            for k, v in raw_updates.items()
-            if v is not None
-        }
-        if not updates:
-            data = config_storage.get_configuration("user_details")
-            return {**data, "exists": any(v is not None and str(v).strip() != "" for v in data.values())}
-
-        updated = config_storage.update_configuration("user_details", updates)
-        return {
-            **updated,
-            "exists": True,
-            "message": "User details updated successfully"
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"message": f"Failed to update user details: {str(e)}"}
         )
 
 
@@ -340,25 +287,6 @@ async def get_logs(
     status_code=status.HTTP_200_OK
 )
 async def get_config_by_path(key: str):
-    try:
-        return config_storage.get_configuration(key)
-    except KeyError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"message": str(e)}
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"message": f"Failed to retrieve configuration: {str(e)}"}
-        )
-
-
-@router.get(
-    "/config",
-    status_code=status.HTTP_200_OK
-)
-async def get_config_by_query(key: str = Query(..., min_length=1)):
     try:
         return config_storage.get_configuration(key)
     except KeyError as e:

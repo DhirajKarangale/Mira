@@ -29,18 +29,16 @@ pub struct IntervalRequest {
 
 pub fn create_router(state: AppState) -> Router {
     Router::new()
-        .route("/", get(root_handler))
-        .route("/health", get(root_handler))
-        .route("/status", get(status_handler).post(status_handler))
-        .route("/start", get(start_capture_handler).post(start_capture_handler))
-        .route("/stop", get(stop_capture_handler).post(stop_capture_handler))
+        .route("/health", get(health_handler))
+        .route("/status", get(status_handler))
+        .route("/start", post(start_capture_handler))
+        .route("/stop", post(stop_capture_handler))
         .route("/interval", get(get_interval_handler).post(update_interval_handler))
-        .route("/config", get(get_interval_handler).post(update_interval_handler))
         .route("/delete", post(delete_screenshot_handler))
         .with_state(state)
 }
 
-async fn root_handler() -> impl IntoResponse {
+async fn health_handler() -> impl IntoResponse {
     (
         StatusCode::OK,
         Json(json!({
