@@ -79,3 +79,26 @@ export function useDeleteAIConfigMutation() {
     },
   });
 }
+
+export function useAIPrioritiesQuery() {
+  return useQuery<string[]>({
+    queryKey: QUERY_KEYS.ai.priorities,
+    queryFn: () => vaultService.getAIPriorities(),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useUpdateAIPrioritiesMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (priorities: string[]): Promise<string[]> => {
+      return await vaultService.updateAIPriorities(priorities);
+    },
+    onSuccess: (updatedPriorities) => {
+      queryClient.setQueryData(QUERY_KEYS.ai.priorities, updatedPriorities);
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.ai.priorities });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.ai.providers });
+    },
+  });
+}

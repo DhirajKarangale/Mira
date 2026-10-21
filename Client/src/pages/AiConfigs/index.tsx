@@ -13,10 +13,13 @@ import {
   useAIProvidersQuery,
   useAIConfigsQuery,
   useUpdateAIConfigMutation,
+  useAIPrioritiesQuery,
+  useUpdateAIPrioritiesMutation,
 } from "./queries";
 import { ProviderOverviewCard } from "./components/ProviderOverviewCard";
 import { AddApiKeyCard } from "./components/AddApiKeyCard";
 import { ApiKeyList } from "./components/ApiKeyList";
+import { ProviderPriorityCard } from "./components/ProviderPriorityCard";
 import { getProviderMeta, type FeedbackNotification } from "./types";
 import type { AIConfig } from "@/services";
 import { cn } from "@/lib/utils";
@@ -31,6 +34,14 @@ export const AiConfigsPage: FC = () => {
   } = useAIProvidersQuery();
 
   const {
+    data: priorities = [],
+    isLoading: isPrioritiesLoading,
+    isFetching: isPrioritiesFetching,
+    refetch: refetchPriorities,
+    error: prioritiesError,
+  } = useAIPrioritiesQuery();
+
+  const {
     data: configs = [],
     isLoading: isConfigsLoading,
     isFetching: isConfigsFetching,
@@ -38,16 +49,42 @@ export const AiConfigsPage: FC = () => {
   } = useAIConfigsQuery();
 
   const updateMutation = useUpdateAIConfigMutation();
+  const updatePrioritiesMutation = useUpdateAIPrioritiesMutation();
 
   const [activeProvider, setActiveProvider] = useState<string>("");
   const [feedback, setFeedback] = useState<FeedbackNotification | null>(null);
 
+  // Compute canonical ordered list of providers based on priority sequence
+  const orderedProviders = useMemo(() => {
+    if (!providers || providers.length === 0) return [];
+    if (!priorities || priorities.length === 0) return providers;
+    const canonicalMap = new Map(providers.map((p) => [p.toLowerCase(), p]));
+    const result: string[] = [];
+    const seen = new Set<string>();
+
+    for (const p of priorities) {
+      const lower = p.toLowerCase();
+      if (canonicalMap.has(lower) && !seen.has(lower)) {
+        result.push(canonicalMap.get(lower)!);
+        seen.add(lower);
+      }
+    }
+    for (const p of providers) {
+      const lower = p.toLowerCase();
+      if (!seen.has(lower)) {
+        result.push(p);
+        seen.add(lower);
+      }
+    }
+    return result;
+  }, [providers, priorities]);
+
   // Set default active provider once loaded
   useEffect(() => {
-    if (providers.length > 0 && (!activeProvider || !providers.includes(activeProvider))) {
-      setActiveProvider(providers[0]);
+    if (orderedProviders.length > 0 && (!activeProvider || !orderedProviders.includes(activeProvider))) {
+      setActiveProvider(orderedProviders[0]);
     }
-  }, [providers, activeProvider]);
+  }, [orderedProviders, activeProvider]);
 
   // Map configs by provider key
   const configsMap = useMemo(() => {
@@ -74,8 +111,13 @@ export const AiConfigsPage: FC = () => {
   };
 
   const handleRefresh = async () => {
-    await Promise.all([refetchProviders(), refetchConfigs()]);
-    showFeedback("info", "Synchronized latest AI credentials from Vault.");
+    await Promise.all([refetchProviders(), refetchPriorities(), refetchConfigs()]);
+    showFeedback("info", "Synchronized latest AI credentials & priority order from Vault.");
+  };
+
+  const handleSavePriorities = async (newOrder: string[]) => {
+    await updatePrioritiesMutation.mutateAsync(newOrder);
+    showFeedback("success", "LLM provider priority sequence updated and saved in Vault.");
   };
 
   const handleAddKey = async (newKey: string, makeActive: boolean) => {
@@ -165,8 +207,8 @@ export const AiConfigsPage: FC = () => {
     }
   };
 
-  const isLoading = isProvidersLoading || isConfigsLoading;
-  const isFetching = isProvidersFetching || isConfigsFetching;
+  const isLoading = isProvidersLoading || isConfigsLoading || isPrioritiesLoading;
+  const isFetching = isProvidersFetching || isConfigsFetching || isPrioritiesFetching;
 
   const getProviderIcon = (providerName: string) => {
     const lower = providerName.toLowerCase();
@@ -206,7 +248,7 @@ export const AiConfigsPage: FC = () => {
           {/* Provider Tabs Switcher (matching Activity/Logs tab selector) */}
           <div className="flex items-center gap-2">
             <div className="flex items-center p-1 rounded-xl bg-zinc-900/80 border border-white/[0.08] self-start sm:self-auto shadow-inner">
-              {providers.map((p) => {
+              {orderedProviders.map((p, index) => {
                 const meta = getProviderMeta(p);
                 const isActive = activeProvider.toLowerCase() === p.toLowerCase();
                 const cfg = configsMap[p.toLowerCase()];
@@ -226,11 +268,19 @@ export const AiConfigsPage: FC = () => {
                         : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
                     )}
                   >
+                    <span
+                      className={cn(
+                        "text-[10px] font-mono px-1 rounded",
+                        isActive ? "bg-cyan-700 text-cyan-100 font-bold" : "text-zinc-500"
+                      )}
+                    >
+                      #{index + 1}
+                    </span>
                     <Icon className="w-3.5 h-3.5" />
                     <span>{meta.name}</span>
                     <span
                       className={cn(
-                        "ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-mono",
+                        "ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-mono",
                         isActive
                           ? "bg-white/20 text-white font-bold"
                           : "bg-white/[0.06] text-zinc-400"
@@ -263,7 +313,7 @@ export const AiConfigsPage: FC = () => {
       <div className="flex-1 overflow-y-auto px-6 py-6">
         <div className="max-w-7xl mx-auto space-y-6">
           {/* Feedback Alert Toast */}
-          {(feedback || providersError) && (
+          {(feedback || providersError || prioritiesError) && (
             <div
               id="ai-config-feedback-banner"
               className={`flex items-start justify-between gap-3 p-4 rounded-xl border backdrop-blur-md transition-all animate-in fade-in ${
@@ -285,7 +335,9 @@ export const AiConfigsPage: FC = () => {
                 <span className="text-xs sm:text-sm font-medium">
                   {feedback?.message ||
                     (providersError as any)?.response?.data?.detail?.message ||
+                    (prioritiesError as any)?.response?.data?.detail?.message ||
                     (providersError as Error)?.message ||
+                    (prioritiesError as Error)?.message ||
                     "Could not connect to Vault to fetch AI configurations."}
                 </span>
               </div>
@@ -300,13 +352,24 @@ export const AiConfigsPage: FC = () => {
           )}
 
           {/* Body Content */}
-          {isLoading && providers.length === 0 ? (
+          {isLoading && orderedProviders.length === 0 ? (
             <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-16 flex flex-col items-center justify-center gap-3 backdrop-blur-xl">
               <Loader2 className="w-8 h-8 animate-spin text-cyan-400" />
               <p className="text-sm text-zinc-400 font-mono">Synchronizing with Vault...</p>
             </div>
-          ) : activeProvider ? (
+          ) : orderedProviders.length > 0 ? (
             <div className="space-y-6 animate-in fade-in duration-200">
+              {/* Priority Sequence Manager */}
+              <ProviderPriorityCard
+                providers={orderedProviders}
+                priorities={priorities}
+                configsMap={configsMap}
+                onSavePriorities={handleSavePriorities}
+                onSelectProvider={(p) => setActiveProvider(p)}
+                activeProvider={activeProvider}
+                disabled={updatePrioritiesMutation.isPending}
+              />
+
               {/* 1. Overview Card: Total Keys & Highlighted Current Key Count */}
               <ProviderOverviewCard
                 provider={activeProvider}

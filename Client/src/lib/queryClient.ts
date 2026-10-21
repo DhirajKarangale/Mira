@@ -41,6 +41,7 @@ export const QUERY_KEYS = {
   ai: {
     all: ["vault", "ai"] as const,
     providers: ["vault", "ai", "providers"] as const,
+    priorities: ["vault", "ai", "priorities"] as const,
     configs: ["vault", "ai", "configs"] as const,
     config: (provider: string) => ["vault", "ai", "config", provider.toLowerCase()] as const,
   },

@@ -56,3 +56,8 @@ CREATE TABLE IF NOT EXISTS ai_configs (
     keys TEXT DEFAULT '[]'
 );
 
+CREATE TABLE IF NOT EXISTS ai_priorities (
+    id INTEGER PRIMARY KEY,
+    priorities TEXT DEFAULT '[]'
+);
+

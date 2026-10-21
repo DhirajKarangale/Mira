@@ -191,4 +191,14 @@ export const vaultService = {
     );
     return response.data;
   },
+
+  async getAIPriorities(): Promise<string[]> {
+    const response = await vaultApi.get<string[]>("/ai/priorities");
+    return response.data;
+  },
+
+  async updateAIPriorities(priorities: string[]): Promise<string[]> {
+    const response = await vaultApi.put<string[]>("/ai/priorities", priorities);
+    return response.data;
+  },
 };

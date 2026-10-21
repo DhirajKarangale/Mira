@@ -167,7 +167,12 @@ def get_configuration(key: str) -> Dict[str, Any]:
     elif normalized_key in ("ai", "ai_config", "ai_configs", "llm"):
         return {
             "providers": get_all_ai_providers(),
+            "priorities": get_ai_priorities(),
             "configs": get_all_ai_configs()
+        }
+    elif normalized_key in ("priorities", "ai_priorities", "llm_priorities"):
+        return {
+            "priorities": get_ai_priorities()
         }
 
     if normalized_key in _PARSED_SCHEMA:
@@ -626,3 +631,112 @@ def delete_ai_config(provider: str) -> Dict[str, Any]:
         "status": "success",
         "message": f"AI config for provider '{row[1]}' deleted successfully."
     }
+
+
+def get_ai_priorities() -> List[str]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+
+    all_providers = get_all_ai_providers()
+    provider_map = {p.strip().lower(): p for p in all_providers}
+
+    exists = _DB_CONN.execute(
+        "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='ai_priorities'"
+    ).fetchone()[0]
+    if not exists:
+        return list(all_providers)
+
+    cursor = _DB_CONN.execute("SELECT id, priorities FROM ai_priorities LIMIT 1")
+    row = cursor.fetchone()
+    if not row:
+        json_priorities = json.dumps(all_providers)
+        _DB_CONN.execute("INSERT INTO ai_priorities (priorities) VALUES (?)", (json_priorities,))
+        _DB_CONN.commit()
+        save_config_storage()
+        return list(all_providers)
+
+    row_id, raw_priorities = row
+    try:
+        parsed = json.loads(raw_priorities) if raw_priorities else []
+        if not isinstance(parsed, list):
+            parsed = []
+    except Exception:
+        parsed = []
+
+    # Reconcile with current configured providers
+    reconciled: List[str] = []
+    seen = set()
+    for item in parsed:
+        if isinstance(item, str):
+            p_lower = item.strip().lower()
+            if p_lower in provider_map and p_lower not in seen:
+                reconciled.append(provider_map[p_lower])
+                seen.add(p_lower)
+
+    for p in all_providers:
+        p_lower = p.strip().lower()
+        if p_lower not in seen:
+            reconciled.append(provider_map[p_lower])
+            seen.add(p_lower)
+
+    if reconciled != parsed:
+        _DB_CONN.execute(
+            "UPDATE ai_priorities SET priorities = ? WHERE id = ?",
+            (json.dumps(reconciled), row_id)
+        )
+        _DB_CONN.commit()
+        save_config_storage()
+
+    return reconciled
+
+
+def update_ai_priorities(new_priorities: List[str]) -> List[str]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+
+    if not isinstance(new_priorities, list):
+        raise ValueError("Priorities must be an array of provider names.")
+
+    all_providers = get_all_ai_providers()
+    configured_set = {p.strip().lower() for p in all_providers}
+    configured_map = {p.strip().lower(): p for p in all_providers}
+
+    seen = set()
+    cleaned_order: List[str] = []
+
+    for item in new_priorities:
+        if not isinstance(item, str):
+            raise ValueError(f"Invalid item in priorities list: expected string, got {type(item).__name__}")
+        clean_name = item.strip()
+        name_lower = clean_name.lower()
+        if not name_lower:
+            raise ValueError("Provider names cannot be empty strings.")
+        if name_lower in seen:
+            raise ValueError(f"Duplicate provider '{clean_name}' in priorities array. Each provider must appear exactly once.")
+        seen.add(name_lower)
+        if name_lower not in configured_set:
+            raise ValueError(f"Provider '{clean_name}' is not in configured AI providers. Reordering cannot add extra providers.")
+        cleaned_order.append(configured_map[name_lower])
+
+    missing = configured_set - seen
+    if missing:
+        missing_names = [configured_map[m] for m in missing]
+        raise ValueError(f"Missing provider(s) in priorities array: {', '.join(missing_names)}. Every configured provider must be included.")
+
+    if len(cleaned_order) != len(all_providers):
+        raise ValueError(f"Priorities array must have exactly {len(all_providers)} providers.")
+
+    cursor = _DB_CONN.execute("SELECT id FROM ai_priorities LIMIT 1")
+    row = cursor.fetchone()
+    json_val = json.dumps(cleaned_order)
+    if row:
+        _DB_CONN.execute("UPDATE ai_priorities SET priorities = ? WHERE id = ?", (json_val, row[0]))
+    else:
+        _DB_CONN.execute("INSERT INTO ai_priorities (priorities) VALUES (?)", (json_val,))
+    _DB_CONN.commit()
+    save_config_storage()
+
+    logger.info(f"Updated LLM provider priorities: {cleaned_order}")
+    return cleaned_order

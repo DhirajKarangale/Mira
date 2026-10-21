@@ -446,6 +446,45 @@ Updates LLM provider configurations. Supports adding keys, removing keys, settin
 
 ---
 
+### 2.21 Get LLM Priorities
+`GET /ai/priorities`
+
+Returns the ordered priority sequence of configured LLM providers for execution and fallback routing.
+
+- **Response (`200 OK`):**
+  ```json
+  [
+    "groq",
+    "gemini"
+  ]
+  ```
+
+---
+
+### 2.22 Update LLM Priorities
+`PUT /ai/priorities` or `POST /ai/priorities`
+
+Updates the priority sequence of all configured LLM providers.
+- Validates that every configured provider appears exactly once.
+- Disallows adding new, removing existing, or duplicating providers (only reordering allowed).
+
+- **Request Body:**
+  ```json
+  [
+    "gemini",
+    "groq"
+  ]
+  ```
+- **Response (`200 OK`):**
+  ```json
+  [
+    "gemini",
+    "groq"
+  ]
+  ```
+
+---
+
 ## 3. How to Run
 
 ### Install Dependencies

@@ -669,3 +669,80 @@ async def delete_ai_config_endpoint(provider: str):
         )
 
 
+# ============================================================================
+# AI Priorities Endpoints
+# ============================================================================
+
+class AIPrioritiesUpdateRequest(BaseModel):
+    priorities: List[str]
+
+
+@router.get(
+    "/ai/priorities",
+    response_model=List[str],
+    status_code=status.HTTP_200_OK
+)
+@router.get(
+    "/config/ai/priorities",
+    response_model=List[str],
+    status_code=status.HTTP_200_OK
+)
+@router.get(
+    "/ai/configs/priorities",
+    response_model=List[str],
+    status_code=status.HTTP_200_OK
+)
+async def get_ai_priorities_endpoint():
+    try:
+        return config_storage.get_ai_priorities()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to retrieve AI priorities: {str(e)}"}
+        )
+
+
+@router.put(
+    "/ai/priorities",
+    response_model=List[str],
+    status_code=status.HTTP_200_OK
+)
+@router.post(
+    "/ai/priorities",
+    response_model=List[str],
+    status_code=status.HTTP_200_OK
+)
+@router.put(
+    "/config/ai/priorities",
+    response_model=List[str],
+    status_code=status.HTTP_200_OK
+)
+@router.post(
+    "/config/ai/priorities",
+    response_model=List[str],
+    status_code=status.HTTP_200_OK
+)
+async def update_ai_priorities_endpoint(payload: Union[List[str], AIPrioritiesUpdateRequest, Dict[str, Any]]):
+    try:
+        if isinstance(payload, list):
+            items = payload
+        elif hasattr(payload, "priorities") and payload.priorities is not None:
+            items = payload.priorities
+        elif isinstance(payload, dict) and "priorities" in payload:
+            items = payload["priorities"]
+        else:
+            raise ValueError("Expected a list of provider names or an object with 'priorities'.")
+
+        return config_storage.update_ai_priorities(items)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": str(e)}
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to update AI priorities: {str(e)}"}
+        )
+
+
