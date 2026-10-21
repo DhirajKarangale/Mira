@@ -60,7 +60,7 @@ export const HistoryPage: FC = () => {
       >
         <Routes>
           <Route path="/" element={<Navigate to="captured-data" replace />} />
-          <Route path="captured-data" element={<CapturedDataPage />} />
+          <Route path="captured-data/*" element={<CapturedDataPage />} />
           <Route path="chats" element={<ChatsPage />} />
           <Route path="logs/*" element={<LogsPage />} />
           <Route path="redis/*" element={<RedisPage />} />

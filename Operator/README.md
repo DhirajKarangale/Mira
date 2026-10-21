@@ -7,7 +7,8 @@ The **Operator** is the high-performance desktop capture and system automation s
 ## 1. What It Does
 
 - **Silent Screen Capture**: Captures desktop screen frames silently in the background at regular intervals defined by `CAPTURE_INTERVAL_SECS` without notifications or user interruption.
-- **Active Application Detection**: Identifies the currently active foreground application executable name or window title at the exact moment of each capture.
+- **Active Application Detection & Capture Filtering**: Identifies the currently active foreground application executable name or window title before capture. Applications where `allowed_to_capture = false` are automatically ignored and skipped.
+- **System App Discovery & Vault Permissions Sync**: Discovers installed system applications and running window processes, refreshes the app list in Vault on startup, and keeps restricted apps synchronized with Vault.
 - **Job Generation & Queuing**: Creates screenshot job objects and streams them asynchronously to the **Message Broker** (`screenshot_process` consumer group) for downstream processing.
 - **Vault Configuration & Encrypted Logging**: Automatically pulls runtime configuration from Vault at startup and delivers asynchronous lifecycle and dispatch logs to Vault's encrypted log repository.
 - **Screenshot Cleanup**: Exposes an endpoint to delete processed screenshot files from disk.
@@ -100,6 +101,69 @@ Deletes the specified screenshot file from the local filesystem.
   {
     "status": "error",
     "message": "Screenshot file not found"
+  }
+  ```
+
+---
+
+### 2.5 Get All App Permissions
+`GET /apps`
+
+Returns all discovered applications and their current capture permissions.
+
+- **Response (`200 OK`):**
+  ```json
+  [
+    {
+      "app_name": "Microsoft Edge",
+      "app_id": "msedge.exe",
+      "allowed_to_capture": true
+    },
+    {
+      "app_name": "Notepad",
+      "app_id": "notepad.exe",
+      "allowed_to_capture": false
+    }
+  ]
+  ```
+
+---
+
+### 2.6 Refresh Application List
+`POST /apps/refresh`
+
+Re-discovers installed system applications and running window processes, refreshes them with Vault, and updates the local restricted hash set.
+
+- **Response (`200 OK`):**
+  ```json
+  {
+    "status": "success",
+    "message": "Apps refreshed and synchronized with Vault",
+    "total_apps": 42
+  }
+  ```
+
+---
+
+### 2.7 Update App Permission
+`POST /apps/permission`
+
+Updates an application's `allowed_to_capture` status. Updates the local restricted set immediately and synchronizes the change to Vault's SQL storage.
+
+- **Request Body:**
+  ```json
+  {
+    "app_id": "notepad.exe",
+    "allowed_to_capture": false
+  }
+  ```
+- **Response (`200 OK`):**
+  ```json
+  {
+    "status": "success",
+    "message": "App permission updated successfully",
+    "app_id": "notepad.exe",
+    "allowed_to_capture": false
   }
   ```
 

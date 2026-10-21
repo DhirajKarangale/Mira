@@ -7,13 +7,15 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::json;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::flow::CaptureManager;
+use crate::permissions::PermissionsManager;
 
 #[derive(Clone)]
 pub struct AppState {
     pub manager: CaptureManager,
+    pub permissions: PermissionsManager,
 }
 
 #[derive(Debug, Deserialize)]
@@ -27,6 +29,12 @@ pub struct IntervalRequest {
     pub interval_secs: Option<u64>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct UpdatePermissionRequest {
+    pub app_id: String,
+    pub allowed_to_capture: bool,
+}
+
 pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health_handler))
@@ -35,6 +43,9 @@ pub fn create_router(state: AppState) -> Router {
         .route("/stop", post(stop_capture_handler))
         .route("/interval", get(get_interval_handler).post(update_interval_handler))
         .route("/delete", post(delete_screenshot_handler))
+        .route("/apps", get(get_apps_handler))
+        .route("/apps/refresh", post(refresh_apps_handler))
+        .route("/apps/permission", post(update_app_permission_handler))
         .with_state(state)
 }
 
@@ -207,3 +218,80 @@ async fn delete_screenshot_handler(
         }
     }
 }
+
+async fn get_apps_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let apps = state.permissions.get_all_apps().await;
+    (StatusCode::OK, Json(apps))
+}
+
+async fn refresh_apps_handler(State(state): State<AppState>) -> impl IntoResponse {
+    match state.permissions.sync_with_vault().await {
+        Ok(_) => {
+            let apps = state.permissions.get_all_apps().await;
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "status": "success",
+                    "message": "Apps refreshed and synchronized with Vault",
+                    "total_apps": apps.len()
+                })),
+            )
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "status": "error",
+                "message": format!("Failed to refresh apps: {}", e)
+            })),
+        ),
+    }
+}
+
+async fn update_app_permission_handler(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(payload): Json<UpdatePermissionRequest>,
+) -> impl IntoResponse {
+    let app_id = payload.app_id.trim();
+    if app_id.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "status": "error",
+                "message": "Missing or empty 'app_id'"
+            })),
+        );
+    }
+
+    state
+        .permissions
+        .update_permission(app_id, payload.allowed_to_capture)
+        .await;
+
+    let is_from_vault = headers
+        .get("X-Source")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.eq_ignore_ascii_case("vault"))
+        .unwrap_or(false);
+
+    if !is_from_vault {
+        if let Err(e) = state
+            .permissions
+            .sync_permission_to_vault(app_id, payload.allowed_to_capture)
+            .await
+        {
+            warn!("Failed to sync permission update to Vault: {}", e);
+        }
+    }
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "status": "success",
+            "message": "App permission updated successfully",
+            "app_id": app_id,
+            "allowed_to_capture": payload.allowed_to_capture
+        })),
+    )
+}
+

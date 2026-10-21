@@ -1,5 +1,10 @@
-import { operatorApi } from "@/lib/api";
-import type { OperatorStatusResponse } from "@/pages/History/CapturedData/types";
+import { operatorApi, vaultApi } from "@/lib/api";
+import type {
+  OperatorStatusResponse,
+  AppPermission,
+  RefreshAppsResponse,
+  UpdateAppPermissionResponse,
+} from "@/pages/History/CapturedData/types";
 
 export interface OperatorIntervalResponse {
   capture_interval_secs: number;
@@ -92,5 +97,56 @@ export const operatorService = {
    */
   async deleteScreenshot(imagePath: string): Promise<void> {
     await operatorApi.post("/delete", { image_path: imagePath });
+  },
+
+  /**
+   * Fetch all system applications and their capture permission status.
+   * Canonical: GET /apps (Operator primary, Vault fallback)
+   */
+  async getApps(): Promise<AppPermission[]> {
+    try {
+      const response = await operatorApi.get<AppPermission[]>("/apps");
+      return response.data;
+    } catch {
+      const vaultResponse = await vaultApi.get<AppPermission[]>("/apps");
+      return vaultResponse.data;
+    }
+  },
+
+  /**
+   * Trigger discovery of installed applications and synchronize with Vault.
+   * Canonical: POST /apps/refresh
+   */
+  async refreshApps(): Promise<RefreshAppsResponse> {
+    try {
+      const response = await operatorApi.post<RefreshAppsResponse>("/apps/refresh");
+      return response.data;
+    } catch {
+      const vaultResponse = await vaultApi.post<RefreshAppsResponse>("/apps/refresh", []);
+      return vaultResponse.data;
+    }
+  },
+
+  /**
+   * Update an application's allowed_to_capture permission status.
+   * Canonical: POST /apps/permission
+   */
+  async updateAppPermission(
+    appId: string,
+    allowedToCapture: boolean
+  ): Promise<UpdateAppPermissionResponse> {
+    try {
+      const response = await operatorApi.post<UpdateAppPermissionResponse>("/apps/permission", {
+        app_id: appId,
+        allowed_to_capture: allowedToCapture,
+      });
+      return response.data;
+    } catch {
+      const vaultResponse = await vaultApi.post<UpdateAppPermissionResponse>("/apps/permission", {
+        app_id: appId,
+        allowed_to_capture: allowedToCapture,
+      });
+      return vaultResponse.data;
+    }
   },
 };

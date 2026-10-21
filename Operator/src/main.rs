@@ -1,9 +1,11 @@
 mod api;
+mod app_discovery;
 mod broker_client;
 mod capture;
 mod config;
 mod flow;
 mod local_state;
+mod permissions;
 mod vault_logger;
 
 use api::{create_router, AppState};
@@ -90,7 +92,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         host, port
     ));
 
-    let manager = CaptureManager::new();
+    let permissions = permissions::PermissionsManager::new();
+    if let Err(e) = permissions.sync_with_vault().await {
+        tracing::error!("Failed to synchronize app permissions with Vault on startup: {}", e);
+    }
+
+    let manager = CaptureManager::new(permissions.clone());
 
     // Reset local capturing state to false on fresh server boot
     local_state::save_local_state(false);
@@ -109,7 +116,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    let state = AppState { manager };
+    let state = AppState { manager, permissions };
 
     let cors = CorsLayer::new()
         .allow_origin(Any)

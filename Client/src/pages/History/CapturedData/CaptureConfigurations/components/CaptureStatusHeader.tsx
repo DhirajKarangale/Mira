@@ -8,7 +8,7 @@ import {
   Loader2,
   RotateCcw,
 } from "lucide-react";
-import type { CaptureStatus } from "../types";
+import type { CaptureStatus } from "../../types";
 import { useRefreshAnimation } from "@/hooks/useRefreshAnimation";
 import { cn } from "@/lib/utils";
 
@@ -51,10 +51,10 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
           </div>
 
           <div className="space-y-1.5 min-w-0">
-            {/* Header Title & Badges: Status badge integrates refresh button, grouping badges cleanly */}
+            {/* Header Title & Badges */}
             <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white shrink-0 whitespace-nowrap">
-                Captured Data
+                Capture Configurations
               </h1>
 
               <div className="flex items-center gap-2 shrink-0">
@@ -112,15 +112,15 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
             </div>
 
             <p className="text-xs sm:text-sm text-zinc-400 max-w-2xl leading-relaxed">
-              Real-time screen capturing loop powered by the Operator engine. Review temporal
-              retention ranges and manage capturing preferences.
+              Real-time screen capturing loop powered by the Operator engine. Configure capture
+              intervals, toggle auto-start behavior, and monitor active runtime states.
             </p>
           </div>
         </div>
 
         {/* Right Controls: Auto-Start Toggle Switch & Start/Stop Button */}
         <div className="flex items-center gap-3 shrink-0 self-start xl:self-center flex-wrap sm:flex-nowrap">
-          {/* Sleek, Redesigned Auto-Start Switch */}
+          {/* Sleek Auto-Start Switch */}
           <button
             type="button"
             id="btn-toggle-auto-start"
@@ -171,7 +171,7 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
               </div>
             </div>
 
-            {/* Modern sliding toggle switch track */}
+            {/* Sliding toggle switch track */}
             <div
               className={cn(
                 "relative w-9 h-5 rounded-full transition-colors duration-200 p-0.5 shrink-0",
@@ -191,7 +191,7 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
             </div>
           </button>
 
-          {/* Start / Stop Immediate Capture Button - Sleek, single-line gradient button */}
+          {/* Start / Stop Immediate Capture Button */}
           <button
             type="button"
             id="btn-toggle-capture-status"

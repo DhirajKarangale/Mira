@@ -6,9 +6,17 @@ import {
   syncOperatorInterval,
   startCapture,
   stopCapture,
+  fetchAppPermissions,
+  refreshAppPermissions,
+  updateAppPermission,
 } from "./api";
 import { QUERY_KEYS } from "@/lib/queryClient";
-import type { OperatorConfigResponse, OperatorStatusResponse, CaptureStatus } from "./types";
+import type {
+  OperatorConfigResponse,
+  OperatorStatusResponse,
+  CaptureStatus,
+  AppPermission,
+} from "./types";
 
 /**
  * Query hook for Operator configuration stored in Vault.
@@ -104,3 +112,75 @@ export function useSyncIntervalMutation() {
     },
   });
 }
+
+/**
+ * Query hook for all discovered applications and their capture permission statuses.
+ * Stale time: 15 minutes. Manual Refresh Apps button handles on-demand re-scans.
+ */
+export function useAppPermissionsQuery() {
+  return useQuery<AppPermission[]>({
+    queryKey: QUERY_KEYS.operator.apps,
+    queryFn: fetchAppPermissions,
+    staleTime: 15 * 60 * 1000,
+  });
+}
+
+/**
+ * Mutation hook for triggering discovery and refresh of system applications.
+ * Automatically synchronizes with Vault and updates cached permissions.
+ */
+export function useRefreshAppPermissionsMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: refreshAppPermissions,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.operator.apps });
+    },
+  });
+}
+
+/**
+ * Mutation hook for updating an application's capture permission status.
+ * Applies instantaneous optimistic UI feedback, then synchronizes with Operator and Vault.
+ */
+export function useUpdateAppPermissionMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      appId,
+      allowedToCapture,
+    }: {
+      appId: string;
+      allowedToCapture: boolean;
+    }) => updateAppPermission(appId, allowedToCapture),
+    onMutate: async ({ appId, allowedToCapture }) => {
+      await queryClient.cancelQueries({ queryKey: QUERY_KEYS.operator.apps });
+      const previous = queryClient.getQueryData<AppPermission[]>(
+        QUERY_KEYS.operator.apps
+      );
+
+      queryClient.setQueryData<AppPermission[]>(
+        QUERY_KEYS.operator.apps,
+        (old = []) =>
+          old.map((app) =>
+            app.app_id.toLowerCase() === appId.toLowerCase()
+              ? { ...app, allowed_to_capture: allowedToCapture }
+              : app
+          )
+      );
+
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(QUERY_KEYS.operator.apps, context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.operator.apps });
+    },
+  });
+}
+

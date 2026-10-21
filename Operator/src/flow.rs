@@ -12,13 +12,15 @@ use crate::vault_logger;
 pub struct CaptureManager {
     is_running: Arc<AtomicBool>,
     stop_sender: Arc<Mutex<Option<watch::Sender<bool>>>>,
+    permissions: crate::permissions::PermissionsManager,
 }
 
 impl CaptureManager {
-    pub fn new() -> Self {
+    pub fn new(permissions: crate::permissions::PermissionsManager) -> Self {
         Self {
             is_running: Arc::new(AtomicBool::new(false)),
             stop_sender: Arc::new(Mutex::new(None)),
+            permissions,
         }
     }
 
@@ -40,6 +42,7 @@ impl CaptureManager {
         self.is_running.store(true, Ordering::SeqCst);
 
         let running_flag = self.is_running.clone();
+        let permissions = self.permissions.clone();
 
         info!(
             "Starting continuous silent background screenshot capture with interval {}s",
@@ -79,6 +82,15 @@ impl CaptureManager {
                             current_interval = latest_interval;
                             ticker = tokio::time::interval(Duration::from_secs(current_interval));
                             ticker.tick().await;
+                        }
+
+                        let active_app_id = crate::capture::get_active_app_id();
+                        if !permissions.is_allowed(&active_app_id).await {
+                            info!(
+                                "Ignoring screenshot: active application '{}' is restricted from capture",
+                                active_app_id
+                            );
+                            continue;
                         }
 
                         let capture_result = tokio::task::spawn_blocking(capture_silent_screenshot).await;

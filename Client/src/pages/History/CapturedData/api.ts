@@ -1,5 +1,11 @@
 import { vaultService, operatorService } from "@/services";
-import type { OperatorConfigResponse, OperatorStatusResponse } from "./types";
+import type {
+  OperatorConfigResponse,
+  OperatorStatusResponse,
+  AppPermission,
+  RefreshAppsResponse,
+  UpdateAppPermissionResponse,
+} from "./types";
 
 /**
  * Fetch Operator configuration from Vault (e.g. CAPTURE_INTERVAL_SECS, AUTO_START).
@@ -53,4 +59,31 @@ export async function startCapture(): Promise<void> {
  */
 export async function stopCapture(): Promise<void> {
   await operatorService.stopCapture();
+}
+
+/**
+ * Fetch all discovered system applications with capture permissions.
+ * Uses centralized operatorService (GET /apps).
+ */
+export async function fetchAppPermissions(): Promise<AppPermission[]> {
+  return operatorService.getApps();
+}
+
+/**
+ * Trigger rescan and synchronization of system applications.
+ * Uses centralized operatorService (POST /apps/refresh).
+ */
+export async function refreshAppPermissions(): Promise<RefreshAppsResponse> {
+  return operatorService.refreshApps();
+}
+
+/**
+ * Update an individual application's capture permission status.
+ * Uses centralized operatorService (POST /apps/permission).
+ */
+export async function updateAppPermission(
+  appId: string,
+  allowedToCapture: boolean
+): Promise<UpdateAppPermissionResponse> {
+  return operatorService.updateAppPermission(appId, allowedToCapture);
 }

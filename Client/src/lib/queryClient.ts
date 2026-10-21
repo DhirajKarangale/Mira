@@ -38,6 +38,7 @@ export const QUERY_KEYS = {
     all: ["operator"] as const,
     config: ["vault", "config", "operator"] as const,
     status: ["operator", "status"] as const,
+    apps: ["operator", "apps"] as const,
   },
   redis: {
     all: ["redis"] as const,

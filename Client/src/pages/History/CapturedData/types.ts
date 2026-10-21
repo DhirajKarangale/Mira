@@ -24,3 +24,35 @@ export interface DateRangeFilter {
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
 }
+
+export interface AppPermission {
+  app_name: string;
+  app_id: string;
+  allowed_to_capture: boolean;
+}
+
+export interface RefreshAppsResponse {
+  status: string;
+  message: string;
+  total_apps?: number;
+  total?: number;
+  added?: number;
+  removed?: number;
+  preserved?: number;
+}
+
+export interface UpdateAppPermissionRequest {
+  app_id: string;
+  allowed_to_capture: boolean;
+}
+
+export interface UpdateAppPermissionResponse {
+  status: string;
+  message: string;
+  app_id?: string;
+  allowed_to_capture?: boolean;
+  app?: AppPermission;
+}
+
+export type AppFilterType = "all" | "allowed" | "restricted";
+

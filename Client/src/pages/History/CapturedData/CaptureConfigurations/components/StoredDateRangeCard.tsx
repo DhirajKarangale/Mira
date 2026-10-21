@@ -8,7 +8,7 @@ import {
   HardDrive,
   CheckCircle2,
 } from "lucide-react";
-import type { StoredDataRange } from "../types";
+import type { StoredDataRange } from "../../types";
 
 interface StoredDateRangeCardProps {
   dataRange: StoredDataRange;

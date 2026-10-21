@@ -100,7 +100,8 @@ def init_config_storage(
         if not exists:
             logger.info(f"Creating missing configuration table: '{table_name}'")
             _DB_CONN.execute(table_spec["create_sql"])
-            _DB_CONN.execute(f"INSERT INTO {table_name} DEFAULT VALUES")
+            if table_name != "app_permissions":
+                _DB_CONN.execute(f"INSERT INTO {table_name} DEFAULT VALUES")
             _DB_CONN.commit()
         else:
             existing_info = _DB_CONN.execute(f"PRAGMA table_info({table_name})").fetchall()
@@ -122,9 +123,13 @@ def init_config_storage(
                     except Exception as e:
                         logger.error(f"Failed to drop column '{col_name}' from '{table_name}': {e}")
 
-            count = _DB_CONN.execute(f"SELECT count(*) FROM {table_name}").fetchone()[0]
-            if count == 0:
-                _DB_CONN.execute(f"INSERT INTO {table_name} DEFAULT VALUES")
+            if table_name != "app_permissions":
+                count = _DB_CONN.execute(f"SELECT count(*) FROM {table_name}").fetchone()[0]
+                if count == 0:
+                    _DB_CONN.execute(f"INSERT INTO {table_name} DEFAULT VALUES")
+                    _DB_CONN.commit()
+            else:
+                _DB_CONN.execute("DELETE FROM app_permissions WHERE app_id IS NULL OR app_id = ''")
                 _DB_CONN.commit()
 
     save_config_storage(enc_db_path)
@@ -267,3 +272,124 @@ def update_configuration(table_name: str, updates: Dict[str, Any]) -> Dict[str, 
         save_config_storage()
 
     return get_configuration(normalized_table)
+
+
+def get_all_app_permissions() -> List[Dict[str, Any]]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+
+    cursor = _DB_CONN.execute(
+        "SELECT app_name, app_id, allowed_to_capture FROM app_permissions ORDER BY app_name COLLATE NOCASE ASC"
+    )
+    rows = cursor.fetchall()
+    return [
+        {
+            "app_name": row[0],
+            "app_id": row[1],
+            "allowed_to_capture": bool(row[2])
+        }
+        for row in rows
+    ]
+
+
+def refresh_app_permissions(discovered_apps: List[Dict[str, str]]) -> Dict[str, Any]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+
+    deduped_discovered: Dict[str, Tuple[str, str]] = {}
+    for app in discovered_apps:
+        app_id = (app.get("app_id") or "").strip()
+        app_name = (app.get("app_name") or "").strip()
+        if not app_id:
+            continue
+        if not app_name:
+            app_name = app_id
+        app_id_key = app_id.lower()
+        if app_id_key not in deduped_discovered:
+            deduped_discovered[app_id_key] = (app_name, app_id)
+
+    cursor = _DB_CONN.execute("SELECT app_id, app_name, allowed_to_capture FROM app_permissions")
+    existing_rows = cursor.fetchall()
+    existing_map: Dict[str, Tuple[str, bool]] = {
+        row[0].strip().lower(): (row[1], bool(row[2])) for row in existing_rows if row[0]
+    }
+
+    added_count = 0
+    preserved_count = 0
+    removed_count = 0
+
+    for existing_id_key in list(existing_map.keys()):
+        if existing_id_key not in deduped_discovered:
+            _DB_CONN.execute("DELETE FROM app_permissions WHERE LOWER(app_id) = ?", (existing_id_key,))
+            removed_count += 1
+
+    for app_id_key, (app_name, original_app_id) in deduped_discovered.items():
+        if app_id_key in existing_map:
+            existing_name, _ = existing_map[app_id_key]
+            if existing_name != app_name:
+                _DB_CONN.execute(
+                    "UPDATE app_permissions SET app_name = ? WHERE LOWER(app_id) = ?",
+                    (app_name, app_id_key)
+                )
+            preserved_count += 1
+        else:
+            _DB_CONN.execute(
+                "INSERT INTO app_permissions (app_id, app_name, allowed_to_capture) VALUES (?, ?, 1)",
+                (original_app_id, app_name)
+            )
+            added_count += 1
+
+    _DB_CONN.commit()
+    save_config_storage()
+
+    total_count = _DB_CONN.execute("SELECT count(*) FROM app_permissions").fetchone()[0]
+
+    logger.info(
+        f"Refreshed app permissions: {total_count} total, {added_count} added, "
+        f"{removed_count} removed, {preserved_count} preserved"
+    )
+
+    return {
+        "status": "success",
+        "message": "App list refreshed successfully",
+        "total": total_count,
+        "added": added_count,
+        "removed": removed_count,
+        "preserved": preserved_count,
+    }
+
+
+def update_app_permission(app_id: str, allowed_to_capture: bool) -> Dict[str, Any]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+
+    clean_id = app_id.strip()
+    if not clean_id:
+        raise ValueError("app_id cannot be empty")
+
+    cursor = _DB_CONN.execute(
+        "SELECT app_name, app_id, allowed_to_capture FROM app_permissions WHERE LOWER(app_id) = LOWER(?)",
+        (clean_id,)
+    )
+    row = cursor.fetchone()
+    if not row:
+        raise KeyError(f"Application with app_id '{clean_id}' not found in Vault.")
+
+    perm_val = 1 if allowed_to_capture else 0
+    _DB_CONN.execute(
+        "UPDATE app_permissions SET allowed_to_capture = ? WHERE LOWER(app_id) = LOWER(?)",
+        (perm_val, clean_id)
+    )
+    _DB_CONN.commit()
+    save_config_storage()
+
+    updated = {
+        "app_name": row[0],
+        "app_id": row[1],
+        "allowed_to_capture": bool(allowed_to_capture),
+    }
+    logger.info(f"Updated capture permission for '{updated['app_name']}' ({clean_id}) -> {allowed_to_capture}")
+    return updated

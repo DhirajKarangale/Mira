@@ -163,6 +163,88 @@ Updates configuration for a specific module (`logs`, `message_broker`, `operator
 
 ---
 
+### 2.9 App Capture Permissions
+Manages desktop application capture permissions for Operator.
+
+#### 2.9.1 Get All App Permissions
+`GET /apps`
+
+- **Response (`200 OK`):**
+  ```json
+  [
+    {
+      "app_name": "Microsoft Edge",
+      "app_id": "msedge.exe",
+      "allowed_to_capture": true
+    },
+    {
+      "app_name": "Notepad",
+      "app_id": "notepad.exe",
+      "allowed_to_capture": false
+    }
+  ]
+  ```
+
+#### 2.9.2 Refresh App List
+`POST /apps/refresh`
+
+Synchronizes the application table with system applications discovered by Operator:
+- Adds newly discovered apps with `allowed_to_capture = true`.
+- Removes apps no longer present on the system.
+- Preserves existing capture permissions for already registered apps.
+
+- **Request Body:**
+  ```json
+  [
+    {
+      "app_name": "Microsoft Edge",
+      "app_id": "msedge.exe"
+    },
+    {
+      "app_name": "Notepad",
+      "app_id": "notepad.exe"
+    }
+  ]
+  ```
+- **Response (`200 OK`):**
+  ```json
+  {
+    "status": "success",
+    "message": "App list refreshed successfully",
+    "total": 42,
+    "added": 3,
+    "removed": 1,
+    "preserved": 38
+  }
+  ```
+
+#### 2.9.3 Update App Permission
+`POST /apps/permission`
+
+Updates an app's `allowed_to_capture` status and synchronizes the change with Operator.
+
+- **Request Body:**
+  ```json
+  {
+    "app_id": "notepad.exe",
+    "allowed_to_capture": false
+  }
+  ```
+- **Response (`200 OK`):**
+  ```json
+  {
+    "status": "success",
+    "message": "App permission updated successfully",
+    "app": {
+      "app_name": "Notepad",
+      "app_id": "notepad.exe",
+      "allowed_to_capture": false
+    }
+  }
+  ```
+
+---
+
 ## 3. How to Run
 
 ### Install Dependencies

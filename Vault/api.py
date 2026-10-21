@@ -345,3 +345,119 @@ def detect_os() -> str:
 async def get_os() -> str:
     return detect_os()
 
+
+class AppPermissionItem(BaseModel):
+    app_name: str
+    app_id: str
+    allowed_to_capture: bool = True
+
+
+class DiscoveredAppItem(BaseModel):
+    app_name: str
+    app_id: str
+
+
+class UpdateAppPermissionRequest(BaseModel):
+    app_id: str = Field(..., min_length=1)
+    allowed_to_capture: bool
+
+
+def _notify_operator_permission_sync(app_id: str, allowed_to_capture: bool) -> None:
+    try:
+        import urllib.request
+        import json
+        import config
+        operator_url = getattr(config, "SERVICES", {}).get("operator", "http://127.0.0.1:8002").rstrip("/")
+        req = urllib.request.Request(
+            f"{operator_url}/apps/permission",
+            data=json.dumps({"app_id": app_id, "allowed_to_capture": allowed_to_capture}).encode("utf-8"),
+            headers={"Content-Type": "application/json", "X-Source": "Vault"},
+            method="POST"
+        )
+        urllib.request.urlopen(req, timeout=1.5)
+    except Exception as e:
+        logger.debug(f"Could not notify Operator of permission change for '{app_id}': {e}")
+
+
+@router.get(
+    "/apps",
+    response_model=List[AppPermissionItem],
+    status_code=status.HTTP_200_OK
+)
+async def get_apps():
+    try:
+        return config_storage.get_all_app_permissions()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to retrieve app permissions: {str(e)}"}
+        )
+
+
+@router.post(
+    "/apps/refresh",
+    status_code=status.HTTP_200_OK
+)
+async def refresh_apps(payload: Union[List[DiscoveredAppItem], Dict[str, Any]]):
+    try:
+        if isinstance(payload, dict):
+            apps_raw = payload.get("apps", [])
+        else:
+            apps_raw = payload
+
+        apps_list = []
+        for item in apps_raw:
+            if isinstance(item, dict):
+                apps_list.append(item)
+            elif hasattr(item, "model_dump"):
+                apps_list.append(item.model_dump())
+            elif hasattr(item, "dict"):
+                apps_list.append(item.dict())
+
+        return config_storage.refresh_app_permissions(apps_list)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to refresh app permissions: {str(e)}"}
+        )
+
+
+@router.post(
+    "/apps/permission",
+    status_code=status.HTTP_200_OK
+)
+@router.put(
+    "/apps/permission",
+    status_code=status.HTTP_200_OK
+)
+async def update_app_permission_endpoint(request: UpdateAppPermissionRequest):
+    try:
+        updated = config_storage.update_app_permission(
+            app_id=request.app_id,
+            allowed_to_capture=request.allowed_to_capture
+        )
+        import asyncio
+        asyncio.create_task(asyncio.to_thread(_notify_operator_permission_sync, request.app_id, request.allowed_to_capture))
+
+        return {
+            "status": "success",
+            "message": "App permission updated successfully",
+            "app": updated
+        }
+    except KeyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": str(e)}
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": str(e)}
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to update app permission: {str(e)}"}
+        )
+
+

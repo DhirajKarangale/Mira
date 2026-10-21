@@ -1,147 +1,95 @@
-import { useState, useMemo, type FC } from "react";
-import {
-  useOperatorConfigQuery,
-  useOperatorStatusQuery,
-  useUpdateOperatorConfigMutation,
-  useToggleCaptureMutation,
-} from "./queries";
-import { CaptureStatusHeader } from "./components/CaptureStatusHeader";
-import { CaptureIntervalCard } from "./components/CaptureIntervalCard";
-import { StoredDateRangeCard } from "./components/StoredDateRangeCard";
-import { DeleteConfirmModal } from "./components/DeleteConfirmModal";
-import type { CaptureStatus, StoredDataRange } from "./types";
+import type { FC } from "react";
+import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { MonitorPlay, Sliders, AppWindow } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { CaptureConfigurationsPage } from "./CaptureConfigurations";
+import { CaptureAppsConfigurationsPage } from "./CaptureAppsConfigurations";
 
-const INITIAL_DEMO_RANGE: StoredDataRange = {
-  startDate: "2026-10-14",
-  endDate: "2026-10-20",
-  totalDays: 7,
-  hasData: true,
-};
+export { CaptureConfigurationsPage } from "./CaptureConfigurations";
+export { CaptureAppsConfigurationsPage } from "./CaptureAppsConfigurations";
 
 export const CapturedDataPage: FC = () => {
-  // Query Vault configuration for Operator (CAPTURE_INTERVAL_SECS, AUTO_START)
-  const { data: vaultConfig } = useOperatorConfigQuery();
+  const location = useLocation();
+  const navigate = useNavigate();
 
-  // Query Operator live status from cache (staleTime 15m, manual on-demand refresh)
-  const { data: operatorStatus, isFetching: statusFetching, refetch: refetchStatus } = useOperatorStatusQuery();
-
-  // Mutations for config updates and start/stop toggling
-  const updateConfigMutation = useUpdateOperatorConfigMutation();
-  const toggleCaptureMutation = useToggleCaptureMutation();
-
-  // Derive active capturing execution status
-  const status: CaptureStatus = useMemo(() => {
-    if (!operatorStatus) return "Stopped";
-    const isStarted = Boolean(
-      operatorStatus.is_running ||
-      operatorStatus.is_capturing ||
-      (typeof operatorStatus.status === "string" && operatorStatus.status.toLowerCase() === "started")
-    );
-    return isStarted ? "Started" : "Stopped";
-  }, [operatorStatus]);
-
-  // Derive capture interval: prefer Vault config, fallback to Operator live status, default to 10s
-  const intervalSecs = useMemo(() => {
-    if (typeof vaultConfig?.CAPTURE_INTERVAL_SECS === "number") {
-      return vaultConfig.CAPTURE_INTERVAL_SECS;
-    }
-    if (typeof operatorStatus?.capture_interval_secs === "number" && operatorStatus.capture_interval_secs >= 1) {
-      return operatorStatus.capture_interval_secs;
-    }
-    return 10;
-  }, [vaultConfig, operatorStatus]);
-
-  // Derive autoStart setting from Vault
-  const autoStart = Boolean(vaultConfig?.AUTO_START);
-  const autoStartLoading = updateConfigMutation.isPending;
-
-  // Stored captured data date range & days count (dummy for now)
-  const [storedRange, setStoredRange] = useState<StoredDataRange>(INITIAL_DEMO_RANGE);
-  const [deletedSuccess, setDeletedSuccess] = useState<boolean>(false);
-
-  // Modal state
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-
-  // Toggle capturing status: Started <-> Stopped directly via Operator mutation
-  const handleToggleStatus = async () => {
-    if (toggleCaptureMutation.isPending) return;
-    const isCurrentlyStarted = status === "Started";
-    const nextStatus: CaptureStatus = isCurrentlyStarted ? "Stopped" : "Started";
-    await toggleCaptureMutation.mutateAsync(nextStatus);
-  };
-
-  // Toggle Auto-Start setting in Vault silently
-  const handleToggleAutoStart = async () => {
-    await updateConfigMutation.mutateAsync({ AUTO_START: !autoStart });
-  };
-
-  // Handle capture interval update in Vault and sync with Operator
-  const handleUpdateInterval = async (newSecs: number) => {
-    await updateConfigMutation.mutateAsync({ CAPTURE_INTERVAL_SECS: newSecs });
-  };
-
-  // Handle deletion of all captured data (called after 3s in-modal processing)
-  const handleExecuteDelete = () => {
-    setStoredRange({
-      startDate: "",
-      endDate: "",
-      totalDays: 0,
-      hasData: false,
-    });
-    setDeletedSuccess(true);
-  };
+  // Active view driven strictly by React Router URL: /history/captured-data/apps vs /history/captured-data/configurations
+  const isAppsView = location.pathname.includes("/captured-data/apps");
 
   return (
     <div
       id="history-subpage-captured-data"
-      className="h-full w-full overflow-y-auto select-none bg-gradient-to-b from-[#080c14] via-[#090e18] to-[#04070d] text-zinc-100"
+      className="flex flex-col h-full w-full overflow-hidden select-none bg-zinc-950/40"
     >
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-6">
-        {/* Capturing Status Header with Started/Stopped Badge, Start/Stop Button, and Auto-Start Toggle */}
-        <CaptureStatusHeader
-          status={status}
-          statusLoading={toggleCaptureMutation.isPending}
-          autoStart={autoStart}
-          autoStartLoading={autoStartLoading}
-          onToggleStatus={handleToggleStatus}
-          onToggleAutoStart={handleToggleAutoStart}
-          onRefresh={() => refetchStatus()}
-          refreshing={statusFetching}
-        />
+      {/* Top Header with Navigation Tabs (consistent with Redis and Logs pages) */}
+      <div className="flex-none px-6 py-4 border-b border-white/[0.06] bg-zinc-950/60 backdrop-blur-md">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 max-w-7xl mx-auto">
+          {/* Title and Badge */}
+          <div className="flex items-center gap-3.5">
+            <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-blue-500/10 border border-blue-500/25 text-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.2)]">
+              <MonitorPlay className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold tracking-tight text-white">
+                  Captured Data
+                </h1>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                  Operator
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Screen capture automation, recording intervals, data retention, and application capture permissions
+              </p>
+            </div>
+          </div>
 
-        {/* Capture Interval Configuration Card */}
-        <CaptureIntervalCard
-          intervalSecs={intervalSecs}
-          onUpdateInterval={handleUpdateInterval}
-          isCapturing={status === "Started"}
-        />
+          {/* Navigation Tabs (Driven strictly by React Router) */}
+          <div className="flex items-center p-1 rounded-xl bg-zinc-900/80 border border-white/[0.08] self-start sm:self-auto shadow-inner">
+            <button
+              type="button"
+              id="tab-btn-capture-configurations"
+              onClick={() => navigate("/history/captured-data/configurations")}
+              className={cn(
+                "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
+                !isAppsView
+                  ? "bg-blue-600 text-white shadow-sm font-semibold shadow-blue-950/60"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
+              )}
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              Capture Configurations
+            </button>
 
-        {/* Stored Captured Data Range (Clean non-repetitive showcase + Delete All button) */}
-        <StoredDateRangeCard
-          dataRange={storedRange}
-          onRequestDeleteAll={() => setShowDeleteConfirm(true)}
-          deletedSuccess={deletedSuccess}
-        />
-
-        {/* Subtle footer info */}
-        <div className="pt-4 pb-6 text-center text-xs text-zinc-500 font-mono flex items-center justify-center gap-2 flex-wrap">
-          <span>Operator Engine</span>
-          <span>•</span>
-          <span>Interval: {intervalSecs}s</span>
-          <span>•</span>
-          <span>Vault Auto-Start: {autoStart ? "Enabled (10s delay)" : "Disabled"}</span>
-          <span>•</span>
-          <span>Status: {status}</span>
+            <button
+              type="button"
+              id="tab-btn-capture-apps-configurations"
+              onClick={() => navigate("/history/captured-data/apps")}
+              className={cn(
+                "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
+                isAppsView
+                  ? "bg-blue-600 text-white shadow-sm font-semibold shadow-blue-950/60"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
+              )}
+            >
+              <AppWindow className="w-3.5 h-3.5" />
+              Capture Apps Configurations
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Delete Confirmation Alert Modal with Privacy Warning & In-Modal Deletion/Success States */}
-      <DeleteConfirmModal
-        isOpen={showDeleteConfirm}
-        totalDays={storedRange.totalDays}
-        onExecuteDelete={handleExecuteDelete}
-        onClose={() => setShowDeleteConfirm(false)}
-      />
+      {/* Main Content Viewport Managed by React Router */}
+      <div
+        id="captured-data-subpage-viewport"
+        className="flex-1 relative h-full w-full overflow-hidden"
+      >
+        <Routes>
+          <Route path="/" element={<Navigate to="configurations" replace />} />
+          <Route path="configurations" element={<CaptureConfigurationsPage />} />
+          <Route path="apps" element={<CaptureAppsConfigurationsPage />} />
+          <Route path="*" element={<Navigate to="configurations" replace />} />
+        </Routes>
+      </div>
     </div>
   );
 };

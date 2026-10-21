@@ -41,3 +41,10 @@ CREATE TABLE IF NOT EXISTS user_details (
     country TEXT DEFAULT 'India'
 );
 
+CREATE TABLE IF NOT EXISTS app_permissions (
+    id INTEGER PRIMARY KEY,
+    app_id TEXT UNIQUE NOT NULL,
+    app_name TEXT NOT NULL,
+    allowed_to_capture BOOLEAN DEFAULT 1
+);
+

@@ -96,6 +96,55 @@ pub fn get_active_app_name() -> String {
     }
 }
 
+#[cfg(windows)]
+pub fn get_active_app_id() -> String {
+    use windows_sys::Win32::Foundation::{CloseHandle, HWND};
+    use windows_sys::Win32::System::ProcessStatus::GetProcessImageFileNameW;
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetForegroundWindow, GetWindowThreadProcessId,
+    };
+
+    unsafe {
+        let hwnd: HWND = GetForegroundWindow();
+        if hwnd == 0 {
+            return "explorer.exe".to_string();
+        }
+
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(hwnd, &mut pid);
+        if pid == 0 {
+            return "explorer.exe".to_string();
+        }
+
+        let process_handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if process_handle != 0 {
+            let mut buffer = [0u16; 1024];
+            let len = GetProcessImageFileNameW(
+                process_handle,
+                buffer.as_mut_ptr(),
+                buffer.len() as u32,
+            );
+            CloseHandle(process_handle);
+            if len > 0 {
+                let full_path = String::from_utf16_lossy(&buffer[..len as usize]);
+                if let Some(file_name) = full_path.rsplit('\\').next() {
+                    return file_name.to_lowercase();
+                }
+            }
+        }
+
+        "unknown".to_string()
+    }
+}
+
+#[cfg(not(windows))]
+pub fn get_active_app_id() -> String {
+    "unknown".to_string()
+}
+
 #[cfg(not(windows))]
 pub fn get_active_app_name() -> String {
     "Unknown".to_string()
