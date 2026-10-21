@@ -1,8 +1,27 @@
 from __future__ import annotations
 
+import sys
+if sys.platform == "win32":
+    # Suppress spurious WinError 10054 connection reset tracebacks in asyncio Windows Proactor
+    from asyncio.proactor_events import _ProactorBasePipeTransport
+
+    _orig_call_connection_lost = _ProactorBasePipeTransport._call_connection_lost
+
+    def _silenced_call_connection_lost(self, exc):
+        try:
+            _orig_call_connection_lost(self, exc)
+        except ConnectionResetError:
+            pass
+        except OSError as e:
+            if getattr(e, "winerror", None) == 10054:
+                pass
+            else:
+                raise
+
+    _ProactorBasePipeTransport._call_connection_lost = _silenced_call_connection_lost
+
 from contextlib import asynccontextmanager
 import logging
-import sys
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

@@ -269,9 +269,14 @@ def check_service_health(url: str, timeout_sec: float = 1.0) -> bool:
     try:
         req = urllib.request.Request(
             url,
-            headers={"User-Agent": "MIRA-Starter/1.0", "Accept": "application/json"}
+            headers={
+                "User-Agent": "MIRA-Starter/1.0",
+                "Accept": "application/json",
+                "Connection": "close"
+            }
         )
         with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+            resp.read()
             return resp.status in (200, 204, 301, 302, 304, 307, 308)
     except urllib.error.HTTPError as e:
         return e.code in (200, 204, 301, 302, 304, 404, 405)
@@ -305,11 +310,74 @@ def wait_for_service_ready(
     return False
 
 
+class LogFilterManager:
+    """Dynamically synchronizes with Vault logs_config to respect 'Show in Console' toggles."""
+
+    def __init__(self, vault_url: str):
+        self.vault_url = vault_url.rstrip("/")
+        self._config: Dict[str, Any] = {}
+        self._last_fetch: float = 0.0
+        self._lock = threading.Lock()
+
+    def should_show_module(self, mod_id: str, line: str) -> bool:
+        # Always allow critical errors and crash traces so developers never miss failures
+        lower_line = line.lower()
+        if any(err in lower_line for err in ("error", "fatal", "panic", "traceback", "exception", "failed to start", "failed to launch")):
+            return True
+
+        # Refresh from Vault /config/logs every 2 seconds
+        now = time.time()
+        if now - self._last_fetch > 2.0:
+            self._fetch_config()
+
+        with self._lock:
+            # Map module ID to config key, e.g. "message_broker" -> "show_logs_message_broker"
+            mod_key = mod_id.lower().replace("-", "_")
+            config_key = f"show_logs_{mod_key}"
+
+            # If the module has an explicit toggle in logs_config, respect it
+            if config_key in self._config:
+                return bool(self._config[config_key])
+
+            # For vault: if all configured modules have console disabled, silence vault access logs too
+            if mod_key == "vault":
+                show_values = [v for k, v in self._config.items() if k.startswith("show_logs_")]
+                if show_values and not any(show_values):
+                    # Suppress routine uvicorn access logs
+                    if "http/1.1" in lower_line and ("200 ok" in lower_line or "201 created" in lower_line or "304 not modified" in lower_line):
+                        return False
+
+            return True
+
+    def _fetch_config(self) -> None:
+        if not self.vault_url:
+            return
+        try:
+            req = urllib.request.Request(
+                f"{self.vault_url}/config/logs",
+                headers={
+                    "User-Agent": "MIRA-Starter/1.0",
+                    "Accept": "application/json",
+                    "Connection": "close"
+                }
+            )
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
+                if resp.status == 200:
+                    raw = resp.read()
+                    data = json.loads(raw.decode("utf-8"))
+                    with self._lock:
+                        self._config = data
+                        self._last_fetch = time.time()
+        except Exception:
+            pass
+
+
 class ProcessRunner:
-    def __init__(self):
+    def __init__(self, vault_url: str = ""):
         self.processes: Dict[str, subprocess.Popen] = {}
         self.threads: List[threading.Thread] = []
         self._shutdown_event = threading.Event()
+        self.log_filter = LogFilterManager(vault_url) if vault_url else None
 
     def build_command(self, module: Dict[str, Any], port: int, host: str) -> List[str]:
         mod_type = module["type"]
@@ -365,7 +433,8 @@ class ProcessRunner:
                         break
                     line = raw_line.rstrip("\r\n")
                     if line:
-                        log_mod(mod_id, line)
+                        if self.log_filter is None or self.log_filter.should_show_module(mod_id, line):
+                            log_mod(mod_id, line)
         except Exception:
             pass
 
@@ -655,7 +724,8 @@ def main() -> None:
     client_port = allocations.get("client", {}).get("port", 9004)
     update_client_configs(url_map, client_port)
 
-    runner = ProcessRunner()
+    vault_url = url_map.get("vault", "")
+    runner = ProcessRunner(vault_url)
 
     def signal_handler(signum, frame):
         print()
