@@ -1,4 +1,4 @@
-import { useState, useMemo, type FC } from "react";
+import { useState, useEffect, useRef, useMemo, type FC } from "react";
 import {
   Loader2,
   AlertCircle,
@@ -66,6 +66,8 @@ export const AiConfigsPage: FC = () => {
 
   const [activeTab, setActiveTab] = useState<string>("engine-workers");
   const [feedback, setFeedback] = useState<FeedbackNotification | null>(null);
+  const [dismissedQueryError, setDismissedQueryError] = useState(false);
+  const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Compute canonical ordered list of providers based on priority sequence
   const orderedProviders = useMemo(() => {
@@ -109,16 +111,40 @@ export const AiConfigsPage: FC = () => {
   const activeKeys = activeConfig?.keys || [];
   const currentKeyIndex = activeConfig?.current_key ?? 0;
 
-  const showFeedback = (type: "success" | "error" | "info", message: string) => {
-    setFeedback({ type, message });
-    if (type === "success") {
-      setTimeout(() => {
-        setFeedback((prev) => (prev?.type === "success" ? null : prev));
-      }, 5000);
+  // Auto-dismiss feedback notification after duration (default 4 seconds)
+  const showFeedback = (
+    type: "success" | "error" | "info",
+    message: string,
+    durationMs = 4000
+  ) => {
+    if (feedbackTimeoutRef.current) {
+      clearTimeout(feedbackTimeoutRef.current);
     }
+    setFeedback({ type, message });
+    feedbackTimeoutRef.current = setTimeout(() => {
+      setFeedback(null);
+    }, durationMs);
+  };
+
+  // Clean up any pending timer on unmount
+  useEffect(() => {
+    return () => {
+      if (feedbackTimeoutRef.current) {
+        clearTimeout(feedbackTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleDismissBanner = () => {
+    if (feedbackTimeoutRef.current) {
+      clearTimeout(feedbackTimeoutRef.current);
+    }
+    setFeedback(null);
+    setDismissedQueryError(true);
   };
 
   const handleRefresh = async () => {
+    setDismissedQueryError(false);
     await Promise.all([
       refetchProviders(),
       refetchPriorities(),
@@ -353,10 +379,10 @@ export const AiConfigsPage: FC = () => {
       <div className="flex-1 overflow-y-auto px-6 py-6">
         <div className="max-w-7xl mx-auto space-y-6">
           {/* Feedback Alert Toast */}
-          {(feedback || providersError || prioritiesError || engineError) && (
+          {(feedback || (!dismissedQueryError && (providersError || prioritiesError || engineError))) && (
             <div
               id="ai-config-feedback-banner"
-              className={`flex items-start justify-between gap-3 p-4 rounded-xl border backdrop-blur-md transition-all animate-in fade-in ${
+              className={`flex items-start justify-between gap-3 p-4 rounded-xl border backdrop-blur-md transition-all animate-in fade-in duration-200 ${
                 (feedback?.type || "error") === "success"
                   ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
                   : (feedback?.type || "error") === "error"
@@ -385,7 +411,7 @@ export const AiConfigsPage: FC = () => {
               </div>
               <button
                 type="button"
-                onClick={() => setFeedback(null)}
+                onClick={handleDismissBanner}
                 className="p-1 rounded-lg hover:bg-white/[0.06] text-zinc-400 hover:text-white transition-all cursor-pointer"
               >
                 <X className="w-4 h-4" />
