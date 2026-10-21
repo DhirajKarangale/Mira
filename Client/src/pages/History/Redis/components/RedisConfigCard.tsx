@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useRedisConfigQuery, useUpdateRedisConfigMutation } from "../queries";
 import type { RedisConfig } from "../types";
+import { useRefreshAnimation } from "@/hooks/useRefreshAnimation";
 import { cn } from "@/lib/utils";
 
 const DEFAULT_CONFIG: RedisConfig = {
@@ -29,8 +30,11 @@ const DEFAULT_CONFIG: RedisConfig = {
 };
 
 export const RedisConfigCard: FC = () => {
-  const { data: config = DEFAULT_CONFIG, isLoading: loading, refetch } = useRedisConfigQuery();
+  const { data: config = DEFAULT_CONFIG, isLoading, isFetching, refetch } = useRedisConfigQuery();
   const updateMutation = useUpdateRedisConfigMutation();
+
+  const { isRefreshing, handleRefresh } = useRefreshAnimation(() => refetch(), { minDurationMs: 650 });
+  const isBusy = isLoading || isFetching || isRefreshing;
 
   const [draft, setDraft] = useState<RedisConfig>(config);
   const [portInput, setPortInput] = useState<string>("6379");
@@ -214,7 +218,7 @@ export const RedisConfigCard: FC = () => {
         </div>
       )}
 
-      {loading ? (
+      {isLoading ? (
         <div className="flex flex-col items-center justify-center p-16 rounded-2xl border border-white/[0.08] bg-zinc-900/40 backdrop-blur-sm">
           <Loader2 className="w-8 h-8 text-red-500 animate-spin mb-3" />
           <p className="text-sm text-zinc-400 font-medium">Fetching Redis configuration from Vault...</p>
@@ -575,12 +579,19 @@ export const RedisConfigCard: FC = () => {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => refetch()}
-                disabled={loading || saving}
-                className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium text-zinc-400 hover:text-zinc-200 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.08] transition-colors cursor-pointer disabled:cursor-not-allowed"
+                id="btn-refresh-redis-config"
+                onClick={handleRefresh}
+                disabled={isBusy || saving}
+                className={cn(
+                  "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium border transition-colors outline-none",
+                  isBusy || saving
+                    ? "bg-white/[0.02] border-white/[0.05] text-zinc-500 cursor-not-allowed opacity-60"
+                    : "text-zinc-400 hover:text-zinc-200 bg-white/[0.03] hover:bg-white/[0.06] border-white/[0.08] cursor-pointer"
+                )}
+                title={isBusy ? "Refreshing config from Vault..." : "Refresh from Vault"}
               >
-                <RotateCcw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
-                Refresh from Vault
+                <RotateCcw className={cn("w-3.5 h-3.5", isBusy && "animate-spin text-red-400")} />
+                <span>{isBusy ? "Refreshing..." : "Refresh from Vault"}</span>
               </button>
 
               {hasChanges && (

@@ -4,6 +4,7 @@ import { Database, Sliders, Layers, RefreshCw, AlertCircle } from "lucide-react"
 import { ConsumerGroupsCard } from "./components/ConsumerGroupsCard";
 import { RedisConfigCard } from "./components/RedisConfigCard";
 import { useConsumerGroupsQuery } from "./queries";
+import { useRefreshAnimation } from "@/hooks/useRefreshAnimation";
 import { cn } from "@/lib/utils";
 
 export const RedisPage: FC = () => {
@@ -20,6 +21,12 @@ export const RedisPage: FC = () => {
     error,
     refetch,
   } = useConsumerGroupsQuery();
+
+  const { isRefreshing: isRetrying, handleRefresh: handleRetry } = useRefreshAnimation(
+    () => refetch(),
+    { minDurationMs: 650 }
+  );
+  const isRetryBusy = isFetching || isRetrying;
 
   const errorMessage = error
     ? (error as any)?.response?.data?.detail?.message ||
@@ -99,11 +106,19 @@ export const RedisPage: FC = () => {
               </div>
               <button
                 type="button"
-                onClick={() => refetch()}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-xs font-medium text-red-200 transition-colors cursor-pointer"
+                id="btn-retry-redis-connection"
+                onClick={handleRetry}
+                disabled={isRetryBusy}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors outline-none",
+                  isRetryBusy
+                    ? "bg-red-500/10 text-red-400/60 border border-red-500/20 cursor-not-allowed opacity-60"
+                    : "bg-red-500/20 hover:bg-red-500/30 text-red-200 cursor-pointer"
+                )}
+                title={isRetryBusy ? "Retrying connection..." : "Retry connection"}
               >
-                <RefreshCw className={cn("w-3.5 h-3.5", isFetching && "animate-spin")} />
-                Retry
+                <RefreshCw className={cn("w-3.5 h-3.5", isRetryBusy && "animate-spin")} />
+                <span>{isRetryBusy ? "Retrying..." : "Retry"}</span>
               </button>
             </div>
           )}
@@ -115,9 +130,7 @@ export const RedisPage: FC = () => {
                 <ConsumerGroupsCard
                   groups={groups}
                   loading={isLoading || isFetching}
-                  onRefresh={() => {
-                    refetch();
-                  }}
+                  onRefresh={() => refetch()}
                 />
               }
             />

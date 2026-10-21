@@ -15,13 +15,14 @@ import {
 } from "lucide-react";
 import type { LogFilters } from "../types";
 import { LogDateRangePicker } from "./LogDateRangePicker";
+import { useRefreshAnimation } from "@/hooks/useRefreshAnimation";
 import { cn } from "@/lib/utils";
 
 interface LogFiltersBarProps {
   filters: LogFilters;
   onFilterChange: (filters: Partial<LogFilters>) => void;
   onResetFilters: () => void;
-  onRefresh: () => void;
+  onRefresh: () => Promise<unknown> | void;
   isFiltered: boolean;
   loading?: boolean;
 }
@@ -85,6 +86,8 @@ export const LogFiltersBar: FC<LogFiltersBarProps> = ({
   isFiltered,
   loading = false,
 }) => {
+  const { isRefreshing, handleRefresh } = useRefreshAnimation(onRefresh, { minDurationMs: 650 });
+  const isBusy = loading || isRefreshing;
   const [isModuleOpen, setIsModuleOpen] = useState(false);
   const moduleDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -285,25 +288,21 @@ export const LogFiltersBar: FC<LogFiltersBarProps> = ({
             )}
           </button>
 
-          {/* Requirement 6: Refresh Action showing Animating Circle for loading */}
+          {/* Refresh Action rotating until complete and locking clicks */}
           <button
             type="button"
             id="btn-refresh-logs"
-            onClick={!loading ? onRefresh : undefined}
-            disabled={loading}
-            title={loading ? "Loading logs..." : "Refresh logs from Vault"}
+            onClick={handleRefresh}
+            disabled={isBusy}
+            title={isBusy ? "Refreshing logs..." : "Refresh logs from Vault"}
             className={cn(
-              "flex items-center justify-center w-8 h-8 rounded-md border border-white/10 transition-all select-none outline-none",
-              loading
-                ? "bg-zinc-900 text-cyan-400 cursor-not-allowed border-cyan-500/30"
-                : "bg-zinc-900/90 text-zinc-300 hover:text-white hover:bg-zinc-800 hover:border-white/20 cursor-pointer"
+              "flex items-center justify-center w-8 h-8 rounded-md border transition-all select-none outline-none",
+              isBusy
+                ? "bg-zinc-900 text-cyan-400 cursor-not-allowed border-cyan-500/30 opacity-70"
+                : "bg-zinc-900/90 text-zinc-300 hover:text-white hover:bg-zinc-800 border-white/10 hover:border-white/20 cursor-pointer"
             )}
           >
-            {loading ? (
-              <div className="w-3.5 h-3.5 border-2 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin" />
-            ) : (
-              <RotateCw className="w-3.5 h-3.5" />
-            )}
+            <RotateCw className={cn("w-3.5 h-3.5", isBusy && "animate-spin text-cyan-400")} />
           </button>
         </div>
       </div>

@@ -105,9 +105,7 @@ export const CapturedDataPage: FC = () => {
           autoStartLoading={autoStartLoading}
           onToggleStatus={handleToggleStatus}
           onToggleAutoStart={handleToggleAutoStart}
-          onRefresh={() => {
-            refetchStatus();
-          }}
+          onRefresh={() => refetchStatus()}
           refreshing={statusFetching}
         />
 

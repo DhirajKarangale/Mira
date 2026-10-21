@@ -22,12 +22,13 @@ import {
 } from "../queries";
 import { ConfirmModal } from "./ConfirmModal";
 import type { ConsumerGroup, CleanResult, FormatResult } from "../types";
+import { useRefreshAnimation } from "@/hooks/useRefreshAnimation";
 import { cn } from "@/lib/utils";
 
 interface ConsumerGroupsCardProps {
   groups: ConsumerGroup[];
   loading: boolean;
-  onRefresh: () => Promise<void> | void;
+  onRefresh: () => Promise<unknown> | void;
 }
 
 export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
@@ -35,6 +36,8 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
   loading,
   onRefresh,
 }) => {
+  const { isRefreshing, handleRefresh } = useRefreshAnimation(onRefresh, { minDurationMs: 650 });
+  const isBusy = loading || isRefreshing;
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedGroup, setCopiedGroup] = useState<string | null>(null);
 
@@ -264,13 +267,19 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
         <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap">
           <button
             type="button"
-            onClick={() => onRefresh()}
-            disabled={loading || actionLoading}
-            className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium text-zinc-300 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] transition-colors cursor-pointer disabled:cursor-not-allowed"
-            title="Refresh consumer groups"
+            id="btn-refresh-consumer-groups"
+            onClick={handleRefresh}
+            disabled={isBusy || actionLoading}
+            className={cn(
+              "flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium border transition-colors outline-none",
+              isBusy || actionLoading
+                ? "bg-white/[0.02] border-white/[0.05] text-zinc-500 cursor-not-allowed opacity-60"
+                : "text-zinc-300 bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.08] hover:text-white cursor-pointer"
+            )}
+            title={isBusy ? "Refreshing consumer groups..." : "Refresh consumer groups"}
           >
-            <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
-            Refresh
+            <RefreshCw className={cn("w-3.5 h-3.5", isBusy && "animate-spin text-cyan-400")} />
+            <span>{isBusy ? "Refreshing..." : "Refresh"}</span>
           </button>
 
           {/* Clean Pending Button */}

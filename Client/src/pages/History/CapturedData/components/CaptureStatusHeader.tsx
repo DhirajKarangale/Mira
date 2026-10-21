@@ -9,6 +9,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import type { CaptureStatus } from "../types";
+import { useRefreshAnimation } from "@/hooks/useRefreshAnimation";
 import { cn } from "@/lib/utils";
 
 interface CaptureStatusHeaderProps {
@@ -18,7 +19,7 @@ interface CaptureStatusHeaderProps {
   autoStartLoading: boolean;
   onToggleStatus: () => void;
   onToggleAutoStart: () => void;
-  onRefresh?: () => void;
+  onRefresh?: () => Promise<unknown> | void;
   refreshing?: boolean;
 }
 
@@ -33,72 +34,81 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
   refreshing = false,
 }) => {
   const isStarted = status === "Started";
+  const { isRefreshing, handleRefresh } = useRefreshAnimation(onRefresh, { minDurationMs: 650 });
+  const isBusy = refreshing || isRefreshing;
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-r from-cyan-950/25 via-zinc-900/60 to-blue-950/25 p-6 backdrop-blur-xl shadow-xl">
+    <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-r from-cyan-950/25 via-zinc-900/60 to-blue-950/25 p-4 sm:p-6 backdrop-blur-xl shadow-xl">
       {/* Background ambient lighting */}
       <div className="absolute -top-24 -left-24 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-24 -right-24 w-72 h-72 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+      <div className="relative z-10 flex flex-col xl:flex-row xl:items-center justify-between gap-5">
         {/* Left: Module Identity & Status Badge */}
-        <div className="flex items-start gap-4">
-          <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/25 text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.15)] shrink-0">
-            <MonitorPlay className="w-7 h-7" />
+        <div className="flex items-start gap-3 sm:gap-4 min-w-0">
+          <div className="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/25 text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.15)] shrink-0">
+            <MonitorPlay className="w-6 h-6 sm:w-7 sm:h-7" />
           </div>
 
           <div className="space-y-1.5 min-w-0">
-            {/* Header Title & Badges: Locked in single row to prevent jumpy wrapping */}
-            <div className="flex items-center gap-2 sm:gap-2.5 flex-nowrap">
+            {/* Header Title & Badges: Status badge integrates refresh button, grouping badges cleanly */}
+            <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white shrink-0 whitespace-nowrap">
                 Captured Data
               </h1>
 
-              {/* Status Badge: Started vs Stopped */}
-              <div
-                id="capture-status-badge"
-                className={cn(
-                  "inline-flex items-center justify-center gap-2 w-[128px] h-[26px] px-2.5 rounded-full text-xs font-semibold border transition-all duration-200 shrink-0 whitespace-nowrap select-none",
-                  isStarted
-                    ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
-                    : "bg-zinc-800/80 border-white/[0.08] text-zinc-400"
-                )}
-              >
-                {isStarted ? (
-                  <>
-                    <span className="relative flex h-2 w-2 shrink-0">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-                    </span>
-                    <span>Status: Started</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="inline-flex rounded-full h-2 w-2 bg-zinc-500 shrink-0" />
-                    <span>Status: Stopped</span>
-                  </>
-                )}
-              </div>
-
-              {/* Vault Config tag - Stays locked on first row */}
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono text-zinc-400 bg-white/[0.04] border border-white/[0.06] shrink-0 whitespace-nowrap select-none">
-                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                <span>Vault Managed</span>
-              </span>
-
-              {/* Explicit Refresh Status Button */}
-              {onRefresh && (
-                <button
-                  type="button"
-                  id="btn-refresh-capture-status"
-                  onClick={onRefresh}
-                  disabled={refreshing}
-                  className="inline-flex items-center justify-center w-7 h-7 rounded-lg border border-white/[0.08] hover:border-white/[0.2] bg-white/[0.03] hover:bg-white/[0.08] text-zinc-400 hover:text-white transition-all cursor-pointer select-none outline-none disabled:opacity-50"
-                  title="Check live Operator status now"
+              <div className="flex items-center gap-2 shrink-0">
+                {/* Status Badge: Started vs Stopped with integrated Refresh action */}
+                <div
+                  id="capture-status-badge"
+                  className={cn(
+                    "inline-flex items-center gap-2 h-[26px] pl-2.5 pr-1.5 rounded-full text-xs font-semibold border transition-all duration-200 shrink-0 whitespace-nowrap select-none",
+                    isStarted
+                      ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+                      : "bg-zinc-800/80 border-white/[0.08] text-zinc-400"
+                  )}
                 >
-                  <RotateCcw className={cn("w-3 h-3", refreshing && "animate-spin")} />
-                </button>
-              )}
+                  {isStarted ? (
+                    <>
+                      <span className="relative flex h-2 w-2 shrink-0">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                      </span>
+                      <span>Status: Started</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="inline-flex rounded-full h-2 w-2 bg-zinc-500 shrink-0" />
+                      <span>Status: Stopped</span>
+                    </>
+                  )}
+
+                  {/* Integrated Refresh Status Button */}
+                  {onRefresh && (
+                    <button
+                      type="button"
+                      id="btn-refresh-capture-status"
+                      onClick={handleRefresh}
+                      disabled={isBusy}
+                      className={cn(
+                        "inline-flex items-center justify-center w-4 h-4 rounded-full transition-all outline-none ml-0.5",
+                        isBusy
+                          ? "cursor-not-allowed text-cyan-400 opacity-80"
+                          : "text-zinc-400 hover:text-white hover:bg-white/10 cursor-pointer"
+                      )}
+                      title={isBusy ? "Checking live status..." : "Check live Operator status now"}
+                    >
+                      <RotateCcw className={cn("w-2.5 h-2.5 transition-transform", isBusy && "animate-spin")} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Vault Config tag */}
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono text-zinc-400 bg-white/[0.04] border border-white/[0.06] shrink-0 whitespace-nowrap select-none">
+                  <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  <span>Vault Managed</span>
+                </span>
+              </div>
             </div>
 
             <p className="text-xs sm:text-sm text-zinc-400 max-w-2xl leading-relaxed">
@@ -109,7 +119,7 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
         </div>
 
         {/* Right Controls: Auto-Start Toggle Switch & Start/Stop Button */}
-        <div className="flex items-center gap-3 shrink-0 self-start lg:self-center">
+        <div className="flex items-center gap-3 shrink-0 self-start xl:self-center flex-wrap sm:flex-nowrap">
           {/* Sleek, Redesigned Auto-Start Switch */}
           <button
             type="button"
@@ -119,7 +129,7 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
             onClick={onToggleAutoStart}
             disabled={autoStartLoading}
             className={cn(
-              "group relative flex items-center justify-between gap-2.5 h-[44px] w-[212px] px-3.5 rounded-xl border transition-all duration-200 cursor-pointer select-none outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 shrink-0",
+              "group relative flex items-center justify-between gap-2.5 h-[42px] sm:h-[44px] w-[190px] sm:w-[200px] px-3 sm:px-3.5 rounded-xl border transition-all duration-200 cursor-pointer select-none outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 shrink-0",
               autoStart
                 ? "bg-cyan-500/10 border-cyan-500/35 text-cyan-200 shadow-[0_0_15px_rgba(6,182,212,0.15)] hover:border-cyan-500/50 hover:bg-cyan-500/15"
                 : "bg-zinc-850/80 border-white/[0.08] text-zinc-400 hover:border-white/[0.16] hover:bg-zinc-800/80 hover:text-zinc-200"
@@ -155,7 +165,7 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
                     {autoStart ? "ON" : "OFF"}
                   </span>
                 </div>
-                <span className="text-[10px] text-zinc-400 font-mono w-[100px] whitespace-nowrap">
+                <span className="text-[10px] text-zinc-400 font-mono w-[95px] whitespace-nowrap truncate">
                   {autoStart ? "10s delay on boot" : "Manual trigger"}
                 </span>
               </div>
@@ -188,7 +198,7 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
             onClick={onToggleStatus}
             disabled={statusLoading}
             className={cn(
-              "group relative inline-flex items-center justify-center gap-2.5 h-[44px] w-[160px] px-4 rounded-xl text-xs sm:text-sm font-semibold shadow-lg transition-all duration-200 cursor-pointer active:scale-95 shrink-0 select-none whitespace-nowrap outline-none focus-visible:ring-2",
+              "group relative inline-flex items-center justify-center gap-2 h-[42px] sm:h-[44px] w-[148px] sm:w-[155px] px-3 sm:px-3.5 rounded-xl text-xs sm:text-sm font-semibold shadow-lg transition-all duration-200 cursor-pointer active:scale-95 shrink-0 select-none whitespace-nowrap outline-none focus-visible:ring-2",
               statusLoading && "opacity-75 cursor-not-allowed pointer-events-none",
               isStarted
                 ? "bg-gradient-to-r from-rose-500 via-rose-600 to-red-600 hover:from-rose-400 hover:to-red-500 text-white border border-rose-400/40 shadow-[0_0_20px_rgba(244,63,94,0.25)] hover:shadow-[0_0_28px_rgba(244,63,94,0.4)] focus-visible:ring-rose-400"
