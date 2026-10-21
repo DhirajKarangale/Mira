@@ -59,7 +59,7 @@ export const UserHero: FC<UserHeroProps> = ({
                 ) : (
                   <>
                     <Eye className="w-3 h-3 text-blue-400" />
-                    <span>{hasDetails ? "Profile Active" : "No Profile"}</span>
+                    <span>{hasDetails ? "Profile Active" : "User Data Not Found"}</span>
                   </>
                 )}
               </span>

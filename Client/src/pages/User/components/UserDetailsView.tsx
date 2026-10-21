@@ -38,26 +38,25 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
   const hasData =
     Boolean(details) &&
     Boolean(
-      details?.user_name ||
-      details?.email ||
-      details?.phone_number ||
-      details?.city ||
-      details?.state ||
-      details?.country
+      details?.user_name?.trim() ||
+      details?.email?.trim() ||
+      details?.phone_number?.trim() ||
+      details?.city?.trim() ||
+      details?.state?.trim() ||
+      details?.country?.trim()
     );
 
   if (!hasData) {
     return (
       <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-8 sm:p-12 text-center backdrop-blur-xl shadow-xl flex flex-col items-center justify-center">
-        <div className="w-20 h-20 rounded-3xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mb-5 shadow-[0_0_30px_rgba(59,130,246,0.15)]">
+        <div className="w-20 h-20 rounded-3xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mb-5 shadow-[0_0_30px_rgba(245,158,11,0.15)]">
           <User className="w-10 h-10" />
         </div>
         <h2 className="text-xl sm:text-2xl font-bold text-white mb-2">
-          No User Profile Configured
+          User data not found
         </h2>
         <p className="text-sm text-zinc-400 max-w-md mb-6 leading-relaxed">
-          Your profile information is not yet configured in Vault. Add your name, email, phone number,
-          and regional coordinates to get started.
+          User data not found enter your details in Me tab.
         </p>
         <button
           type="button"
@@ -66,7 +65,7 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-500/20 transition-all duration-200 active:scale-95 cursor-pointer"
         >
           <PlusCircle className="w-4 h-4" />
-          <span>Add User Details</span>
+          <span>Enter Details</span>
         </button>
       </div>
     );
