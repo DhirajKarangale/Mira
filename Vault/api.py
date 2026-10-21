@@ -241,7 +241,6 @@ async def get_logs(
     if end_date:
         parsed_end = parse_flexible_date(end_date)
 
-    # Gracefully normalize start and end dates
     if parsed_start and parsed_end and parsed_start > parsed_end:
         parsed_start, parsed_end = parsed_end, parsed_start
 
@@ -439,10 +438,6 @@ async def refresh_apps(payload: Union[List[DiscoveredAppItem], Dict[str, Any]]):
 
 
 @router.post(
-    "/apps/permission",
-    status_code=status.HTTP_200_OK
-)
-@router.put(
     "/apps/permission",
     status_code=status.HTTP_200_OK
 )

@@ -228,7 +228,6 @@ def update_configuration(table_name: str, updates: Dict[str, Any]) -> Dict[str, 
     if normalized_table not in _PARSED_SCHEMA:
         raise KeyError(f"Unknown configuration group '{table_name}'")
 
-    # Ensure all target columns exist dynamically
     existing_info = _DB_CONN.execute(f"PRAGMA table_info({normalized_table})").fetchall()
     existing_cols = {row[1].lower(): row[1] for row in existing_info}
 

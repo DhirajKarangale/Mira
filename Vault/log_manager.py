@@ -222,13 +222,11 @@ async def get_logs(
     elif end_date is not None and start_date is None:
         start_date = end_date
 
-    # Gracefully normalize if dates are reversed
     if start_date > end_date:
         start_date, end_date = end_date, start_date
 
     collected_logs: List[Dict[str, Any]] = []
 
-    # Find matching log files directly from directory (instantaneous, never hangs on large date ranges)
     matching_files: List[Tuple[date, Path]] = []
     if config.LOGS_DIR.exists():
         for item in config.LOGS_DIR.iterdir():
@@ -238,7 +236,6 @@ async def get_logs(
             if file_date is not None and start_date <= file_date <= end_date:
                 matching_files.append((file_date, item))
 
-    # Sort matching files newest date first
     matching_files.sort(key=lambda x: x[0], reverse=True)
 
     async with _LOG_LOCK:
@@ -249,7 +246,6 @@ async def get_logs(
             except Exception as e:
                 logger.error(f"Failed to read logs for {f_date}: {e}")
 
-    # 1. Filter by module_name
     if module_name and module_name.strip().lower() != "all":
         target = module_name.strip().lower()
         collected_logs = [
@@ -257,7 +253,6 @@ async def get_logs(
             if log.get("module_name", "").lower() == target
         ]
 
-    # 2. Filter by search query across log content
     if search and search.strip():
         search_term = search.strip().lower()
         collected_logs = [
@@ -265,7 +260,6 @@ async def get_logs(
             if search_term in str(log.get("data", "")).lower()
         ]
 
-    # 3. Sort returning most recent logs first
     collected_logs.sort(
         key=lambda x: (x.get("timestamp", ""), x.get("id", 0)),
         reverse=True
@@ -273,7 +267,6 @@ async def get_logs(
 
     total_count = len(collected_logs)
 
-    # 4. Pagination
     if offset < 0:
         offset = 0
 

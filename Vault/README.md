@@ -1,19 +1,23 @@
 # Vault
 
-The **Vault** is the centralized service for secret management, configuration storage, and encrypted logging across MIRA modules.
+The **Vault** is the centralized service for secret management, configuration storage, encrypted audit logging, and application permissions across MIRA modules.
 
 ---
 
-## 1. What It Provides
+## 1. What It Does
 
-- **Secrets**: Automatically derives and keeps a master 256-bit encryption key internal in memory.
-- **Configurations**: Stores module configurations in encrypted SQL tables (`logs`, `message_broker`, `operator`).
-- **Encrypted Logging**: Ingests module logs via HTTP and writes them to daily encrypted JSONL files (`dd-mm-yyyy.jsonl`).
-- **Retention**: Automatically cleans up logs older than configured retention period or with invalid names.
+- **Secrets & Encryption**: Derives and retains an internal 256-bit encryption key securely in memory using the OS credential store (Windows Credential Manager / macOS Keychain / Linux SecretService).
+- **Encrypted Configurations**: Stores module configurations in an encrypted SQLite database (`logs`, `message_broker`, `operator`, `user_details`, `app_permissions`).
+- **Encrypted Audit Logging**: Ingests logs from all modules and stores them in encrypted daily files (`dd-mm-yyyy.jsonl`) with search, date filtering, and pagination.
+- **Log Retention**: Automatically and manually cleans up expired logs according to configured retention periods.
+- **Host OS Detection**: Identifies host operating system type and friendly version.
+- **App Capture Permissions**: Maintains system application capture permissions and keeps them synchronized with Operator.
 
 ---
 
 ## 2. API Reference
+
+Every endpoint has strictly one way to be called.
 
 ### 2.1 Service Health
 `GET /health`
@@ -31,13 +35,13 @@ The **Vault** is the centralized service for secret management, configuration st
 ### 2.2 Ingest Log
 `POST /logs`
 
-Used by all modules to send log entries to Vault.
+Appends an encrypted log entry to the active daily log file.
 
 - **Request Body:**
   ```json
   {
-    "module_name": "message_broker",
-    "data": "Connected to Redis at localhost:6379"
+    "module_name": "operator",
+    "data": "Captured silent screenshot: job_123"
   }
   ```
 - **Response (`201 Created`):**
@@ -52,56 +56,37 @@ Used by all modules to send log entries to Vault.
 ### 2.3 Retrieve Logs
 `GET /logs`
 
+Queries encrypted log records with optional filtering and pagination.
+
 - **Query Parameters:**
   - `module_name` (optional, default: `"all"`): Filter by module name.
-  - `start_date` (optional, default: today): `dd-mm-yyyy`
-  - `end_date` (optional, default: today): `dd-mm-yyyy`
-  - `limit` (optional): Max log entries to return.
-- **Request Example:**
-  ```bash
-  curl "http://127.0.0.1:8001/logs?module_name=message_broker&limit=5"
-  ```
+  - `search` (optional): Case-insensitive text search within log contents.
+  - `start_date` (optional): Beginning date (`dd-mm-yyyy` or `yyyy-mm-dd`).
+  - `end_date` (optional): Ending date (`dd-mm-yyyy` or `yyyy-mm-dd`).
+  - `date` (optional): Single day filter.
+  - `limit` (optional, default: `50`, max: `1000`): Maximum logs per page.
+  - `offset` (optional, default: `0`): Offset for pagination.
+  - `page` (optional): Page number (1-indexed).
+  - `envelope` (optional, default: `false`): When `true`, returns items with pagination metadata.
 - **Response (`200 OK`):**
   ```json
   [
     {
       "id": 1,
-      "module_name": "message_broker",
-      "timestamp": "20/10/2026T12:00:00",
-      "data": "Connected to Redis at localhost:6379"
+      "module_name": "operator",
+      "timestamp": "21/10/2026T10:00:00",
+      "data": "Captured silent screenshot: job_123"
     }
   ]
   ```
 
 ---
 
-### 2.4 Get Configuration
-`GET /config/{key}`
-
-Retrieves configuration for a module (e.g. `logs`, `message_broker`) or single key.
-
-- **Request Example:**
-  ```bash
-  curl http://127.0.0.1:8001/config/logs
-  ```
-- **Response (`200 OK`):**
-  ```json
-  {
-    "retention_period": 30,
-    "show_logs_message_broker": true,
-    "store_logs_message_broker": true
-  }
-  ```
-
----
-
-### 2.5 Trigger Retention Cleanup
+### 2.4 Trigger Retention Cleanup
 `POST /retention/cleanup`
 
-- **Request Example:**
-  ```bash
-  curl -X POST http://127.0.0.1:8001/retention/cleanup
-  ```
+Manually purges log files that exceed retention days or possess invalid file naming formats.
+
 - **Response (`200 OK`):**
   ```json
   {
@@ -115,31 +100,92 @@ Retrieves configuration for a module (e.g. `logs`, `message_broker`) or single k
 
 ---
 
-### 2.6 OS Detection
-`GET /os`
+### 2.5 Get Module Configuration
+`GET /config/{key}`
 
-Detects the host operating system and returns its name and version.
+Retrieves configuration parameters for a module group (`logs`, `message_broker`, `operator`, `user_details`).
 
-- **Request Example:**
-  ```bash
-  curl http://127.0.0.1:8001/os
-  ```
+- **Example:**
+  `GET /config/operator`
 - **Response (`200 OK`):**
   ```json
-  "Windows 11"
+  {
+    "CAPTURE_INTERVAL_SECS": 10,
+    "AUTO_START": false
+  }
   ```
 
 ---
- 
-### 2.7 User Profile
+
+### 2.6 Update Logs Configuration
+`POST /config/logs`
+
+- **Request Body:**
+  ```json
+  {
+    "retention_period": 30,
+    "show_logs_operator": true,
+    "store_logs_operator": true
+  }
+  ```
+- **Response (`200 OK`):**
+  Returns the updated configuration object for `logs`.
+
+---
+
+### 2.7 Update Message Broker Configuration
+`POST /config/message_broker`
+
+- **Request Body:**
+  ```json
+  {
+    "REDIS_HOST": "localhost",
+    "REDIS_PORT": 6379,
+    "REDIS_DB": 0
+  }
+  ```
+- **Response (`200 OK`):**
+  Returns the updated configuration object for `message_broker`.
+
+---
+
+### 2.8 Update Operator Configuration
+`POST /config/operator`
+
+- **Request Body:**
+  ```json
+  {
+    "CAPTURE_INTERVAL_SECS": 15,
+    "AUTO_START": true
+  }
+  ```
+- **Response (`200 OK`):**
+  Returns the updated configuration object for `operator`.
+
+---
+
+### 2.9 Get User Profile
 `GET /user`
+
+- **Response (`200 OK`):**
+  ```json
+  {
+    "user_name": "Dhiraj",
+    "email": "dakarangale02@gmail.com",
+    "phone_number": "+91 7620320595",
+    "city": "Pune",
+    "state": "Maharashtra",
+    "country": "India",
+    "exists": true
+  }
+  ```
+
+---
+
+### 2.10 Save User Profile
 `POST /user`
 
-Manages user profile data stored in the encrypted database.
-- `GET /user`: Retrieves current profile data.
-- `POST /user`: Saves or updates user profile fields.
-
-- **Request Body for `POST /user`:**
+- **Request Body:**
   ```json
   {
     "user_name": "Dhiraj",
@@ -150,24 +196,36 @@ Manages user profile data stored in the encrypted database.
     "country": "India"
   }
   ```
+- **Response (`200 OK`):**
+  ```json
+  {
+    "user_name": "Dhiraj",
+    "email": "dakarangale02@gmail.com",
+    "phone_number": "+91 7620320595",
+    "city": "Pune",
+    "state": "Maharashtra",
+    "country": "India",
+    "exists": true,
+    "message": "User details saved successfully"
+  }
+  ```
 
 ---
 
-### 2.8 Update Module Configuration
-`POST /config/{module}`
+### 2.11 Detect Operating System
+`GET /os`
 
-Updates configuration for a specific module (`logs`, `message_broker`, `operator`).
-- `POST /config/logs`
-- `POST /config/message_broker`
-- `POST /config/operator`
+- **Response (`200 OK`):**
+  ```json
+  "Windows 11"
+  ```
 
 ---
 
-### 2.9 App Capture Permissions
-Manages desktop application capture permissions for Operator.
-
-#### 2.9.1 Get All App Permissions
+### 2.12 Get App Capture Permissions
 `GET /apps`
+
+Returns all discovered system applications with their capture permission settings.
 
 - **Response (`200 OK`):**
   ```json
@@ -185,13 +243,15 @@ Manages desktop application capture permissions for Operator.
   ]
   ```
 
-#### 2.9.2 Refresh App List
+---
+
+### 2.13 Refresh App List
 `POST /apps/refresh`
 
-Synchronizes the application table with system applications discovered by Operator:
-- Adds newly discovered apps with `allowed_to_capture = true`.
-- Removes apps no longer present on the system.
-- Preserves existing capture permissions for already registered apps.
+Synchronizes the application database with system applications discovered by Operator:
+- Adds new applications with `allowed_to_capture = true`.
+- Removes applications no longer present on the host system.
+- Preserves existing capture permissions for already registered applications.
 
 - **Request Body:**
   ```json
@@ -212,16 +272,18 @@ Synchronizes the application table with system applications discovered by Operat
     "status": "success",
     "message": "App list refreshed successfully",
     "total": 42,
-    "added": 3,
-    "removed": 1,
-    "preserved": 38
+    "added": 2,
+    "removed": 0,
+    "preserved": 40
   }
   ```
 
-#### 2.9.3 Update App Permission
+---
+
+### 2.14 Update App Capture Permission
 `POST /apps/permission`
 
-Updates an app's `allowed_to_capture` status and synchronizes the change with Operator.
+Updates an application's `allowed_to_capture` status in the encrypted database and notifies Operator.
 
 - **Request Body:**
   ```json
@@ -245,6 +307,43 @@ Updates an app's `allowed_to_capture` status and synchronizes the change with Op
 
 ---
 
+### 2.15 Get Services
+`GET /services`
+
+- **Response (`200 OK`):**
+  ```json
+  {
+    "vault": "http://127.0.0.1:8001",
+    "message_broker": "http://127.0.0.1:8000",
+    "operator": "http://127.0.0.1:8002"
+  }
+  ```
+
+---
+
+### 2.16 Update Services
+`POST /services`
+
+- **Request Body:**
+  ```json
+  {
+    "operator": "http://127.0.0.1:8002"
+  }
+  ```
+- **Response (`200 OK`):**
+  ```json
+  {
+    "status": "success",
+    "services": {
+      "vault": "http://127.0.0.1:8001",
+      "message_broker": "http://127.0.0.1:8000",
+      "operator": "http://127.0.0.1:8002"
+    }
+  }
+  ```
+
+---
+
 ## 3. How to Run
 
 ### Install Dependencies
@@ -256,5 +355,6 @@ pip install -r requirements.txt
 Run from the `Vault/` directory:
 ```bash
 cd Vault
-uvicorn app:app --host 127.0.0.1 --port 8001
+uvicorn app:app --host 127.0.0.1 --port 8001 --reload
 ```
+*(Or start all modules simultaneously using `python start.py` from the project root)*
