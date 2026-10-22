@@ -1,5 +1,13 @@
 import { useState, useEffect, useRef, useMemo, type FC } from "react";
 import {
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
+import {
   Loader2,
   AlertCircle,
   CheckCircle2,
@@ -28,7 +36,107 @@ import { getProviderMeta, type FeedbackNotification } from "./types";
 import type { AIConfig, EngineWorkersUpdateRequest } from "@/services";
 import { cn } from "@/lib/utils";
 
+interface ProviderViewProps {
+  providers: string[];
+  configsMap: Record<string, AIConfig>;
+  isLoading: boolean;
+  onScrollToAdd: (provider: string) => void;
+  onSetAsActive: (provider: string, index: number) => Promise<void>;
+  onUpdateKey: (provider: string, index: number, updatedKeyValue: string) => Promise<void>;
+  onRemoveKey: (provider: string, index: number) => Promise<void>;
+  onAddKey: (provider: string, newKey: string, makeActive: boolean) => Promise<void>;
+  isUpdating: boolean;
+}
+
+const ProviderView: FC<ProviderViewProps> = ({
+  providers,
+  configsMap,
+  isLoading,
+  onScrollToAdd,
+  onSetAsActive,
+  onUpdateKey,
+  onRemoveKey,
+  onAddKey,
+  isUpdating,
+}) => {
+  const { provider: paramProvider } = useParams<{ provider: string }>();
+
+  const activeProvider = useMemo(() => {
+    if (!paramProvider) return "";
+    const canonical = providers.find(
+      (p) => p.toLowerCase() === paramProvider.toLowerCase()
+    );
+    return canonical || paramProvider;
+  }, [paramProvider, providers]);
+
+  const activeConfig = activeProvider
+    ? configsMap[activeProvider.toLowerCase()] || null
+    : null;
+  const activeKeys = activeConfig?.keys || [];
+  const currentKeyIndex = activeConfig?.current_key ?? 0;
+
+  if (isLoading && providers.length === 0) {
+    return (
+      <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-16 flex flex-col items-center justify-center gap-3 backdrop-blur-xl">
+        <Loader2 className="w-8 h-8 animate-spin text-cyan-400" />
+        <p className="text-sm text-zinc-400 font-mono">Synchronizing with Vault...</p>
+      </div>
+    );
+  }
+
+  if (
+    !isLoading &&
+    providers.length > 0 &&
+    !providers.some((p) => p.toLowerCase() === paramProvider?.toLowerCase())
+  ) {
+    return <Navigate to="/ai-configs/engine-workers" replace />;
+  }
+
+  if (!activeProvider) {
+    return (
+      <div className="rounded-2xl border border-dashed border-white/10 bg-zinc-900/20 p-12 text-center">
+        <Cpu className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
+        <h3 className="text-sm font-semibold text-zinc-300">No Provider Available</h3>
+        <p className="text-xs text-zinc-500 max-w-sm mx-auto mt-1">
+          No LLM providers were returned from Vault. Please ensure Vault is running.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-200">
+      <ProviderOverviewCard
+        provider={activeProvider}
+        config={activeConfig}
+        onAddNewKeyClick={() => onScrollToAdd(activeProvider)}
+      />
+
+      <ApiKeyList
+        provider={activeProvider}
+        keys={activeKeys}
+        currentKeyIndex={currentKeyIndex}
+        onSetAsActive={(idx) => onSetAsActive(activeProvider, idx)}
+        onUpdateKey={(idx, val) => onUpdateKey(activeProvider, idx, val)}
+        onRemoveKey={(idx) => onRemoveKey(activeProvider, idx)}
+        onAddNewKeyClick={() => onScrollToAdd(activeProvider)}
+        disabled={isUpdating}
+      />
+
+      <AddApiKeyCard
+        provider={activeProvider}
+        onAddKey={(key, makeActive) => onAddKey(activeProvider, key, makeActive)}
+        existingKeys={activeKeys}
+        disabled={isUpdating}
+      />
+    </div>
+  );
+};
+
 export const AiConfigsPage: FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const {
     data: providers = [],
     isLoading: isProvidersLoading,
@@ -64,10 +172,13 @@ export const AiConfigsPage: FC = () => {
   const updatePrioritiesMutation = useUpdateAIPrioritiesMutation();
   const updateEngineMutation = useUpdateEngineWorkersMutation();
 
-  const [activeTab, setActiveTab] = useState<string>("engine-workers");
   const [feedback, setFeedback] = useState<FeedbackNotification | null>(null);
   const [dismissedQueryError, setDismissedQueryError] = useState(false);
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const pathSegments = location.pathname.split("/").filter(Boolean);
+  const currentSubRoute = (pathSegments[1] || "").toLowerCase();
+  const isEngineTab = currentSubRoute === "engine-workers" || currentSubRoute === "";
 
   const orderedProviders = useMemo(() => {
     if (!providers || providers.length === 0) return [];
@@ -102,12 +213,6 @@ export const AiConfigsPage: FC = () => {
     }
     return map;
   }, [configs]);
-
-  const isEngineTab = activeTab === "engine-workers";
-  const activeProvider = !isEngineTab ? activeTab : "";
-  const activeConfig = activeProvider ? configsMap[activeProvider.toLowerCase()] || null : null;
-  const activeKeys = activeConfig?.keys || [];
-  const currentKeyIndex = activeConfig?.current_key ?? 0;
 
   const showFeedback = (
     type: "success" | "error" | "info",
@@ -160,14 +265,16 @@ export const AiConfigsPage: FC = () => {
     showFeedback("success", "Engine worker concurrency updated successfully in Vault.");
   };
 
-  const handleAddKey = async (newKey: string, makeActive: boolean) => {
-    if (!activeProvider) return;
-    const currentKeys = activeConfig?.keys ? [...activeConfig.keys] : [];
+  const handleAddKey = async (provider: string, newKey: string, makeActive: boolean) => {
+    if (!provider) return;
+    const config = configsMap[provider.toLowerCase()];
+    const currentKeys = config?.keys ? [...config.keys] : [];
     const updatedKeys = [...currentKeys, newKey];
+    const currentKeyIndex = config?.current_key ?? 0;
     const newActiveIndex = makeActive ? updatedKeys.length - 1 : currentKeyIndex;
 
     await updateMutation.mutateAsync({
-      provider: activeProvider,
+      provider,
       updates: {
         keys: updatedKeys,
         current_key: newActiveIndex,
@@ -176,35 +283,41 @@ export const AiConfigsPage: FC = () => {
 
     showFeedback(
       "success",
-      `New API key successfully encrypted and stored for ${activeProvider}.`
+      `New API key successfully encrypted and stored for ${provider}.`
     );
   };
 
-  const handleUpdateKey = async (index: number, updatedKeyValue: string) => {
-    if (!activeProvider || !activeConfig) return;
-    const currentKeys = [...(activeConfig.keys || [])];
+  const handleUpdateKey = async (
+    provider: string,
+    index: number,
+    updatedKeyValue: string
+  ) => {
+    const config = configsMap[provider.toLowerCase()];
+    if (!config) return;
+    const currentKeys = [...(config.keys || [])];
     if (index < 0 || index >= currentKeys.length) return;
 
     currentKeys[index] = updatedKeyValue;
 
     await updateMutation.mutateAsync({
-      provider: activeProvider,
+      provider,
       updates: {
         keys: currentKeys,
-        current_key: currentKeyIndex,
+        current_key: config.current_key ?? 0,
       },
     });
 
     showFeedback("success", `Key #${index + 1} updated successfully in Vault.`);
   };
 
-  const handleRemoveKey = async (index: number) => {
-    if (!activeProvider || !activeConfig) return;
-    const currentKeys = [...(activeConfig.keys || [])];
+  const handleRemoveKey = async (provider: string, index: number) => {
+    const config = configsMap[provider.toLowerCase()];
+    if (!config) return;
+    const currentKeys = [...(config.keys || [])];
     if (index < 0 || index >= currentKeys.length) return;
 
     currentKeys.splice(index, 1);
-    let newIndex = currentKeyIndex;
+    let newIndex = config.current_key ?? 0;
     if (currentKeys.length === 0) {
       newIndex = 0;
     } else if (newIndex >= currentKeys.length) {
@@ -212,21 +325,19 @@ export const AiConfigsPage: FC = () => {
     }
 
     await updateMutation.mutateAsync({
-      provider: activeProvider,
+      provider,
       updates: {
         keys: currentKeys,
         current_key: newIndex,
       },
     });
 
-    showFeedback("success", `API key removed from ${activeProvider}.`);
+    showFeedback("success", `API key removed from ${provider}.`);
   };
 
-  const handleSetAsActive = async (index: number) => {
-    if (!activeProvider) return;
-
+  const handleSetAsActive = async (provider: string, index: number) => {
     await updateMutation.mutateAsync({
-      provider: activeProvider,
+      provider,
       updates: {
         current_key: index,
       },
@@ -234,13 +345,13 @@ export const AiConfigsPage: FC = () => {
 
     showFeedback(
       "success",
-      `Active key for ${activeProvider} switched to Key #${index + 1}.`
+      `Active key for ${provider} switched to Key #${index + 1}.`
     );
   };
 
-  const handleScrollToAdd = () => {
-    if (!activeProvider) return;
-    const element = document.getElementById(`card-add-key-${activeProvider}`);
+  const handleScrollToAdd = (providerName: string) => {
+    if (!providerName) return;
+    const element = document.getElementById(`card-add-key-${providerName}`);
     if (element) {
       element.scrollIntoView({ behavior: "smooth", block: "center" });
       const input = document.getElementById("input-new-api-key");
@@ -262,7 +373,7 @@ export const AiConfigsPage: FC = () => {
 
   return (
     <div
-      id="logs-subpage-container"
+      id="ai-configs-container"
       className="flex flex-col h-full w-full overflow-hidden select-none bg-zinc-950/40 text-zinc-100"
     >
       <div className="flex-none px-6 py-4 border-b border-white/[0.06] bg-zinc-950/60 backdrop-blur-md">
@@ -291,7 +402,7 @@ export const AiConfigsPage: FC = () => {
               <button
                 type="button"
                 id="tab-btn-engine-workers"
-                onClick={() => setActiveTab("engine-workers")}
+                onClick={() => navigate("/ai-configs/engine-workers")}
                 className={cn(
                   "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
                   isEngineTab
@@ -307,7 +418,7 @@ export const AiConfigsPage: FC = () => {
 
               {orderedProviders.map((p, index) => {
                 const meta = getProviderMeta(p);
-                const isActive = activeTab === p.toLowerCase();
+                const isActive = currentSubRoute === p.toLowerCase();
                 const cfg = configsMap[p.toLowerCase()];
                 const count = cfg?.total_keys ?? cfg?.keys?.length ?? 0;
                 const Icon = getProviderIcon(p);
@@ -316,8 +427,8 @@ export const AiConfigsPage: FC = () => {
                   <button
                     key={p}
                     type="button"
-                    id={`tab-btn-provider-${p}`}
-                    onClick={() => setActiveTab(p.toLowerCase())}
+                    id={`tab-btn-provider-${p.toLowerCase()}`}
+                    onClick={() => navigate(`/ai-configs/${p.toLowerCase()}`)}
                     className={cn(
                       "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
                       isActive
@@ -366,7 +477,10 @@ export const AiConfigsPage: FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-6">
+      <div
+        id="ai-configs-subpage-viewport"
+        className="flex-1 overflow-y-auto px-6 py-6"
+      >
         <div className="max-w-7xl mx-auto space-y-6">
           {(feedback || (!dismissedQueryError && (providersError || prioritiesError || engineError))) && (
             <div
@@ -413,59 +527,50 @@ export const AiConfigsPage: FC = () => {
               <Loader2 className="w-8 h-8 animate-spin text-cyan-400" />
               <p className="text-sm text-zinc-400 font-mono">Synchronizing with Vault...</p>
             </div>
-          ) : isEngineTab ? (
-            <div className="space-y-6 animate-in fade-in duration-200">
-              <EngineWorkersCard
-                config={engineWorkers}
-                isLoading={isEngineLoading}
-                onSave={handleSaveEngineWorkers}
-                disabled={updateEngineMutation.isPending}
-              />
-
-              <ProviderPriorityCard
-                providers={orderedProviders}
-                priorities={priorities}
-                configsMap={configsMap}
-                onSavePriorities={handleSavePriorities}
-                onSelectProvider={(p) => setActiveTab(p.toLowerCase())}
-                activeProvider=""
-                disabled={updatePrioritiesMutation.isPending}
-              />
-            </div>
-          ) : activeProvider ? (
-            <div className="space-y-6 animate-in fade-in duration-200">
-              <ProviderOverviewCard
-                provider={activeProvider}
-                config={activeConfig}
-                onAddNewKeyClick={handleScrollToAdd}
-              />
-
-              <ApiKeyList
-                provider={activeProvider}
-                keys={activeKeys}
-                currentKeyIndex={currentKeyIndex}
-                onSetAsActive={handleSetAsActive}
-                onUpdateKey={handleUpdateKey}
-                onRemoveKey={handleRemoveKey}
-                onAddNewKeyClick={handleScrollToAdd}
-                disabled={updateMutation.isPending}
-              />
-
-              <AddApiKeyCard
-                provider={activeProvider}
-                onAddKey={handleAddKey}
-                existingKeys={activeKeys}
-                disabled={updateMutation.isPending}
-              />
-            </div>
           ) : (
-            <div className="rounded-2xl border border-dashed border-white/10 bg-zinc-900/20 p-12 text-center">
-              <Cpu className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
-              <h3 className="text-sm font-semibold text-zinc-300">No Provider Available</h3>
-              <p className="text-xs text-zinc-500 max-w-sm mx-auto mt-1">
-                No LLM providers were returned from Vault. Please ensure Vault is running.
-              </p>
-            </div>
+            <Routes>
+              <Route path="/" element={<Navigate to="/ai-configs/engine-workers" replace />} />
+              <Route
+                path="engine-workers"
+                element={
+                  <div className="space-y-6 animate-in fade-in duration-200">
+                    <EngineWorkersCard
+                      config={engineWorkers}
+                      isLoading={isEngineLoading}
+                      onSave={handleSaveEngineWorkers}
+                      disabled={updateEngineMutation.isPending}
+                    />
+
+                    <ProviderPriorityCard
+                      providers={orderedProviders}
+                      priorities={priorities}
+                      configsMap={configsMap}
+                      onSavePriorities={handleSavePriorities}
+                      onSelectProvider={(p) => navigate(`/ai-configs/${p.toLowerCase()}`)}
+                      activeProvider=""
+                      disabled={updatePrioritiesMutation.isPending}
+                    />
+                  </div>
+                }
+              />
+              <Route
+                path=":provider"
+                element={
+                  <ProviderView
+                    providers={orderedProviders}
+                    configsMap={configsMap}
+                    isLoading={isLoading}
+                    onScrollToAdd={handleScrollToAdd}
+                    onSetAsActive={handleSetAsActive}
+                    onUpdateKey={handleUpdateKey}
+                    onRemoveKey={handleRemoveKey}
+                    onAddKey={handleAddKey}
+                    isUpdating={updateMutation.isPending}
+                  />
+                }
+              />
+              <Route path="*" element={<Navigate to="/ai-configs/engine-workers" replace />} />
+            </Routes>
           )}
 
           <div className="pt-4 pb-2 text-center text-xs text-zinc-500 font-mono flex items-center justify-center gap-2">

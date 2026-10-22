@@ -66,6 +66,11 @@ CREATE TABLE IF NOT EXISTS ai_priorities (
 CREATE TABLE IF NOT EXISTS engine_workers (
     id INTEGER PRIMARY KEY,
     embedding_workers INTEGER DEFAULT 1,
-    llm_workers INTEGER DEFAULT 1
+    llm_workers INTEGER DEFAULT 1,
+    screenshot_extraction_workers INTEGER DEFAULT 1,
+    screenshot_summarization_workers INTEGER DEFAULT 1,
+    screenshot_extraction_poll_time REAL DEFAULT 5.0,
+    screenshot_summarization_poll_time REAL DEFAULT 5.0,
+    embedding_poll_time REAL DEFAULT 5.0
 );
 

@@ -477,14 +477,19 @@ Updates provider priority sequence.
 ### 2.24 Get Engine Workers
 `GET /engine/workers`
 
-Retrieves background worker concurrency limits.
+Retrieves background worker concurrency limits and polling intervals.
 
 - **Parameters**: None
 - **Response (`200 OK`):**
   ```json
   {
     "embedding_workers": 1,
-    "llm_workers": 1
+    "llm_workers": 1,
+    "screenshot_extraction_workers": 1,
+    "screenshot_summarization_workers": 1,
+    "screenshot_extraction_poll_time": 5.0,
+    "screenshot_summarization_poll_time": 5.0,
+    "embedding_poll_time": 5.0
   }
   ```
 
@@ -493,20 +498,32 @@ Retrieves background worker concurrency limits.
 ### 2.25 Update Engine Workers
 `PUT /engine/workers`
 
-Updates worker concurrency counts.
+Updates worker concurrency counts and polling intervals.
+- `embedding_workers`, `llm_workers`, `screenshot_extraction_workers`, `screenshot_summarization_workers`: integers between `1` and `50`.
+- `screenshot_extraction_poll_time`, `screenshot_summarization_poll_time`, `embedding_poll_time`: floats between `1.0` and `1800.0` (in seconds).
 
 - **Request Body (JSON):**
   ```json
   {
-    "embedding_workers": 4,
-    "llm_workers": 2
+    "embedding_workers": 2,
+    "llm_workers": 3,
+    "screenshot_extraction_workers": 2,
+    "screenshot_summarization_workers": 2,
+    "screenshot_extraction_poll_time": 10.0,
+    "screenshot_summarization_poll_time": 15.0,
+    "embedding_poll_time": 5.0
   }
   ```
 - **Response (`200 OK`):**
   ```json
   {
-    "embedding_workers": 4,
-    "llm_workers": 2
+    "embedding_workers": 2,
+    "llm_workers": 3,
+    "screenshot_extraction_workers": 2,
+    "screenshot_summarization_workers": 2,
+    "screenshot_extraction_poll_time": 10.0,
+    "screenshot_summarization_poll_time": 15.0,
+    "embedding_poll_time": 5.0
   }
   ```
 

@@ -25,7 +25,7 @@ export function App() {
           <Route path="/mira" element={<MiraPage />} />
           <Route path="/chats" element={<ChatsPage />} />
           <Route path="/user" element={<UserPage />} />
-          <Route path="/ai-configs" element={<LlmConfigsPage />} />
+          <Route path="/ai-configs/*" element={<LlmConfigsPage />} />
           <Route path="/activity/*" element={<HistoryPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="*" element={<Navigate to="/mira" replace />} />

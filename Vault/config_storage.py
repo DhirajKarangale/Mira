@@ -744,7 +744,7 @@ def update_ai_priorities(new_priorities: List[str]) -> List[str]:
     return cleaned_order
 
 
-def get_engine_workers() -> Dict[str, int]:
+def get_engine_workers() -> Dict[str, Any]:
     global _DB_CONN
     if _DB_CONN is None:
         init_config_storage()
@@ -753,24 +753,57 @@ def get_engine_workers() -> Dict[str, int]:
         "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='engine_workers'"
     ).fetchone()[0]
     if not exists:
-        return {"embedding_workers": 1, "llm_workers": 1}
+        return {
+            "embedding_workers": 1,
+            "llm_workers": 1,
+            "screenshot_extraction_workers": 1,
+            "screenshot_summarization_workers": 1,
+            "screenshot_extraction_poll_time": 5.0,
+            "screenshot_summarization_poll_time": 5.0,
+            "embedding_poll_time": 5.0,
+        }
 
-    row = _DB_CONN.execute("SELECT embedding_workers, llm_workers FROM engine_workers LIMIT 1").fetchone()
+    cursor = _DB_CONN.execute("SELECT * FROM engine_workers LIMIT 1")
+    row = cursor.fetchone()
     if not row:
-        _DB_CONN.execute("INSERT INTO engine_workers (embedding_workers, llm_workers) VALUES (1, 1)")
+        _DB_CONN.execute(
+            """INSERT INTO engine_workers (
+                embedding_workers,
+                llm_workers,
+                screenshot_extraction_workers,
+                screenshot_summarization_workers,
+                screenshot_extraction_poll_time,
+                screenshot_summarization_poll_time,
+                embedding_poll_time
+            ) VALUES (1, 1, 1, 1, 5.0, 5.0, 5.0)"""
+        )
         _DB_CONN.commit()
         save_config_storage()
-        return {"embedding_workers": 1, "llm_workers": 1}
+        return {
+            "embedding_workers": 1,
+            "llm_workers": 1,
+            "screenshot_extraction_workers": 1,
+            "screenshot_summarization_workers": 1,
+            "screenshot_extraction_poll_time": 5.0,
+            "screenshot_summarization_poll_time": 5.0,
+            "embedding_poll_time": 5.0,
+        }
 
-    emb = row[0] if row[0] is not None else 1
-    llm = row[1] if row[1] is not None else 1
+    col_names = [d[0].lower() for d in cursor.description]
+    row_dict = dict(zip(col_names, row))
+
     return {
-        "embedding_workers": int(emb),
-        "llm_workers": int(llm)
+        "embedding_workers": int(row_dict.get("embedding_workers") or 1),
+        "llm_workers": int(row_dict.get("llm_workers") or 1),
+        "screenshot_extraction_workers": int(row_dict.get("screenshot_extraction_workers") or 1),
+        "screenshot_summarization_workers": int(row_dict.get("screenshot_summarization_workers") or 1),
+        "screenshot_extraction_poll_time": float(row_dict.get("screenshot_extraction_poll_time") if row_dict.get("screenshot_extraction_poll_time") is not None else 5.0),
+        "screenshot_summarization_poll_time": float(row_dict.get("screenshot_summarization_poll_time") if row_dict.get("screenshot_summarization_poll_time") is not None else 5.0),
+        "embedding_poll_time": float(row_dict.get("embedding_poll_time") if row_dict.get("embedding_poll_time") is not None else 5.0),
     }
 
 
-def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, int]:
+def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
     global _DB_CONN
     if _DB_CONN is None:
         init_config_storage()
@@ -779,43 +812,104 @@ def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, int]:
         raise ValueError("Payload must be a dictionary or object containing worker settings.")
 
     current = get_engine_workers()
-    new_embedding = current["embedding_workers"]
-    new_llm = current["llm_workers"]
 
-    if "embedding_workers" in updates and updates["embedding_workers"] is not None:
-        val = updates["embedding_workers"]
-        if isinstance(val, bool) or not isinstance(val, int):
-            raise ValueError("embedding_workers must be an integer between 1 and 50.")
-        if val < 1 or val > 50:
-            raise ValueError("embedding_workers must be an integer between 1 and 50 inclusive.")
-        new_embedding = val
+    # Map aliases
+    alias_map = {
+        "extraction_workers": "screenshot_extraction_workers",
+        "memory_extraction_workers": "screenshot_extraction_workers",
+        "summarization_workers": "screenshot_summarization_workers",
+        "engine_summarization_workers": "screenshot_summarization_workers",
+        "extraction_poll_time": "screenshot_extraction_poll_time",
+        "summarization_poll_time": "screenshot_summarization_poll_time",
+        "embedding_worker_poll_time": "embedding_poll_time",
+    }
+    normalized_updates = {}
+    for k, v in updates.items():
+        canonical = alias_map.get(k.lower(), k.lower())
+        normalized_updates[canonical] = v
 
-    if "llm_workers" in updates and updates["llm_workers"] is not None:
-        val = updates["llm_workers"]
-        if isinstance(val, bool) or not isinstance(val, int):
-            raise ValueError("llm_workers must be an integer between 1 and 50.")
-        if val < 1 or val > 50:
-            raise ValueError("llm_workers must be an integer between 1 and 50 inclusive.")
-        new_llm = val
+    new_config = dict(current)
+
+    # Validate integer worker counts (1 - 50)
+    int_fields = [
+        "embedding_workers",
+        "llm_workers",
+        "screenshot_extraction_workers",
+        "screenshot_summarization_workers",
+    ]
+    for field in int_fields:
+        if field in normalized_updates and normalized_updates[field] is not None:
+            val = normalized_updates[field]
+            if isinstance(val, bool) or not isinstance(val, int):
+                raise ValueError(f"{field} must be an integer between 1 and 50.")
+            if val < 1 or val > 50:
+                raise ValueError(f"{field} must be an integer between 1 and 50 inclusive.")
+            new_config[field] = val
+
+    # Validate float poll times (1.0 - 1800.0)
+    float_fields = [
+        "screenshot_extraction_poll_time",
+        "screenshot_summarization_poll_time",
+        "embedding_poll_time",
+    ]
+    for field in float_fields:
+        if field in normalized_updates and normalized_updates[field] is not None:
+            val = normalized_updates[field]
+            if isinstance(val, bool) or not isinstance(val, (int, float)):
+                raise ValueError(f"{field} must be a number between 1 and 1800 seconds.")
+            val_f = float(val)
+            if val_f < 1.0 or val_f > 1800.0:
+                raise ValueError(f"{field} must be between 1 and 1800 seconds inclusive.")
+            new_config[field] = val_f
 
     cursor = _DB_CONN.execute("SELECT id FROM engine_workers LIMIT 1")
     row = cursor.fetchone()
     if row:
         _DB_CONN.execute(
-            "UPDATE engine_workers SET embedding_workers = ?, llm_workers = ? WHERE id = ?",
-            (new_embedding, new_llm, row[0])
+            """UPDATE engine_workers SET
+                embedding_workers = ?,
+                llm_workers = ?,
+                screenshot_extraction_workers = ?,
+                screenshot_summarization_workers = ?,
+                screenshot_extraction_poll_time = ?,
+                screenshot_summarization_poll_time = ?,
+                embedding_poll_time = ?
+            WHERE id = ?""",
+            (
+                new_config["embedding_workers"],
+                new_config["llm_workers"],
+                new_config["screenshot_extraction_workers"],
+                new_config["screenshot_summarization_workers"],
+                new_config["screenshot_extraction_poll_time"],
+                new_config["screenshot_summarization_poll_time"],
+                new_config["embedding_poll_time"],
+                row[0],
+            ),
         )
     else:
         _DB_CONN.execute(
-            "INSERT INTO engine_workers (embedding_workers, llm_workers) VALUES (?, ?)",
-            (new_embedding, new_llm)
+            """INSERT INTO engine_workers (
+                embedding_workers,
+                llm_workers,
+                screenshot_extraction_workers,
+                screenshot_summarization_workers,
+                screenshot_extraction_poll_time,
+                screenshot_summarization_poll_time,
+                embedding_poll_time
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                new_config["embedding_workers"],
+                new_config["llm_workers"],
+                new_config["screenshot_extraction_workers"],
+                new_config["screenshot_summarization_workers"],
+                new_config["screenshot_extraction_poll_time"],
+                new_config["screenshot_summarization_poll_time"],
+                new_config["embedding_poll_time"],
+            ),
         )
     _DB_CONN.commit()
     save_config_storage()
 
-    logger.info(f"Updated engine workers configuration: embedding_workers={new_embedding}, llm_workers={new_llm}")
-    return {
-        "embedding_workers": new_embedding,
-        "llm_workers": new_llm
-    }
+    logger.info(f"Updated engine workers configuration: {new_config}")
+    return new_config
 
