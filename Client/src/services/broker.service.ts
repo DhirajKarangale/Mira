@@ -51,11 +51,13 @@ export const brokerService = {
 
   async cleanPendingMessages(
     groupName?: string,
-    streamName?: string
+    streamName?: string,
+    resetStream: boolean = true
   ): Promise<CleanResult> {
     const response = await messageBrokerApi.post<CleanResult>("/redis/clean", {
       group_name: groupName || null,
       stream_name: streamName || null,
+      reset_stream: resetStream,
     });
     return response.data;
   },

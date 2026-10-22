@@ -8,11 +8,20 @@ import uuid
 import requests
 
 import config
-from data_extractor import extract_pixels_and_grayscale, extract_text_from_image
+from data_extractor import (
+    extract_pixels_and_grayscale,
+    extract_structured_ocr,
+    extract_text_from_image,
+)
 from image_comparison import compare_app_images, store_image_data
+from region_comparator import compare_ui_regions
 from vault_logger import log
+from vlm_service import analyze_regions_with_vlm, is_deeper_understanding_needed
 
-DEFAULT_IMAGE_DIFF_THRESHOLD: float = 0.1
+# Image difference threshold constant.
+# If cv2.absdiff normalized difference between consecutive frames of the same app
+# is below this threshold, the image is considered unchanged and skipped.
+DEFAULT_IMAGE_DIFF_THRESHOLD: float = 0.05
 IMAGE_DIFF_THRESHOLD: float = float(os.getenv("IMAGE_DIFF_THRESHOLD", str(DEFAULT_IMAGE_DIFF_THRESHOLD)))
 
 
@@ -103,21 +112,22 @@ def publish_broker_job(job_payload: Dict[str, Any]) -> bool:
 
 def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
     """
-    Execute the 9-step processing workflow for a single screenshot extraction job:
-    1. Extract pixel values and the grayscale matrix from the image.
-    2. Retrieve previous image data from Redis and compare images from the same application using OpenCV.
-    3. If difference is below threshold, call Operator API to delete screenshot, remove job from ocr_extraction, skip.
-    4. Otherwise, store current image data in Redis, retaining only 10 most recent images.
-    5. Extract text from the screenshot using OCR.
-    6. Delete the screenshot through the Operator API.
-    7. Create a new job containing job_id (UUID), app_name, os, and extracted_text.
-    8. Publish the new job to ocr_summarization.
-    9. Remove the completed job from ocr_extraction.
+    Execute the enriched contextual screenshot extraction pipeline:
+    1. Capture window metadata (app_name, os, timestamp, resolution).
+    2. Extract pixel values, grayscale matrix, and OCR text with bounding boxes grouped into UI regions.
+    3. Compare current OpenCV difference and current OCR result with the previous result for the same application.
+    4. If difference is below threshold and no UI region changes, delete screenshot, remove job from ocr_extraction, skip.
+    5. When deeper understanding is needed, send relevant screenshot crops and structured OCR data to a VLM.
+    6. Store structured context (window metadata, UI regions, extracted text, changes, VLM analysis) in Redis via Message Broker.
+    7. Delete screenshot through Operator API.
+    8. Publish structured context to ocr_summarization.
+    9. Remove completed job from ocr_extraction.
     """
     job_id = str(job.get("job_id") or "")
     app_name = str(job.get("app_name") or "Unknown").strip()
     os_name = str(job.get("os") or "Unknown").strip()
     image_path = str(job.get("image_path") or "").strip()
+    timestamp = job.get("timestamp")
 
     if not job_id or not image_path:
         log(f"[Worker-{worker_id}] Invalid job data (missing job_id or image_path): {job}")
@@ -132,7 +142,7 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
 
     log(f"[Worker-{worker_id}] Processing screenshot job {job_id} for app '{app_name}'")
 
-    # Step 1: Extract pixel values and the grayscale matrix from the image
+    # Step 1 & 2: Extract pixel values, grayscale matrix, and structured OCR with UI regions
     try:
         pixel_values, grayscale_matrix = extract_pixels_and_grayscale(image_path)
     except Exception as e:
@@ -141,69 +151,133 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
         remove_broker_job("ocr_extraction", job_id)
         return False
 
-    # Step 2: Retrieve previous image data from Redis and compare images from the same application using OpenCV
+    h_img, w_img = pixel_values.shape[:2]
+    window_metadata = {
+        "app_name": app_name,
+        "os": os_name,
+        "timestamp": timestamp,
+        "dimensions": {"width": w_img, "height": h_img},
+    }
+
+    try:
+        ocr_result = extract_structured_ocr(pixel_values)
+        full_text = ocr_result.get("full_text", "")
+        ui_regions = ocr_result.get("ui_regions", [])
+    except Exception as e:
+        log(f"[Worker-{worker_id}] Structured OCR failed for '{image_path}': {e}")
+        full_text = ""
+        ui_regions = []
+
+    # Step 3: Compare current frame and OCR result with previous frame of the same application
     diff_score, prev_record = compare_app_images(app_name, grayscale_matrix)
 
-    # Step 3: If difference is below threshold, call Operator API to delete screenshot, remove job from ocr_extraction, skip
+    # Retrieve previous structured context from previous record
+    prev_metadata = prev_record.get("metadata", {}) if prev_record else {}
+    prev_regions = prev_metadata.get("ui_regions", [])
+    prev_text = prev_metadata.get("extracted_text", "")
+
+    # Compare UI regions between previous and current frame
+    region_changes = compare_ui_regions(
+        previous_regions=prev_regions,
+        current_regions=ui_regions,
+        previous_text=prev_text,
+        current_text=full_text,
+    )
+
+    # Step 4: If difference is below threshold and no UI region changes, skip
     effective_threshold = get_current_threshold()
-    if diff_score is not None and diff_score < effective_threshold:
+    is_image_unchanged = diff_score is not None and diff_score < effective_threshold
+    is_ocr_unchanged = (not region_changes.get("has_changes", False)) if prev_regions else True
+
+    if prev_record and is_image_unchanged and is_ocr_unchanged:
         log(
             f"[Worker-{worker_id}] Duplicate frame detected for app '{app_name}' "
-            f"(diff={diff_score:.4f} < threshold={effective_threshold:.4f}). Skipping extraction."
+            f"(diff={diff_score:.4f} < threshold={effective_threshold:.4f}, no region changes). Skipping extraction."
         )
         call_operator_delete_screenshot(image_path)
         remove_broker_job("ocr_extraction", job_id)
         return True
 
     if diff_score is not None:
-        log(f"[Worker-{worker_id}] App '{app_name}' changed (diff={diff_score:.4f} >= threshold={effective_threshold:.4f})")
+        log(
+            f"[Worker-{worker_id}] App '{app_name}' changed "
+            f"(diff={diff_score:.4f}, {region_changes.get('change_summary', '')})"
+        )
     else:
         log(f"[Worker-{worker_id}] First frame or no prior comparison record for app '{app_name}'")
 
-    # Step 4: Otherwise, store the current image data in Redis, retaining only the 10 most recent images
+    # Step 5: When deeper understanding is needed, send relevant crops & structured OCR data to VLM
+    deeper_needed = is_deeper_understanding_needed(region_changes, ui_regions, diff_score)
+    if deeper_needed:
+        # Determine candidate changed regions to inspect
+        target_regions = region_changes.get("modified_regions", []) + region_changes.get("added_regions", [])
+        if not target_regions:
+            target_regions = ui_regions[:2]
+
+        log(f"[Worker-{worker_id}] Deeper understanding triggered for app '{app_name}'. Invoking VLM analysis...")
+        vlm_analysis = analyze_regions_with_vlm(
+            image=pixel_values,
+            changed_regions=target_regions,
+            window_metadata=window_metadata,
+        )
+        log(f"[Worker-{worker_id}] VLM analysis ({vlm_analysis.get('provider')}): {vlm_analysis.get('summary')}")
+    else:
+        vlm_analysis = {
+            "enriched": False,
+            "fallback": False,
+            "provider": "none",
+            "summary": region_changes.get("change_summary", "Standard extraction"),
+            "component_type": "standard",
+        }
+
+    # Step 6: Store structured context in Redis via Message Broker, retaining 10 most recent images
     try:
+        structured_metadata = {
+            "window_metadata": window_metadata,
+            "ui_regions": ui_regions,
+            "extracted_text": full_text,
+            "changes": region_changes,
+            "vlm_analysis": vlm_analysis,
+        }
         store_image_data(
             app_name=app_name,
             pixel_values=pixel_values,
             grayscale_matrix=grayscale_matrix,
             image_id=job_id,
-            timestamp=job.get("timestamp"),
-            metadata={"os": os_name},
+            timestamp=timestamp,
+            metadata=structured_metadata,
         )
     except Exception as e:
         log(f"[Worker-{worker_id}] Warning: failed to store image comparison in Redis: {e}")
 
-    # Step 5: Extract text from the screenshot using OCR
-    try:
-        extracted_text = extract_text_from_image(image_path)
-    except Exception as e:
-        log(f"[Worker-{worker_id}] OCR text extraction failed for '{image_path}': {e}")
-        extracted_text = ""
-
-    # Step 6: Delete the screenshot through the Operator API
+    # Step 7: Delete screenshot through Operator API
     call_operator_delete_screenshot(image_path)
 
-    # Step 7: Create a new job containing job_id (UUID), app_name, os, and extracted_text
+    # Step 8: Create and publish new structured job to ocr_summarization
     new_job_id = str(uuid.uuid4())
     summarization_job = {
         "job_id": new_job_id,
         "consumer_key": "ocr_summarization",
         "app_name": app_name,
         "os": os_name,
-        "extracted_text": extracted_text,
+        "timestamp": timestamp,
+        "extracted_text": full_text,
+        "window_metadata": window_metadata,
+        "ui_regions": ui_regions,
+        "changes": region_changes,
+        "vlm_analysis": vlm_analysis,
     }
 
-    # Step 8: Publish the new job to ocr_summarization
     published = publish_broker_job(summarization_job)
     if published:
         log(
-            f"[Worker-{worker_id}] Published job {new_job_id} to 'ocr_summarization' "
-            f"(extracted {len(extracted_text)} chars from '{app_name}')"
+            f"[Worker-{worker_id}] Published structured job {new_job_id} to 'ocr_summarization' "
+            f"(extracted {len(full_text)} chars, {len(ui_regions)} UI regions from '{app_name}')"
         )
     else:
         log(f"[Worker-{worker_id}] Failed to publish job {new_job_id} to 'ocr_summarization'")
 
-    # Step 9: Remove the completed job from ocr_extraction
+    # Step 9: Remove completed job from ocr_extraction
     removed = remove_broker_job("ocr_extraction", job_id)
     if removed:
         log(f"[Worker-{worker_id}] Completed and removed job {job_id} from 'ocr_extraction'")
@@ -240,7 +314,6 @@ class ScreenshotExtractionWorkerManager:
         log(f"[Worker-{worker_id}] Worker started (poll_time={self._poll_time}s)")
         while not self._stop_event.is_set():
             try:
-                # Refresh poll time and settings periodically
                 self.refresh_config()
 
                 # Poll Message Broker for 1 job at a time for this worker
@@ -248,10 +321,8 @@ class ScreenshotExtractionWorkerManager:
                 if jobs and len(jobs) > 0:
                     job = jobs[0]
                     await asyncio.to_thread(process_screenshot_job, job, worker_id)
-                    # Continue polling immediately after completing each job
                     await asyncio.sleep(0.01)
                 else:
-                    # Wait for configurable poll time if no jobs available
                     try:
                         await asyncio.wait_for(self._stop_event.wait(), timeout=self._poll_time)
                     except asyncio.TimeoutError:

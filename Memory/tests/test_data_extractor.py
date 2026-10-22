@@ -75,3 +75,39 @@ def test_extract_invalid_path():
 
     with pytest.raises(FileNotFoundError):
         extract_text_from_image("non_existent_file_12345.png")
+
+
+def test_extract_structured_ocr(temp_image):
+    from data_extractor import extract_ocr_tokens, group_text_into_ui_regions, extract_structured_ocr
+
+    # Test token extraction
+    tokens, (w, h) = extract_ocr_tokens(temp_image)
+    assert isinstance(tokens, list)
+    assert len(tokens) > 0
+    assert w == 400
+    assert h == 120
+    first_token = tokens[0]
+    assert "text" in first_token
+    assert "bbox" in first_token
+    assert len(first_token["bbox"]) == 4
+    assert "confidence" in first_token
+
+    # Test grouping into UI regions
+    regions = group_text_into_ui_regions(tokens, w, h)
+    assert isinstance(regions, list)
+    assert len(regions) > 0
+    first_region = regions[0]
+    assert "region_id" in first_region
+    assert "type" in first_region
+    assert "bbox" in first_region
+    assert "text" in first_region
+    assert "MIRA" in first_region["text"].upper() or "OCR" in first_region["text"].upper()
+
+    # Test unified structured extraction
+    res = extract_structured_ocr(temp_image)
+    assert "full_text" in res
+    assert "ui_regions" in res
+    assert "dimensions" in res
+    assert res["dimensions"] == {"width": 400, "height": 120}
+    assert "MIRA" in res["full_text"].upper()
+

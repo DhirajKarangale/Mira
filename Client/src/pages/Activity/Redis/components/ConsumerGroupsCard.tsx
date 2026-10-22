@@ -118,7 +118,7 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
       });
       showFeedback(
         "success",
-        res.message || `Cleaned pending messages for ${cleanTarget.group_name}`
+        res.message || `Cleaned messages for ${cleanTarget.group_name}`
       );
       setCleanTarget(null);
     } catch (err: any) {
@@ -442,14 +442,18 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
         isOpen={Boolean(cleanTarget)}
         onClose={() => setCleanTarget(null)}
         onConfirm={handleConfirmCleanSingle}
-        title="Clean Pending Messages"
+        title="Clean Messages"
         description={
           <div>
-            Clean and acknowledge all pending/unprocessed messages for{" "}
+            Clean all active and pending messages for{" "}
             <span className="font-mono font-semibold text-white">
               {cleanTarget?.group_name}
             </span>
             ? Currently{" "}
+            <span className="font-semibold text-cyan-300">
+              {cleanTarget?.active_messages_count || 0}
+            </span>{" "}
+            active message(s) and{" "}
             <span className="font-semibold text-amber-300">
               {cleanTarget?.pending_messages_count || 0}
             </span>{" "}
@@ -468,9 +472,10 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
         title="Clean All Consumer Groups"
         description={
           <div>
-            This operation will clear and acknowledge all pending and unprocessed messages across{" "}
+            This operation will clear all active and pending messages across{" "}
             <span className="font-semibold text-white">{groups.length}</span> consumer groups.
-            Total pending messages:{" "}
+            Total active messages:{" "}
+            <span className="font-semibold text-cyan-300">{totalActive}</span>, pending:{" "}
             <span className="font-semibold text-amber-300">{totalPending}</span>.
           </div>
         }
