@@ -5,11 +5,23 @@ import redis.asyncio as aioredis
 import config
 from vault_logger import log
 
+import asyncio
+
 _redis_client: Optional[aioredis.Redis] = None
 
 
 def get_redis_client() -> aioredis.Redis:
     global _redis_client
+    try:
+        current_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        current_loop = None
+
+    if _redis_client is not None and current_loop is not None:
+        client_loop = getattr(_redis_client, "_mira_loop", None)
+        if client_loop is not None and (client_loop is not current_loop or client_loop.is_closed()):
+            _redis_client = None
+
     if _redis_client is None:
         _redis_client = aioredis.Redis(
             host=config.REDIS_HOST,
@@ -19,6 +31,8 @@ def get_redis_client() -> aioredis.Redis:
             decode_responses=config.REDIS_DECODE_RESPONSES,
             protocol=config.REDIS_PROTOCOL,
         )
+        if current_loop is not None:
+            setattr(_redis_client, "_mira_loop", current_loop)
     return _redis_client
 
 

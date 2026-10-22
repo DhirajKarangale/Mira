@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any, Dict, List, Optional
+import uuid
 
 import redis.exceptions
 
@@ -61,7 +63,6 @@ async def get_consumer_groups_details() -> List[Dict[str, Any]]:
     client = get_redis_client()
     configured_groups = cgm._load_consumer_groups()
     results: List[Dict[str, Any]] = []
-    processed_pairs = set()
 
     for key, group_name in configured_groups.items():
         stream_name = f"mira:stream:{key}"
@@ -106,37 +107,6 @@ async def get_consumer_groups_details() -> List[Dict[str, Any]]:
             log(f"Error inspecting group {group_name} on {stream_name}: {e}")
 
         results.append(group_entry)
-        processed_pairs.add((stream_name, group_name))
-
-    try:
-        all_stream_keys = await client.keys("mira:stream:*")
-        for stream_key in all_stream_keys:
-            if stream_key.endswith(":job_ids"):
-                continue
-            try:
-                groups_info = await client.xinfo_groups(stream_key)
-                stream_len = await client.xlen(stream_key)
-                for g in groups_info:
-                    g_name = g.get("name")
-                    if (stream_key, g_name) not in processed_pairs:
-                        results.append({
-                            "group_name": g_name,
-                            "stream_name": stream_key,
-                            "consumer_key": stream_key.replace("mira:stream:", ""),
-                            "consumers_count": g.get("consumers", 0),
-                            "pending_messages_count": g.get("pending", 0),
-                            "active_messages_count": stream_len,
-                            "total_messages_count": stream_len,
-                            "last_delivered_id": str(g.get("last-delivered-id", "0-0")),
-                            "status": "active" if g.get("pending", 0) > 0 else "idle",
-                            "is_registered": False,
-                            "stream_exists": True,
-                        })
-                        processed_pairs.add((stream_key, g_name))
-            except Exception:
-                pass
-    except Exception as e:
-        log(f"Error scanning extra Redis streams: {e}")
 
     return results
 
@@ -147,20 +117,7 @@ async def delete_consumer_group(group_name: str, stream_name: Optional[str] = No
         stream_name = cgm.get_stream_for_consumer_group(group_name)
 
     if not stream_name:
-        stream_keys = await client.keys("mira:stream:*")
-        for sk in stream_keys:
-            if sk.endswith(":job_ids"):
-                continue
-            try:
-                groups = await client.xinfo_groups(sk)
-                if any(g.get("name") == group_name for g in groups):
-                    stream_name = sk
-                    break
-            except Exception:
-                pass
-
-    if not stream_name:
-        raise ValueError(f"Stream for consumer group '{group_name}' not found.")
+        raise ValueError(f"Consumer group '{group_name}' is not registered in consumer_groups.json.")
 
     destroyed = False
     try:
@@ -191,20 +148,7 @@ async def clean_consumer_group(
         stream_name = cgm.get_stream_for_consumer_group(group_name)
 
     if not stream_name:
-        stream_keys = await client.keys("mira:stream:*")
-        for sk in stream_keys:
-            if sk.endswith(":job_ids"):
-                continue
-            try:
-                groups = await client.xinfo_groups(sk)
-                if any(g.get("name") == group_name for g in groups):
-                    stream_name = sk
-                    break
-            except Exception:
-                pass
-
-    if not stream_name:
-        raise ValueError(f"Stream for consumer group '{group_name}' not found.")
+        raise ValueError(f"Consumer group '{group_name}' is not registered in consumer_groups.json.")
 
     cleaned_pending = 0
     try:
@@ -333,3 +277,152 @@ async def delete_job_from_stream(consumer_key: str, job_id: str) -> Dict[str, st
 
     await client.hdel(f"{stream_name}:job_ids", str(job_id))
     return {"message": "successfully deleted"}
+
+
+IMAGE_COMPARISON_RECENT_KEY = "mira:image_comparison:recent"
+IMAGE_COMPARISON_DATA_KEY_PREFIX = "mira:image_comparison:data:"
+IMAGE_COMPARISON_MAX_COUNT = 10
+
+
+async def store_image_comparison_data(data: Dict[str, Any]) -> Dict[str, Any]:
+    image_id = str(data.get("image_id") or uuid.uuid4())
+    app_name = str(data.get("app_name", "")).strip()
+    client = get_redis_client()
+
+    record = {
+        "image_id": image_id,
+        "app_name": app_name,
+        "timestamp": data.get("timestamp") or time.time(),
+        "pixel_values": data.get("pixel_values"),
+        "grayscale_matrix": data.get("grayscale_matrix"),
+        "metadata": data.get("metadata") or {},
+    }
+
+    serialized = json.dumps(record)
+    data_key = f"{IMAGE_COMPARISON_DATA_KEY_PREFIX}{image_id}"
+    await client.set(data_key, serialized)
+
+    # Maintain recent list
+    await client.lrem(IMAGE_COMPARISON_RECENT_KEY, 0, image_id)
+    await client.lpush(IMAGE_COMPARISON_RECENT_KEY, image_id)
+
+    # Retain only the 10 most recent images
+    excess_ids = await client.lrange(IMAGE_COMPARISON_RECENT_KEY, IMAGE_COMPARISON_MAX_COUNT, -1)
+    if excess_ids:
+        for old_id in excess_ids:
+            try:
+                await client.delete(f"{IMAGE_COMPARISON_DATA_KEY_PREFIX}{old_id}")
+            except Exception as e:
+                log(f"Error purging expired image comparison data {old_id}: {e}")
+        await client.ltrim(IMAGE_COMPARISON_RECENT_KEY, 0, IMAGE_COMPARISON_MAX_COUNT - 1)
+
+    total_count = await client.llen(IMAGE_COMPARISON_RECENT_KEY)
+    log(f"Stored image comparison data {image_id} for app '{app_name}' (recent count: {total_count})")
+
+    return {
+        "status": "success",
+        "message": "Image comparison data stored successfully",
+        "image_id": image_id,
+        "app_name": app_name,
+        "total_recent": total_count,
+    }
+
+
+async def get_recent_image_comparison_data(limit: int = 10) -> List[Dict[str, Any]]:
+    client = get_redis_client()
+    limit = min(max(int(limit), 1), IMAGE_COMPARISON_MAX_COUNT)
+    image_ids = await client.lrange(IMAGE_COMPARISON_RECENT_KEY, 0, limit - 1)
+
+    results: List[Dict[str, Any]] = []
+    for img_id in image_ids:
+        raw = await client.get(f"{IMAGE_COMPARISON_DATA_KEY_PREFIX}{img_id}")
+        if raw:
+            try:
+                results.append(json.loads(raw))
+            except Exception:
+                pass
+    return results
+
+
+async def get_image_comparison_data_by_id(image_id: str) -> Optional[Dict[str, Any]]:
+    client = get_redis_client()
+    raw = await client.get(f"{IMAGE_COMPARISON_DATA_KEY_PREFIX}{image_id}")
+    if raw:
+        try:
+            return json.loads(raw)
+        except Exception:
+            return None
+    return None
+
+
+async def search_image_comparison_data(app_name: Optional[str] = None, limit: int = 10) -> List[Dict[str, Any]]:
+    records = await get_recent_image_comparison_data(limit=IMAGE_COMPARISON_MAX_COUNT)
+    if app_name:
+        normalized = app_name.strip().lower()
+        records = [r for r in records if r.get("app_name", "").strip().lower() == normalized]
+    return records[:limit]
+
+
+async def remove_image_comparison_data(
+    image_id: Optional[str] = None,
+    app_name: Optional[str] = None,
+    remove_all: bool = False
+) -> Dict[str, Any]:
+    client = get_redis_client()
+
+    if remove_all:
+        recent_ids = await client.lrange(IMAGE_COMPARISON_RECENT_KEY, 0, -1)
+        removed_count = 0
+        for r_id in recent_ids:
+            await client.delete(f"{IMAGE_COMPARISON_DATA_KEY_PREFIX}{r_id}")
+            removed_count += 1
+        await client.delete(IMAGE_COMPARISON_RECENT_KEY)
+
+        # Also cleanup any orphaned keys matching prefix
+        try:
+            extra_keys = await client.keys(f"{IMAGE_COMPARISON_DATA_KEY_PREFIX}*")
+            for ek in extra_keys:
+                await client.delete(ek)
+        except Exception:
+            pass
+
+        log("Removed all image comparison data from Redis")
+        return {
+            "status": "success",
+            "message": "All image comparison data removed",
+            "removed_count": removed_count,
+        }
+
+    if image_id:
+        await client.lrem(IMAGE_COMPARISON_RECENT_KEY, 0, image_id)
+        deleted = await client.delete(f"{IMAGE_COMPARISON_DATA_KEY_PREFIX}{image_id}")
+        log(f"Removed image comparison data for {image_id}")
+        return {
+            "status": "success",
+            "message": f"Image comparison data {image_id} removed",
+            "image_id": image_id,
+            "deleted": bool(deleted),
+        }
+
+    if app_name:
+        records = await search_image_comparison_data(app_name=app_name, limit=IMAGE_COMPARISON_MAX_COUNT)
+        removed_count = 0
+        for rec in records:
+            r_id = rec.get("image_id")
+            if r_id:
+                await client.lrem(IMAGE_COMPARISON_RECENT_KEY, 0, r_id)
+                await client.delete(f"{IMAGE_COMPARISON_DATA_KEY_PREFIX}{r_id}")
+                removed_count += 1
+        log(f"Removed {removed_count} image comparison record(s) for app '{app_name}'")
+        return {
+            "status": "success",
+            "message": f"Image comparison data for app '{app_name}' removed",
+            "app_name": app_name,
+            "removed_count": removed_count,
+        }
+
+    return {
+        "status": "ignored",
+        "message": "No image_id, app_name, or remove_all parameter specified",
+        "removed_count": 0,
+    }

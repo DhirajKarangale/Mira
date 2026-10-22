@@ -12,7 +12,6 @@ import {
   Flame,
   Radio,
   Clock,
-  Database,
   ShieldAlert,
 } from "lucide-react";
 import {
@@ -191,7 +190,7 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
         </div>
       )}
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
         <div className="rounded-xl border border-white/[0.08] bg-zinc-900/50 backdrop-blur-sm p-4 relative overflow-hidden">
           <div className="flex items-center justify-between text-zinc-400 mb-2">
             <span className="text-xs font-medium uppercase tracking-wider">Consumer Groups</span>
@@ -223,18 +222,7 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
           >
             {totalPending}
           </div>
-          <div className="text-[11px] text-zinc-500 mt-1">Awaiting ACK from workers</div>
-        </div>
-
-        <div className="rounded-xl border border-white/[0.08] bg-zinc-900/50 backdrop-blur-sm p-4 relative overflow-hidden">
-          <div className="flex items-center justify-between text-zinc-400 mb-2">
-            <span className="text-xs font-medium uppercase tracking-wider">Active Workers</span>
-            <Database className="w-4 h-4 text-purple-400" />
-          </div>
-          <div className="text-2xl font-bold text-purple-300 tracking-tight">
-            {groups.reduce((acc, g) => acc + (g.consumers_count || 0), 0)}
-          </div>
-          <div className="text-[11px] text-zinc-500 mt-1">Connected Redis stream consumers</div>
+          <div className="text-[11px] text-zinc-500 mt-1">Awaiting consumer acknowledgment</div>
         </div>
       </div>
 
@@ -301,7 +289,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
                 <th className="py-3 px-4">Stream Name</th>
                 <th className="py-3 px-3 text-center">Active Messages</th>
                 <th className="py-3 px-3 text-center">Pending Messages</th>
-                <th className="py-3 px-3 text-center">Workers</th>
                 <th className="py-3 px-4">Last Delivered ID</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
@@ -309,14 +296,14 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
             <tbody className="divide-y divide-white/[0.04]">
               {loading && groups.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-zinc-400">
+                  <td colSpan={6} className="py-12 text-center text-zinc-400">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-red-500" />
                     Loading consumer groups...
                   </td>
                 </tr>
               ) : filteredGroups.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-zinc-500">
+                  <td colSpan={6} className="py-12 text-center text-zinc-500">
                     {searchQuery
                       ? "No consumer groups match your search criteria."
                       : "No Redis consumer groups found."}
@@ -384,12 +371,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
                           )}
                         >
                           {group.pending_messages_count ?? 0}
-                        </span>
-                      </td>
-
-                      <td className="py-3 px-3 text-center">
-                        <span className="font-mono text-zinc-300">
-                          {group.consumers_count ?? 0}
                         </span>
                       </td>
 

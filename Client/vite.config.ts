@@ -51,7 +51,6 @@ export default defineConfig(() => ({
       ? {
           protocol: "ws",
           host: clientHost,
-          port: clientPort ? clientPort + 1 : undefined,
         }
       : undefined,
     watch: {

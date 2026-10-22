@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -146,4 +146,103 @@ async def format_redis():
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": f"Failed to format Redis: {str(e)}"}
+        )
+
+
+class StoreImageComparisonRequest(BaseModel):
+    image_id: Optional[str] = None
+    app_name: str = Field(..., min_length=1)
+    timestamp: Optional[Union[float, str]] = None
+    pixel_values: Optional[Any] = None
+    grayscale_matrix: Optional[Any] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+    model_config = ConfigDict(extra="allow")
+
+
+@router.post("/images/comparison", status_code=status.HTTP_201_CREATED)
+@router.post("/image-comparison", status_code=status.HTTP_201_CREATED)
+async def store_image_comparison(req: StoreImageComparisonRequest):
+    try:
+        return await rs.store_image_comparison_data(req.model_dump())
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to store image comparison data: {str(e)}"}
+        )
+
+
+@router.get("/images/comparison", status_code=status.HTTP_200_OK)
+@router.get("/image-comparison", status_code=status.HTTP_200_OK)
+async def get_recent_image_comparisons(limit: int = Query(10, ge=1, le=10)):
+    try:
+        return await rs.get_recent_image_comparison_data(limit=limit)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to retrieve image comparison data: {str(e)}"}
+        )
+
+
+@router.get("/images/comparison/search", status_code=status.HTTP_200_OK)
+@router.get("/image-comparison/search", status_code=status.HTTP_200_OK)
+async def search_image_comparisons(
+    app_name: Optional[str] = Query(None),
+    limit: int = Query(10, ge=1, le=10)
+):
+    try:
+        return await rs.search_image_comparison_data(app_name=app_name, limit=limit)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to search image comparison data: {str(e)}"}
+        )
+
+
+@router.get("/images/comparison/{image_id}", status_code=status.HTTP_200_OK)
+@router.get("/image-comparison/{image_id}", status_code=status.HTTP_200_OK)
+async def get_image_comparison_by_id(image_id: str):
+    try:
+        data = await rs.get_image_comparison_data_by_id(image_id)
+        if not data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"message": f"Image comparison data for ID '{image_id}' not found"}
+            )
+        return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to retrieve image comparison data: {str(e)}"}
+        )
+
+
+@router.delete("/images/comparison/{image_id}", status_code=status.HTTP_200_OK)
+@router.delete("/image-comparison/{image_id}", status_code=status.HTTP_200_OK)
+async def delete_image_comparison_by_id(image_id: str):
+    try:
+        res = await rs.remove_image_comparison_data(image_id=image_id)
+        return res
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to remove image comparison data: {str(e)}"}
+        )
+
+
+@router.delete("/images/comparison", status_code=status.HTTP_200_OK)
+@router.delete("/image-comparison", status_code=status.HTTP_200_OK)
+async def delete_image_comparisons(
+    image_id: Optional[str] = Query(None),
+    app_name: Optional[str] = Query(None),
+    all: bool = Query(False)
+):
+    try:
+        return await rs.remove_image_comparison_data(image_id=image_id, app_name=app_name, remove_all=all)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to remove image comparison data: {str(e)}"}
         )

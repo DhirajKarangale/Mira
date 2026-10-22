@@ -109,7 +109,7 @@ MODULE_REGISTRY: List[Dict[str, Any]] = [
         "name": "Memory",
         "description": "Image processing, OCR extraction, and Qdrant vector retrieval",
         "dir": ROOT_DIR / "Memory",
-        "default_port": 9005,
+        "default_port": 9006,
         "default_host": "127.0.0.1",
         "order": 5,
         "health_path": "/health",
@@ -123,7 +123,7 @@ MODULE_REGISTRY: List[Dict[str, Any]] = [
         "name": "Engine",
         "description": "LLM orchestration, LangChain/LangGraph workflow coordinator",
         "dir": ROOT_DIR / "Engine",
-        "default_port": 9006,
+        "default_port": 9007,
         "default_host": "127.0.0.1",
         "order": 6,
         "health_path": "/health",
@@ -187,6 +187,9 @@ def resolve_module_port(module: Dict[str, Any], allocated_ports: Set[int]) -> Tu
         port += 1
 
     allocated_ports.add(port)
+    if module.get("id") == "client":
+        # Defensively reserve port + 1 for client tools (e.g. Vite HMR WebSocket server)
+        allocated_ports.add(port + 1)
     return port, was_incremented
 
 

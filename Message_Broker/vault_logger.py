@@ -5,13 +5,20 @@ import requests
 
 import config
 
+import time
+
 MODULE_NAME = "message_broker"
+_last_vault_failure: float = 0.0
+_VAULT_RETRY_INTERVAL: float = 5.0
 
 
 def log(message: str) -> None:
+    global _last_vault_failure
     log_string = str(message)
+    now = time.time()
+
     vault_url = config.get_service_url("vault")
-    if not vault_url:
+    if not vault_url or (now - _last_vault_failure < _VAULT_RETRY_INTERVAL):
         print(f"[{MODULE_NAME}] {log_string}", file=sys.stderr, flush=True)
         return
 
@@ -23,9 +30,10 @@ def log(message: str) -> None:
     }
 
     try:
-        response = requests.post(endpoint, json=payload, timeout=2.0)
+        response = requests.post(endpoint, json=payload, timeout=0.5)
         response.raise_for_status()
     except Exception as e:
+        _last_vault_failure = time.time()
         print(
             f"[{MODULE_NAME}] (Vault logging delivery fallback: {e}) {log_string}",
             file=sys.stderr,

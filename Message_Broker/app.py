@@ -43,6 +43,17 @@ async def lifespan(app: FastAPI):
     log("Initializing Redis connection on startup...")
     await init_redis_connection()
     log("Redis connection established.")
+
+    try:
+        import consumer_group_manager as cgm
+        import redis_service as rs
+        for key, group in cgm._load_consumer_groups().items():
+            stream_name = f"mira:stream:{key}"
+            await rs.ensure_consumer_group(stream_name, group)
+        log("Ensured all configured consumer groups on Redis.")
+    except Exception as e:
+        log(f"Error ensuring configured consumer groups on startup: {e}")
+
     yield
     log("Closing Redis connection on shutdown...")
     await close_redis_connection()

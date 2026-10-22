@@ -7,15 +7,18 @@ from typing import Dict, List, Optional
 CONFIG_FILE_PATH = Path(__file__).resolve().parent / "consumer_groups.json"
 
 _CONSUMER_GROUPS_CACHE: Dict[str, str] = {}
+_CONFIG_MTIME: float = 0.0
 
 
 def _load_consumer_groups() -> Dict[str, str]:
-    global _CONSUMER_GROUPS_CACHE
-    if not _CONSUMER_GROUPS_CACHE:
-        if not CONFIG_FILE_PATH.exists():
-            raise FileNotFoundError(f"Consumer groups configuration file not found: {CONFIG_FILE_PATH}")
+    global _CONSUMER_GROUPS_CACHE, _CONFIG_MTIME
+    if not CONFIG_FILE_PATH.exists():
+        raise FileNotFoundError(f"Consumer groups configuration file not found: {CONFIG_FILE_PATH}")
+    current_mtime = CONFIG_FILE_PATH.stat().st_mtime
+    if not _CONSUMER_GROUPS_CACHE or current_mtime != _CONFIG_MTIME:
         with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
             _CONSUMER_GROUPS_CACHE = json.load(f)
+        _CONFIG_MTIME = current_mtime
     return _CONSUMER_GROUPS_CACHE
 
 

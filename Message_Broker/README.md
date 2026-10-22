@@ -196,6 +196,33 @@ Flushes the entire Redis database (`FLUSHDB`) and reinitializes all registered c
 
 ---
 
+### 2.9 Image Comparison Data Storage & Search
+`POST /images/comparison`
+`GET /images/comparison`
+`GET /images/comparison/search`
+`GET /images/comparison/{image_id}`
+`DELETE /images/comparison/{image_id}`
+`DELETE /images/comparison`
+
+Stores, retrieves, searches, and purges image comparison frames (pixel values and grayscale matrices) directly in Redis, automatically enforcing retention for only the 10 most recent images.
+
+- **Store (`POST /images/comparison`):**
+  ```json
+  {
+    "image_id": "frame-uuid-or-job-id",
+    "app_name": "chrome",
+    "timestamp": 1729580000.0,
+    "pixel_values": { "shape": [1080, 1920, 3], "dtype": "uint8", "data": "base64..." },
+    "grayscale_matrix": { "shape": [1080, 1920], "dtype": "uint8", "data": "base64..." }
+  }
+  ```
+- **Search by App (`GET /images/comparison/search?app_name=chrome&limit=1`):**
+  Returns the latest image comparison frames matching the target application name.
+- **Delete (`DELETE /images/comparison?all=true` or `DELETE /images/comparison/{image_id}`):**
+  Deletes specific or all image comparison entries and cleans up Redis references.
+
+---
+
 ## 3. Installation & Startup
 
 ### Install Dependencies
