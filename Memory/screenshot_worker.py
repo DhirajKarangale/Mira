@@ -219,7 +219,6 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
             "os": os_name,
             "timestamp": timestamp,
             "extracted_text": full_text,
-            "window_metadata": window_metadata,
             "ui_regions": ui_regions,
             "changes": region_changes,
             "vlm_analysis": vlm_analysis,
