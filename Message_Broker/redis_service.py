@@ -138,7 +138,7 @@ async def delete_consumer_group(group_name: str, stream_name: Optional[str] = No
 async def clean_consumer_group(
     group_name: Optional[str] = None,
     stream_name: Optional[str] = None,
-    reset_stream: bool = False
+    reset_stream: bool = True
 ) -> Dict[str, Any]:
     client = get_redis_client()
     if not group_name:
@@ -149,6 +149,12 @@ async def clean_consumer_group(
 
     if not stream_name:
         raise ValueError(f"Consumer group '{group_name}' is not registered in consumer_groups.json.")
+
+    active_count = 0
+    try:
+        active_count = await client.xlen(stream_name)
+    except Exception:
+        pass
 
     cleaned_pending = 0
     try:
@@ -178,11 +184,12 @@ async def clean_consumer_group(
         except Exception as e:
             log(f"Error resetting stream for {group_name}: {e}")
 
+    total_cleaned = active_count if reset_stream else cleaned_pending
     return {
-        "message": f"Successfully cleaned {cleaned_pending} pending message(s) for '{group_name}'",
+        "message": f"Successfully cleaned {total_cleaned} message(s) for '{group_name}'",
         "group_name": group_name,
         "stream_name": stream_name,
-        "cleaned_count": cleaned_pending,
+        "cleaned_count": total_cleaned,
     }
 
 
@@ -356,11 +363,30 @@ async def get_image_comparison_data_by_id(image_id: str) -> Optional[Dict[str, A
 
 
 async def search_image_comparison_data(app_name: Optional[str] = None, limit: int = 10) -> List[Dict[str, Any]]:
-    records = await get_recent_image_comparison_data(limit=IMAGE_COMPARISON_MAX_COUNT)
-    if app_name:
-        normalized = app_name.strip().lower()
-        records = [r for r in records if r.get("app_name", "").strip().lower() == normalized]
-    return records[:limit]
+    client = get_redis_client()
+    limit = min(max(int(limit), 1), IMAGE_COMPARISON_MAX_COUNT)
+    image_ids = await client.lrange(IMAGE_COMPARISON_RECENT_KEY, 0, IMAGE_COMPARISON_MAX_COUNT - 1)
+
+    normalized = app_name.strip().lower() if app_name else None
+    results: List[Dict[str, Any]] = []
+
+    for img_id in image_ids:
+        raw = await client.get(f"{IMAGE_COMPARISON_DATA_KEY_PREFIX}{img_id}")
+        if not raw:
+            continue
+        try:
+            record = json.loads(raw)
+            if normalized:
+                rec_app = str(record.get("app_name", "")).strip().lower()
+                if rec_app != normalized:
+                    continue
+            results.append(record)
+            if len(results) >= limit:
+                break
+        except Exception:
+            continue
+
+    return results
 
 
 async def remove_image_comparison_data(

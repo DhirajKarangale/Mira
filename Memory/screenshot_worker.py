@@ -12,10 +12,15 @@ from data_extractor import extract_pixels_and_grayscale, extract_text_from_image
 from image_comparison import compare_app_images, store_image_data
 from vault_logger import log
 
-# Image difference threshold constant.
-# If cv2.absdiff normalized difference between consecutive frames of the same app
-# is below this threshold, the image is considered unchanged and skipped.
-IMAGE_DIFF_THRESHOLD: float = float(os.getenv("IMAGE_DIFF_THRESHOLD", "0.02"))
+DEFAULT_IMAGE_DIFF_THRESHOLD: float = 0.1
+IMAGE_DIFF_THRESHOLD: float = float(os.getenv("IMAGE_DIFF_THRESHOLD", str(DEFAULT_IMAGE_DIFF_THRESHOLD)))
+
+
+def get_current_threshold() -> float:
+    """Return the active threshold from worker_manager, env var, or calibrated default."""
+    if "worker_manager" in globals() and hasattr(worker_manager, "_image_diff_threshold"):
+        return worker_manager._image_diff_threshold
+    return float(os.getenv("IMAGE_DIFF_THRESHOLD", str(DEFAULT_IMAGE_DIFF_THRESHOLD)))
 
 
 def get_broker_base_url() -> str:
@@ -140,17 +145,18 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
     diff_score, prev_record = compare_app_images(app_name, grayscale_matrix)
 
     # Step 3: If difference is below threshold, call Operator API to delete screenshot, remove job from ocr_extraction, skip
-    if diff_score is not None and diff_score < IMAGE_DIFF_THRESHOLD:
+    effective_threshold = get_current_threshold()
+    if diff_score is not None and diff_score < effective_threshold:
         log(
             f"[Worker-{worker_id}] Duplicate frame detected for app '{app_name}' "
-            f"(diff={diff_score:.4f} < threshold={IMAGE_DIFF_THRESHOLD}). Skipping extraction."
+            f"(diff={diff_score:.4f} < threshold={effective_threshold:.4f}). Skipping extraction."
         )
         call_operator_delete_screenshot(image_path)
         remove_broker_job("ocr_extraction", job_id)
         return True
 
     if diff_score is not None:
-        log(f"[Worker-{worker_id}] App '{app_name}' changed (diff={diff_score:.4f} >= threshold={IMAGE_DIFF_THRESHOLD})")
+        log(f"[Worker-{worker_id}] App '{app_name}' changed (diff={diff_score:.4f} >= threshold={effective_threshold:.4f})")
     else:
         log(f"[Worker-{worker_id}] First frame or no prior comparison record for app '{app_name}'")
 
@@ -218,11 +224,17 @@ class ScreenshotExtractionWorkerManager:
         self._tasks: List[asyncio.Task] = []
         self._poll_time: float = 5.0
         self._worker_count: int = 1
+        self._image_diff_threshold: float = IMAGE_DIFF_THRESHOLD
 
     def refresh_config(self) -> None:
         worker_cfg = config.fetch_worker_config()
         self._poll_time = worker_cfg.get("screenshot_extraction_poll_time", 5.0)
         self._worker_count = worker_cfg.get("screenshot_extraction_workers", 1)
+        vault_thresh = worker_cfg.get("image_diff_threshold")
+        if vault_thresh is not None:
+            self._image_diff_threshold = float(vault_thresh)
+        else:
+            self._image_diff_threshold = float(os.getenv("IMAGE_DIFF_THRESHOLD", str(DEFAULT_IMAGE_DIFF_THRESHOLD)))
 
     async def _worker_loop(self, worker_id: int) -> None:
         log(f"[Worker-{worker_id}] Worker started (poll_time={self._poll_time}s)")
@@ -284,7 +296,7 @@ class ScreenshotExtractionWorkerManager:
             "worker_count": self._worker_count,
             "active_tasks": len([t for t in self._tasks if not t.done()]),
             "poll_time": self._poll_time,
-            "image_diff_threshold": IMAGE_DIFF_THRESHOLD,
+            "image_diff_threshold": self._image_diff_threshold,
         }
 
 

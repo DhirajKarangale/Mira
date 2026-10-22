@@ -145,3 +145,31 @@ def test_worker_manager_status():
     assert "worker_count" in status_info
     assert "image_diff_threshold" in status_info
     assert status_info["image_diff_threshold"] == IMAGE_DIFF_THRESHOLD
+
+
+def test_subtle_noise_difference_skipped(sample_image):
+    """Verify that minor desktop noise (diff=0.035) is skipped under default 0.05 threshold."""
+    with patch("screenshot_worker.compare_app_images", return_value=(0.035, {"image_id": "p1"})) as mock_comp, \
+         patch("screenshot_worker.call_operator_delete_screenshot") as mock_del, \
+         patch("screenshot_worker.remove_broker_job") as mock_rem, \
+         patch("screenshot_worker.publish_broker_job") as mock_pub, \
+         patch("screenshot_worker.store_image_data") as mock_store:
+
+        mock_del.return_value = True
+        mock_rem.return_value = True
+
+        job = {
+            "job_id": "noise_job_1",
+            "app_name": "msedge.exe",
+            "os": "Windows 11",
+            "image_path": sample_image,
+        }
+
+        result = process_screenshot_job(job)
+        assert result is True
+        mock_comp.assert_called_once()
+        mock_del.assert_called_once_with(sample_image)
+        mock_rem.assert_called_once_with("ocr_extraction", "noise_job_1")
+        mock_store.assert_not_called()
+        mock_pub.assert_not_called()
+

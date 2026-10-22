@@ -20,7 +20,7 @@ class AddJobRequest(BaseModel):
 class CleanConsumerGroupRequest(BaseModel):
     group_name: Optional[str] = None
     stream_name: Optional[str] = None
-    reset_stream: Optional[bool] = False
+    reset_stream: Optional[bool] = True
 
 
 @router.get("/health", status_code=status.HTTP_200_OK)
@@ -125,7 +125,7 @@ async def clean_pending_messages(req: Optional[CleanConsumerGroupRequest] = None
     try:
         group_name = req.group_name if req else None
         stream_name = req.stream_name if req else None
-        reset_stream = req.reset_stream if req and req.reset_stream is not None else False
+        reset_stream = req.reset_stream if req and req.reset_stream is not None else True
         return await rs.clean_consumer_group(
             group_name=group_name,
             stream_name=stream_name,

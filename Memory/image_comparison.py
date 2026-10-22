@@ -77,7 +77,7 @@ def store_image_data(
     }
 
     try:
-        response = requests.post(endpoint, json=payload, timeout=5.0)
+        response = requests.post(endpoint, json=payload, timeout=15.0)
         response.raise_for_status()
         return response.json()
     except Exception as e:
@@ -92,7 +92,7 @@ def get_recent_images(limit: int = 10) -> List[Dict[str, Any]]:
     params = {"limit": min(max(int(limit), 1), 10)}
 
     try:
-        response = requests.get(endpoint, params=params, timeout=5.0)
+        response = requests.get(endpoint, params=params, timeout=15.0)
         response.raise_for_status()
         return response.json()
     except Exception as e:
@@ -107,7 +107,7 @@ def get_latest_image_for_app(app_name: str) -> Optional[Dict[str, Any]]:
     params = {"app_name": app_name.strip(), "limit": 1}
 
     try:
-        response = requests.get(endpoint, params=params, timeout=5.0)
+        response = requests.get(endpoint, params=params, timeout=15.0)
         response.raise_for_status()
         records = response.json()
         if records and isinstance(records, list) and len(records) > 0:
@@ -192,7 +192,7 @@ def remove_image_data(
         params["all"] = True
 
     try:
-        response = requests.delete(endpoint, params=params, timeout=5.0)
+        response = requests.delete(endpoint, params=params, timeout=15.0)
         response.raise_for_status()
         return response.json()
     except Exception as e:
