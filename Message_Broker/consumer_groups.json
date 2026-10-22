@@ -1,11 +1,4 @@
 {
-  "screenshot_process": "CONSUMER_GROUP_SCREENSHOT_PROCESS",
   "ocr_extraction": "CONSUMER_GROUP_OCR_EXTRACTION",
-  "collector_batch": "CONSUMER_GROUP_COLLECTOR_BATCH",
-  "memory_store": "CONSUMER_GROUP_MEMORY_STORE",
-  "memory_recall": "CONSUMER_GROUP_MEMORY_RECALL",
-  "engine_llm_task": "CONSUMER_GROUP_ENGINE_LLM_TASK",
-  "engine_embedding_task": "CONSUMER_GROUP_ENGINE_EMBEDDING_TASK",
-  "client_notification": "CONSUMER_GROUP_CLIENT_NOTIFICATION",
-  "vault_secret_sync": "CONSUMER_GROUP_VAULT_SECRET_SYNC"
+  "ocr_summarization": "CONSUMER_GROUP_OCR_TEXT_SUMMARIZATION"
 }

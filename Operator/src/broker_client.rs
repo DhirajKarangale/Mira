@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
-pub const SCREENSHOT_CONSUMER_KEY: &str = "screenshot_process";
+pub const SCREENSHOT_CONSUMER_KEY: &str = "ocr_extraction";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScreenshotJob {
