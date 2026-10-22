@@ -209,3 +209,47 @@ def compare_ui_regions(
         "overall_text_similarity": round(overall_sim, 3),
         "change_summary": change_summary,
     }
+
+def is_somewhat_similar(
+    region_changes: Dict[str, Any],
+    diff_score: Optional[float] = None,
+    similarity_threshold: float = 0.85,
+) -> Tuple[bool, str]:
+    """
+    Evaluates whether the current frame is 'somewhat similar' to the baseline frame
+    and can be ignored to avoid spamming summarization with micro-updates.
+    """
+    if not region_changes.get("has_changes", False):
+        return True, "No region changes detected"
+
+    # If the visual difference across the entire screen is large, it's a major visual change
+    if diff_score is not None and diff_score >= 0.15:
+        return False, f"Major visual layout shift (diff={diff_score:.3f})"
+
+    # Check for modals, alerts, warnings, or prompts that require attention
+    for r in region_changes.get("added_regions", []):
+        rtype = str(r.get("type", "")).lower()
+        rtext = str(r.get("text", "")).lower()
+        if rtype == "modal" or any(kw in rtext for kw in ("dialog", "alert", "confirm", "warning", "error", "prompt")):
+            return False, f"Modal/alert UI element appeared: {rtext[:35]}"
+
+    for r in region_changes.get("meaningful_modified_regions", []):
+        rtype = str(r.get("type", "")).lower()
+        if rtype == "modal":
+            return False, "Modal state updated"
+
+    overall_sim = float(region_changes.get("overall_text_similarity", 1.0))
+    meaningful_count = int(region_changes.get("total_meaningful_changed", 0))
+
+    # If overall text similarity is high (>= similarity_threshold, default 85% identical)
+    if overall_sim >= similarity_threshold:
+        if meaningful_count >= 3:
+            return False, f"{meaningful_count} distinct regions modified despite high text similarity"
+        return True, f"Text similarity {overall_sim:.1%} >= {similarity_threshold:.1%} (ignoring minor updates)"
+
+    # If there are zero meaningful changes and visual difference is minor (< 8%)
+    if meaningful_count == 0 and (diff_score is None or diff_score < 0.08):
+        return True, f"Zero meaningful content changes (overall_sim={overall_sim:.1%})"
+
+    return False, f"Meaningful change detected (similarity={overall_sim:.1%}, {meaningful_count} changed region(s))"
+

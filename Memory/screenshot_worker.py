@@ -14,11 +14,11 @@ from data_extractor import (
     extract_text_from_image,
 )
 from image_comparison import compare_app_images, store_image_data
-from region_comparator import compare_ui_regions
+from region_comparator import compare_ui_regions, is_somewhat_similar
 from vault_logger import log
 from vlm_service import analyze_regions_with_vlm, is_deeper_understanding_needed
 
-DEFAULT_IMAGE_DIFF_THRESHOLD: float = 0.1
+DEFAULT_IMAGE_DIFF_THRESHOLD: float = 0.008
 IMAGE_DIFF_THRESHOLD: float = float(os.getenv("IMAGE_DIFF_THRESHOLD", str(DEFAULT_IMAGE_DIFF_THRESHOLD)))
 
 def get_current_threshold() -> float:
@@ -149,8 +149,8 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
             log(f"[Worker-{worker_id}] First frame or no prior comparison record for app '{app_name}'")
 
         try:
-            ocr_result = extract_structured_ocr(pixel_values)
-            full_text = ocr_result.get("full_text", "")
+            ocr_result = extract_structured_ocr(pixel_values, app_name=app_name)
+            full_text = ocr_result.get("extracted_text") or ocr_result.get("corrected_text", "")
             ui_regions = ocr_result.get("ui_regions", [])
         except Exception as e:
             log(f"[Worker-{worker_id}] Structured OCR failed for '{image_path}': {e}")
@@ -167,6 +167,17 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
             previous_text=prev_text,
             current_text=full_text,
         )
+
+        if prev_record:
+            is_similar, reason = is_somewhat_similar(region_changes, diff_score, similarity_threshold=0.85)
+            if is_similar:
+                log(
+                    f"[Worker-{worker_id}] Ignoring somewhat similar frame for app '{app_name}' "
+                    f"({reason}). Skipping summarization."
+                )
+                call_operator_delete_screenshot(image_path)
+                remove_broker_job("ocr_extraction", job_id)
+                return True
 
         deeper_needed = is_deeper_understanding_needed(region_changes, ui_regions, diff_score)
         if deeper_needed:

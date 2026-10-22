@@ -48,7 +48,7 @@ def get_broker_base_url() -> str:
 
 def store_image_data(
     app_name: str,
-    pixel_values: np.ndarray,
+    pixel_values: Optional[np.ndarray],
     grayscale_matrix: np.ndarray,
     image_id: Optional[str] = None,
     timestamp: Optional[Union[float, str]] = None,
@@ -61,7 +61,7 @@ def store_image_data(
         "image_id": image_id,
         "app_name": app_name.strip(),
         "timestamp": timestamp or time.time(),
-        "pixel_values": serialize_matrix(pixel_values),
+        "pixel_values": None,
         "grayscale_matrix": serialize_matrix(grayscale_matrix),
         "metadata": metadata or {},
     }
@@ -115,12 +115,18 @@ def calculate_image_difference(
     if len(curr.shape) == 3:
         curr = cv2.cvtColor(curr, cv2.COLOR_BGR2GRAY)
 
-    if prev.shape != curr.shape:
-        prev = cv2.resize(prev, (curr.shape[1], curr.shape[0]))
+    # Standardize comparison resolution to 640x360 for speed and noise filtering
+    target_size = (640, 360)
+    if (prev.shape[1], prev.shape[0]) != target_size:
+        prev = cv2.resize(prev, target_size, interpolation=cv2.INTER_AREA)
+    if (curr.shape[1], curr.shape[0]) != target_size:
+        curr = cv2.resize(curr, target_size, interpolation=cv2.INTER_AREA)
 
     diff = cv2.absdiff(prev, curr)
 
-    diff_score = float(np.mean(diff)) / 255.0
+    # Suppress font anti-aliasing and subpixel dithering noise (< 12 levels)
+    sig_diff = np.where(diff > 12, diff, 0)
+    diff_score = float(np.mean(sig_diff)) / 255.0
     return diff_score
 
 def compare_app_images(
