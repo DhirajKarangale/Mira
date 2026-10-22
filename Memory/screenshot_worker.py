@@ -18,7 +18,7 @@ from region_comparator import compare_ui_regions
 from vault_logger import log
 from vlm_service import analyze_regions_with_vlm, is_deeper_understanding_needed
 
-DEFAULT_IMAGE_DIFF_THRESHOLD: float = 0.05
+DEFAULT_IMAGE_DIFF_THRESHOLD: float = 0.1
 IMAGE_DIFF_THRESHOLD: float = float(os.getenv("IMAGE_DIFF_THRESHOLD", str(DEFAULT_IMAGE_DIFF_THRESHOLD)))
 
 def get_current_threshold() -> float:
@@ -130,120 +130,120 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
     }
 
     try:
-        ocr_result = extract_structured_ocr(pixel_values)
-        full_text = ocr_result.get("full_text", "")
-        ui_regions = ocr_result.get("ui_regions", [])
-    except Exception as e:
-        log(f"[Worker-{worker_id}] Structured OCR failed for '{image_path}': {e}")
-        full_text = ""
-        ui_regions = []
+        diff_score, prev_record = compare_app_images(app_name, grayscale_matrix)
+        effective_threshold = get_current_threshold()
+        is_image_unchanged = diff_score is not None and diff_score < effective_threshold
 
-    diff_score, prev_record = compare_app_images(app_name, grayscale_matrix)
+        if prev_record and is_image_unchanged:
+            log(
+                f"[Worker-{worker_id}] Duplicate frame detected for app '{app_name}' "
+                f"(diff={diff_score:.4f} < threshold={effective_threshold:.4f}). Skipping extraction."
+            )
+            call_operator_delete_screenshot(image_path)
+            remove_broker_job("ocr_extraction", job_id)
+            return True
 
-    prev_metadata = prev_record.get("metadata", {}) if prev_record else {}
-    prev_regions = prev_metadata.get("ui_regions", [])
-    prev_text = prev_metadata.get("extracted_text", "")
+        if diff_score is not None:
+            log(f"[Worker-{worker_id}] App '{app_name}' changed (diff={diff_score:.4f} >= threshold={effective_threshold:.4f})")
+        else:
+            log(f"[Worker-{worker_id}] First frame or no prior comparison record for app '{app_name}'")
 
-    region_changes = compare_ui_regions(
-        previous_regions=prev_regions,
-        current_regions=ui_regions,
-        previous_text=prev_text,
-        current_text=full_text,
-    )
+        try:
+            ocr_result = extract_structured_ocr(pixel_values)
+            full_text = ocr_result.get("full_text", "")
+            ui_regions = ocr_result.get("ui_regions", [])
+        except Exception as e:
+            log(f"[Worker-{worker_id}] Structured OCR failed for '{image_path}': {e}")
+            full_text = ""
+            ui_regions = []
 
-    effective_threshold = get_current_threshold()
-    is_image_unchanged = diff_score is not None and diff_score < effective_threshold
-    is_ocr_unchanged = (not region_changes.get("has_changes", False)) if prev_regions else True
+        prev_metadata = prev_record.get("metadata", {}) if prev_record else {}
+        prev_regions = prev_metadata.get("ui_regions", [])
+        prev_text = prev_metadata.get("extracted_text", "")
 
-    if prev_record and is_image_unchanged and is_ocr_unchanged:
-        log(
-            f"[Worker-{worker_id}] Duplicate frame detected for app '{app_name}' "
-            f"(diff={diff_score:.4f} < threshold={effective_threshold:.4f}, no region changes). Skipping extraction."
+        region_changes = compare_ui_regions(
+            previous_regions=prev_regions,
+            current_regions=ui_regions,
+            previous_text=prev_text,
+            current_text=full_text,
         )
+
+        deeper_needed = is_deeper_understanding_needed(region_changes, ui_regions, diff_score)
+        if deeper_needed:
+            target_regions = region_changes.get("modified_regions", []) + region_changes.get("added_regions", [])
+            if not target_regions:
+                target_regions = ui_regions[:2]
+
+            log(f"[Worker-{worker_id}] Deeper understanding triggered for app '{app_name}'. Invoking VLM analysis...")
+            vlm_analysis = analyze_regions_with_vlm(
+                image=pixel_values,
+                changed_regions=target_regions,
+                window_metadata=window_metadata,
+            )
+            log(f"[Worker-{worker_id}] VLM analysis ({vlm_analysis.get('provider')}): {vlm_analysis.get('summary')}")
+        else:
+            vlm_analysis = {
+                "enriched": False,
+                "fallback": False,
+                "provider": "none",
+                "summary": region_changes.get("change_summary", "Standard extraction"),
+                "component_type": "standard",
+            }
+
+        try:
+            structured_metadata = {
+                "window_metadata": window_metadata,
+                "ui_regions": ui_regions,
+                "extracted_text": full_text,
+                "changes": region_changes,
+                "vlm_analysis": vlm_analysis,
+            }
+            store_image_data(
+                app_name=app_name,
+                pixel_values=pixel_values,
+                grayscale_matrix=grayscale_matrix,
+                image_id=job_id,
+                timestamp=timestamp,
+                metadata=structured_metadata,
+            )
+        except Exception as e:
+            log(f"[Worker-{worker_id}] Warning: failed to store image comparison in Redis: {e}")
+
         call_operator_delete_screenshot(image_path)
-        remove_broker_job("ocr_extraction", job_id)
-        return True
 
-    if diff_score is not None:
-        log(
-            f"[Worker-{worker_id}] App '{app_name}' changed "
-            f"(diff={diff_score:.4f}, {region_changes.get('change_summary', '')})"
-        )
-    else:
-        log(f"[Worker-{worker_id}] First frame or no prior comparison record for app '{app_name}'")
-
-    deeper_needed = is_deeper_understanding_needed(region_changes, ui_regions, diff_score)
-    if deeper_needed:
-
-        target_regions = region_changes.get("modified_regions", []) + region_changes.get("added_regions", [])
-        if not target_regions:
-            target_regions = ui_regions[:2]
-
-        log(f"[Worker-{worker_id}] Deeper understanding triggered for app '{app_name}'. Invoking VLM analysis...")
-        vlm_analysis = analyze_regions_with_vlm(
-            image=pixel_values,
-            changed_regions=target_regions,
-            window_metadata=window_metadata,
-        )
-        log(f"[Worker-{worker_id}] VLM analysis ({vlm_analysis.get('provider')}): {vlm_analysis.get('summary')}")
-    else:
-        vlm_analysis = {
-            "enriched": False,
-            "fallback": False,
-            "provider": "none",
-            "summary": region_changes.get("change_summary", "Standard extraction"),
-            "component_type": "standard",
-        }
-
-    try:
-        structured_metadata = {
+        new_job_id = str(uuid.uuid4())
+        summarization_job = {
+            "job_id": new_job_id,
+            "consumer_key": "ocr_summarization",
+            "app_name": app_name,
+            "os": os_name,
+            "timestamp": timestamp,
+            "extracted_text": full_text,
             "window_metadata": window_metadata,
             "ui_regions": ui_regions,
-            "extracted_text": full_text,
             "changes": region_changes,
             "vlm_analysis": vlm_analysis,
         }
-        store_image_data(
-            app_name=app_name,
-            pixel_values=pixel_values,
-            grayscale_matrix=grayscale_matrix,
-            image_id=job_id,
-            timestamp=timestamp,
-            metadata=structured_metadata,
-        )
+
+        published = publish_broker_job(summarization_job)
+        if published:
+            log(
+                f"[Worker-{worker_id}] Published structured job {new_job_id} to 'ocr_summarization' "
+                f"(extracted {len(full_text)} chars, {len(ui_regions)} UI regions from '{app_name}')"
+            )
+        else:
+            log(f"[Worker-{worker_id}] Failed to publish job {new_job_id} to 'ocr_summarization'")
+
+        removed = remove_broker_job("ocr_extraction", job_id)
+        if removed:
+            log(f"[Worker-{worker_id}] Completed and removed job {job_id} from 'ocr_extraction'")
+
+        return True
     except Exception as e:
-        log(f"[Worker-{worker_id}] Warning: failed to store image comparison in Redis: {e}")
-
-    call_operator_delete_screenshot(image_path)
-
-    new_job_id = str(uuid.uuid4())
-    summarization_job = {
-        "job_id": new_job_id,
-        "consumer_key": "ocr_summarization",
-        "app_name": app_name,
-        "os": os_name,
-        "timestamp": timestamp,
-        "extracted_text": full_text,
-        "window_metadata": window_metadata,
-        "ui_regions": ui_regions,
-        "changes": region_changes,
-        "vlm_analysis": vlm_analysis,
-    }
-
-    published = publish_broker_job(summarization_job)
-    if published:
-        log(
-            f"[Worker-{worker_id}] Published structured job {new_job_id} to 'ocr_summarization' "
-            f"(extracted {len(full_text)} chars, {len(ui_regions)} UI regions from '{app_name}')"
-        )
-    else:
-        log(f"[Worker-{worker_id}] Failed to publish job {new_job_id} to 'ocr_summarization'")
-
-    removed = remove_broker_job("ocr_extraction", job_id)
-    if removed:
-        log(f"[Worker-{worker_id}] Completed and removed job {job_id} from 'ocr_extraction'")
-
-    return True
+        log(f"[Worker-{worker_id}] Unhandled error processing job {job_id}: {e}")
+        call_operator_delete_screenshot(image_path)
+        remove_broker_job("ocr_extraction", job_id)
+        return False
 
 class ScreenshotExtractionWorkerManager:
 
