@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 import requests
 
-
 def load_services_json() -> Dict[str, str]:
     candidate_paths = [
         Path(os.getenv("SERVICES_JSON_PATH", "")),
@@ -22,9 +21,7 @@ def load_services_json() -> Dict[str, str]:
                 pass
     return {}
 
-
 SERVICES: Dict[str, str] = load_services_json()
-
 
 def get_service_url(module_name: str, default: Optional[str] = None) -> Optional[str]:
     key = module_name.lower().replace("-", "_")
@@ -43,7 +40,6 @@ def get_service_url(module_name: str, default: Optional[str] = None) -> Optional
     if default is not None:
         return default
     return None
-
 
 VAULT_URL: Optional[str] = os.getenv("VAULT_URL", get_service_url("vault"))
 
@@ -74,7 +70,6 @@ SERVER_HOST: str = _env_mb_host or _parsed_mb_host or "127.0.0.1"
 SERVER_PORT: Optional[int] = int(_env_mb_port) if _env_mb_port and _env_mb_port.isdigit() else _parsed_mb_port
 SERVER_RELOAD: bool = os.getenv("SERVER_RELOAD", "false").lower() in ("true", "1", "yes")
 
-
 def apply_config_dict(cfg: Dict[str, Any]) -> None:
     global REDIS_HOST, REDIS_PORT, REDIS_DB, REDIS_PASSWORD, REDIS_PROTOCOL, REDIS_DECODE_RESPONSES
     global SERVER_HOST, SERVER_RELOAD
@@ -96,7 +91,6 @@ def apply_config_dict(cfg: Dict[str, Any]) -> None:
     if "SERVER_RELOAD" in cfg and cfg["SERVER_RELOAD"] is not None:
         SERVER_RELOAD = bool(cfg["SERVER_RELOAD"])
 
-
 def fetch_config(vault_base_url: Optional[str] = None) -> Dict[str, Any]:
     url = vault_base_url or VAULT_URL or get_service_url("vault")
     if not url:
@@ -108,6 +102,5 @@ def fetch_config(vault_base_url: Optional[str] = None) -> Dict[str, Any]:
     remote_cfg = response.json()
     apply_config_dict(remote_cfg)
     return remote_cfg
-
 
 fetch_and_store_config = fetch_config

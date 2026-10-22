@@ -91,7 +91,6 @@ pub fn enable_dpi_awareness() {
     }
 }
 
-
 #[cfg(not(windows))]
 pub fn enable_dpi_awareness() {}
 
@@ -119,7 +118,6 @@ pub fn attach_to_active_desktop() {
 
 #[cfg(not(windows))]
 pub fn attach_to_active_desktop() {}
-
 
 #[cfg(windows)]
 pub fn get_active_app_name() -> String {

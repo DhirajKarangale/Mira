@@ -9,7 +9,6 @@ import asyncio
 
 _redis_client: Optional[aioredis.Redis] = None
 
-
 def get_redis_client() -> aioredis.Redis:
     global _redis_client
     try:
@@ -35,7 +34,6 @@ def get_redis_client() -> aioredis.Redis:
             setattr(_redis_client, "_mira_loop", current_loop)
     return _redis_client
 
-
 async def init_redis_connection() -> bool:
     client = get_redis_client()
     try:
@@ -45,7 +43,6 @@ async def init_redis_connection() -> bool:
     except Exception as e:
         log(f"Failed to connect to Redis at {config.REDIS_HOST}:{config.REDIS_PORT}: {e}")
         raise e
-
 
 async def close_redis_connection() -> None:
     global _redis_client

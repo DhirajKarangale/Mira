@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 import requests
 
-
 def load_services_json() -> Dict[str, str]:
     candidate_paths = [
         Path(os.getenv("SERVICES_JSON_PATH", "")),
@@ -22,9 +21,7 @@ def load_services_json() -> Dict[str, str]:
                 pass
     return {}
 
-
 SERVICES: Dict[str, str] = load_services_json()
-
 
 def get_service_url(module_name: str, default: Optional[str] = None) -> Optional[str]:
     key = module_name.lower().replace("-", "_")
@@ -43,7 +40,6 @@ def get_service_url(module_name: str, default: Optional[str] = None) -> Optional
     if default is not None:
         return default
     return None
-
 
 VAULT_URL: Optional[str] = os.getenv("VAULT_URL", get_service_url("vault"))
 MESSAGE_BROKER_URL: Optional[str] = os.getenv("MESSAGE_BROKER_URL", get_service_url("message_broker"))
@@ -67,7 +63,6 @@ _env_port = os.getenv("PORT")
 
 SERVER_HOST: str = _env_host or _parsed_memory_host or "127.0.0.1"
 SERVER_PORT: int = int(_env_port) if _env_port and _env_port.isdigit() else (_parsed_memory_port or 9006)
-
 
 def fetch_worker_config(vault_base_url: Optional[str] = None) -> Dict[str, Any]:
     vault_url = vault_base_url or VAULT_URL or get_service_url("vault")

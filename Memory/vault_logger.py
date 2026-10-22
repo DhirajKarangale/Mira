@@ -11,7 +11,6 @@ MODULE_NAME = "memory"
 _last_vault_failure: float = 0.0
 _VAULT_RETRY_INTERVAL: float = 5.0
 
-
 def log(message: str) -> None:
     global _last_vault_failure
     log_string = str(message)

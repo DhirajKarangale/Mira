@@ -18,7 +18,6 @@ _LOG_LOCK = asyncio.Lock()
 
 LOG_FILENAME_REGEX = re.compile(r"^(\d{2})-(\d{2})-(\d{4})\.jsonl$")
 
-
 def get_logs_config() -> Dict[str, Any]:
     try:
         return config_storage.get_configuration("logs")
@@ -40,12 +39,10 @@ def get_logs_config() -> Dict[str, Any]:
             "store_logs_message_broker": True,
         }
 
-
 def init_logs_directory() -> Path:
     logs_dir = config.LOGS_DIR
     logs_dir.mkdir(parents=True, exist_ok=True)
     return logs_dir
-
 
 def parse_log_filename(filename: str) -> Optional[date]:
     match = LOG_FILENAME_REGEX.match(filename)
@@ -58,7 +55,6 @@ def parse_log_filename(filename: str) -> Optional[date]:
         return dt.date()
     except ValueError:
         return None
-
 
 def clean_expired_and_invalid_logs(
     today: Optional[date] = None,
@@ -123,13 +119,11 @@ def clean_expired_and_invalid_logs(
     )
     return result
 
-
 def get_log_filepath(target_date: Optional[date] = None) -> Path:
     if target_date is None:
         target_date = datetime.now().date()
     filename = target_date.strftime(config.LOG_FILENAME_FORMAT)
     return config.LOGS_DIR / filename
-
 
 def read_logs_from_file(filepath: Path) -> List[Dict[str, Any]]:
     if not filepath.exists():
@@ -148,7 +142,6 @@ def read_logs_from_file(filepath: Path) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Failed to read/decrypt log file '{filepath.name}': {e}")
         raise
-
 
 async def append_log(module_name: str, data: str) -> Dict[str, Any]:
     init_logs_directory()
@@ -204,14 +197,12 @@ async def append_log(module_name: str, data: str) -> Dict[str, Any]:
 
         return new_entry
 
-
 async def log_vault_event(message: str) -> Optional[Dict[str, Any]]:
     try:
         return await append_log("vault", message)
     except Exception as e:
         logger.error(f"Failed to record Vault event '{message}': {e}")
         return None
-
 
 def log_vault_event_sync(message: str) -> None:
     try:
@@ -227,7 +218,6 @@ def log_vault_event_sync(message: str) -> None:
             asyncio.run(append_log("vault", message))
     except Exception as e:
         logger.error(f"Failed to record Vault event sync '{message}': {e}")
-
 
 async def get_logs(
     module_name: str = "all",

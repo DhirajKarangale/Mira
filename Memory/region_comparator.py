@@ -4,9 +4,7 @@ import difflib
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-
 def calculate_bbox_iou(b1: List[int], b2: List[int]) -> float:
-    """Calculate Intersection over Union (IoU) of two bounding boxes [x, y, w, h]."""
     x1, y1, w1, h1 = b1
     x2, y2, w2, h2 = b2
 
@@ -27,32 +25,25 @@ def calculate_bbox_iou(b1: List[int], b2: List[int]) -> float:
         return 0.0
     return float(inter_area) / float(union_area)
 
-
 def normalize_text(text: str, mask_numbers: bool = False) -> str:
-    """
-    Normalize text to eliminate OCR noise, fluctuating timestamps, and transient numbers.
-    Used for reliable deduplication across screenshots.
-    """
     if not text:
         return ""
 
     t = text.lower()
-    # Remove timestamps: HH:MM or HH:MM:SS AM/PM
+
     t = re.sub(r"\b\d{1,2}:\d{2}(?::\d{2})?\s*(?:am|pm)?\b", "", t)
-    # Remove dates: DD-MM-YYYY, YYYY-MM-DD, DD/MM/YYYY
+
     t = re.sub(r"\b\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}\b", "", t)
-    # Remove rate and volume units
+
     t = re.sub(r"\b\d+(?:\.\d+)?\s*(?:/\s*(?:min|sec|hr|hour|day)|kb|mb|gb|shots|entries)\b", "", t)
 
     if mask_numbers:
-        # Mask variable digits to match structural templates
+
         t = re.sub(r"\b\d+\b", "#", t)
 
-    # Strip symbols and punctuation
     t = re.sub(r"[^\w\s]", " ", t)
-    # Collapse whitespace
-    return " ".join(t.split())
 
+    return " ".join(t.split())
 
 def compare_ui_regions(
     previous_regions: Optional[List[Dict[str, Any]]],
@@ -60,29 +51,9 @@ def compare_ui_regions(
     previous_text: str = "",
     current_text: str = "",
 ) -> Dict[str, Any]:
-    """
-    Compare current UI regions against previous UI regions for the same application.
-    Identifies added, removed, modified, and unchanged UI regions.
-    Distinguishes meaningful changes from transient noise (e.g. clock ticks or minor counter updates).
-
-    Returns:
-        Dict[str, Any]:
-            has_changes: bool
-            has_meaningful_changes: bool
-            total_changed: int
-            total_meaningful_changed: int
-            modified_regions: list of modified regions
-            meaningful_modified_regions: list of modified regions with meaningful content change
-            added_regions: list of new regions
-            removed_regions: list of vanished regions
-            unchanged_regions: list of identical regions
-            overall_text_similarity: float (0.0 to 1.0)
-            change_summary: human-readable string summary
-    """
     prev_list = previous_regions or []
     curr_list = current_regions or []
 
-    # Calculate overall text similarity on normalized text
     norm_prev_full = normalize_text(previous_text, mask_numbers=True)
     norm_curr_full = normalize_text(current_text, mask_numbers=True)
 
@@ -135,7 +106,6 @@ def compare_ui_regions(
         best_score = -1.0
         best_match: Optional[Tuple[int, Dict[str, Any], float]] = None
 
-        # 1. First priority: match by stable region_id if available
         for p_idx, prev in enumerate(prev_list):
             if p_idx in matched_prev_indices:
                 continue
@@ -147,7 +117,6 @@ def compare_ui_regions(
                 best_match = (p_idx, prev, sim)
                 break
 
-        # 2. Second priority: spatial IoU + proximity match
         if not best_match:
             curr_cx = curr_bbox[0] + (curr_bbox[2] / 2.0)
             curr_cy = curr_bbox[1] + (curr_bbox[3] / 2.0)
@@ -177,7 +146,6 @@ def compare_ui_regions(
 
             prev_text_val = prev.get("corrected_text") or prev.get("text", "").strip()
 
-            # Check normalized equality (masking numbers)
             norm_curr = normalize_text(curr_text, mask_numbers=True)
             norm_prev = normalize_text(prev_text_val, mask_numbers=True)
             is_meaningful = (norm_curr != norm_prev) and (text_sim < 0.94)
@@ -203,7 +171,6 @@ def compare_ui_regions(
 
     removed = [p for i, p in enumerate(prev_list) if i not in matched_prev_indices]
 
-    # Filter out added regions that are empty or pure noise
     meaningful_added = [
         r for r in added
         if len(normalize_text(r.get("corrected_text") or r.get("text", ""))) >= 3
@@ -214,7 +181,6 @@ def compare_ui_regions(
     has_changes = total_changed > 0
     has_meaningful_changes = total_meaningful_changed > 0
 
-    # Summary
     summary_parts = []
     if meaningful_modified:
         summary_parts.append(f"{len(meaningful_modified)} modified")

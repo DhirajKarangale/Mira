@@ -16,7 +16,6 @@ logger = logging.getLogger("mira.vault.api")
 
 router = APIRouter(prefix="", tags=["Vault"])
 
-
 @router.get("/health", status_code=status.HTTP_200_OK)
 async def health():
     return {
@@ -24,22 +23,18 @@ async def health():
         "status": "online"
     }
 
-
 class LogCreateRequest(BaseModel):
     module_name: str = Field(..., min_length=1)
     data: str = Field(...)
 
-
 class LogCreateResponse(BaseModel):
     message: str = Field("Log added successfully")
-
 
 class LogEntryResponse(BaseModel):
     id: int = Field(...)
     module_name: str = Field(...)
     timestamp: str = Field(...)
     data: str = Field(...)
-
 
 @router.post(
     "/logs",
@@ -59,7 +54,6 @@ async def create_log(request: LogCreateRequest):
             detail={"message": f"Failed to record log: {str(e)}"}
         )
 
-
 def parse_flexible_date(date_str: Optional[str]) -> Optional[date]:
     if not date_str or not isinstance(date_str, str):
         return None
@@ -72,7 +66,6 @@ def parse_flexible_date(date_str: Optional[str]) -> Optional[date]:
         except ValueError:
             pass
     return None
-
 
 class LogConfigUpdateRequest(BaseModel):
     retention_period: Optional[int] = Field(None, ge=1, le=365)
@@ -88,7 +81,6 @@ class LogConfigUpdateRequest(BaseModel):
     store_logs_memory: Optional[bool] = None
     store_logs_client: Optional[bool] = None
     store_logs_message_broker: Optional[bool] = None
-
 
 @router.post(
     "/config/logs",
@@ -108,7 +100,6 @@ async def update_logs_config(request: LogConfigUpdateRequest):
             detail={"message": f"Failed to update log configurations: {str(e)}"}
         )
 
-
 class RedisConfigUpdateRequest(BaseModel):
     REDIS_HOST: Optional[str] = None
     REDIS_PORT: Optional[int] = Field(None, ge=1, le=65535)
@@ -118,7 +109,6 @@ class RedisConfigUpdateRequest(BaseModel):
     REDIS_DECODE_RESPONSES: Optional[bool] = None
     SERVER_HOST: Optional[str] = None
     SERVER_RELOAD: Optional[bool] = None
-
 
 @router.post(
     "/config/message_broker",
@@ -138,11 +128,9 @@ async def update_message_broker_config(request: RedisConfigUpdateRequest):
             detail={"message": f"Failed to update Redis configurations: {str(e)}"}
         )
 
-
 class OperatorConfigUpdateRequest(BaseModel):
     CAPTURE_INTERVAL_SECS: Optional[int] = Field(None, ge=1, le=3600)
     AUTO_START: Optional[bool] = None
-
 
 @router.post(
     "/config/operator",
@@ -160,7 +148,6 @@ async def update_operator_config(request: OperatorConfigUpdateRequest):
             detail={"message": f"Failed to update Operator configurations: {str(e)}"}
         )
 
-
 class UserDetailsRequest(BaseModel):
     user_name: Optional[str] = None
     email: Optional[str] = None
@@ -168,7 +155,6 @@ class UserDetailsRequest(BaseModel):
     city: Optional[str] = None
     state: Optional[str] = None
     country: Optional[str] = None
-
 
 @router.get("/user", status_code=status.HTTP_200_OK)
 async def get_user_details():
@@ -184,7 +170,6 @@ async def get_user_details():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": f"Failed to retrieve user details: {str(e)}"}
         )
-
 
 @router.post("/user", status_code=status.HTTP_200_OK)
 async def save_user_details(request: UserDetailsRequest):
@@ -214,13 +199,11 @@ async def save_user_details(request: UserDetailsRequest):
             detail={"message": f"Failed to save user details: {str(e)}"}
         )
 
-
 class PaginatedLogsResponse(BaseModel):
     items: List[LogEntryResponse]
     total: int
     page: int
     limit: int
-
 
 @router.get(
     "/logs",
@@ -293,7 +276,6 @@ async def get_logs(
             }
         return []
 
-
 @router.get(
     "/config/{key}",
     status_code=status.HTTP_200_OK
@@ -312,7 +294,6 @@ async def get_config_by_path(key: str):
             detail={"message": f"Failed to retrieve configuration: {str(e)}"}
         )
 
-
 @router.post(
     "/retention/cleanup",
     status_code=status.HTTP_200_OK
@@ -325,7 +306,6 @@ async def trigger_cleanup():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": f"Cleanup failed: {str(e)}"}
         )
-
 
 def detect_os() -> str:
     os_name = platform.system()
@@ -348,7 +328,6 @@ def detect_os() -> str:
             return f"Linux {platform.release()}"
     return f"{os_name} {platform.release()}".strip()
 
-
 @router.get(
     "/os",
     response_model=str,
@@ -357,22 +336,18 @@ def detect_os() -> str:
 async def get_os() -> str:
     return detect_os()
 
-
 class AppPermissionItem(BaseModel):
     app_name: str
     app_id: str
     allowed_to_capture: bool = True
 
-
 class DiscoveredAppItem(BaseModel):
     app_name: str
     app_id: str
 
-
 class UpdateAppPermissionRequest(BaseModel):
     app_id: str = Field(..., min_length=1)
     allowed_to_capture: bool
-
 
 def _notify_operator_permission_sync(app_id: str, allowed_to_capture: bool) -> None:
     try:
@@ -392,17 +367,14 @@ def _notify_operator_permission_sync(app_id: str, allowed_to_capture: bool) -> N
     except Exception as e:
         logger.debug(f"Could not notify Operator of permission change for '{app_id}': {e}")
 
-
 @router.post("/services", status_code=status.HTTP_200_OK)
 async def update_services_endpoint(services: Dict[str, str]):
     config.set_services(services)
     return {"status": "success", "services": config.get_services()}
 
-
 @router.get("/services", status_code=status.HTTP_200_OK)
 async def get_services_endpoint():
     return config.get_services()
-
 
 @router.get(
     "/apps",
@@ -417,7 +389,6 @@ async def get_apps():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": f"Failed to retrieve app permissions: {str(e)}"}
         )
-
 
 @router.post(
     "/apps/refresh",
@@ -445,7 +416,6 @@ async def refresh_apps(payload: Union[List[DiscoveredAppItem], Dict[str, Any]]):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": f"Failed to refresh app permissions: {str(e)}"}
         )
-
 
 @router.post(
     "/apps/permission",
@@ -481,14 +451,12 @@ async def update_app_permission_endpoint(request: UpdateAppPermissionRequest):
             detail={"message": f"Failed to update app permission: {str(e)}"}
         )
 
-
 class AIConfigResponse(BaseModel):
     id: Optional[int] = None
     llm_provider: str
     total_keys: int = 0
     current_key: int = 0
     keys: List[str] = []
-
 
 class AIConfigUpdateRequest(BaseModel):
     llm_provider: Optional[str] = None
@@ -499,7 +467,6 @@ class AIConfigUpdateRequest(BaseModel):
     remove_key: Optional[str] = None
     current_key: Optional[int] = None
     total_keys: Optional[int] = None
-
 
 @router.get(
     "/ai/providers",
@@ -515,7 +482,6 @@ async def get_ai_providers():
             detail={"message": f"Failed to retrieve AI providers: {str(e)}"}
         )
 
-
 @router.get(
     "/ai/configs",
     response_model=List[AIConfigResponse],
@@ -529,7 +495,6 @@ async def get_all_ai_configs():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": f"Failed to retrieve AI configs: {str(e)}"}
         )
-
 
 @router.get(
     "/ai/configs/{provider}",
@@ -554,7 +519,6 @@ async def get_ai_config_by_provider(provider: str):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": f"Failed to retrieve AI config: {str(e)}"}
         )
-
 
 @router.post(
     "/ai/configs/{provider}",
@@ -596,7 +560,6 @@ async def update_ai_config_by_provider(provider: str, request: AIConfigUpdateReq
             detail={"message": f"Failed to update AI config: {str(e)}"}
         )
 
-
 @router.delete(
     "/ai/configs/{provider}",
     status_code=status.HTTP_200_OK
@@ -615,10 +578,8 @@ async def delete_ai_config_endpoint(provider: str):
             detail={"message": f"Failed to delete AI config: {str(e)}"}
         )
 
-
 class AIPrioritiesUpdateRequest(BaseModel):
     priorities: List[str]
-
 
 @router.get(
     "/ai/priorities",
@@ -633,7 +594,6 @@ async def get_ai_priorities_endpoint():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": f"Failed to retrieve AI priorities: {str(e)}"}
         )
-
 
 @router.put(
     "/ai/priorities",
@@ -663,7 +623,6 @@ async def update_ai_priorities_endpoint(payload: Union[List[str], AIPrioritiesUp
             detail={"message": f"Failed to update AI priorities: {str(e)}"}
         )
 
-
 class EngineWorkersConfig(BaseModel):
     embedding_workers: int = Field(default=1, ge=1, le=50, description="Embedding workers (1-50)")
     llm_workers: int = Field(default=1, ge=1, le=50, description="LLM workers (1-50)")
@@ -673,7 +632,6 @@ class EngineWorkersConfig(BaseModel):
     screenshot_summarization_poll_time: float = Field(default=5.0, ge=1.0, le=1800.0, description="Poll time of screenshot summarization (1-1800 sec)")
     embedding_poll_time: float = Field(default=5.0, ge=1.0, le=1800.0, description="Poll time of embedding worker (1-1800 sec)")
 
-
 class EngineWorkersUpdateRequest(BaseModel):
     embedding_workers: Optional[int] = Field(default=None, ge=1, le=50)
     llm_workers: Optional[int] = Field(default=None, ge=1, le=50)
@@ -682,7 +640,6 @@ class EngineWorkersUpdateRequest(BaseModel):
     screenshot_extraction_poll_time: Optional[float] = Field(default=None, ge=1.0, le=1800.0)
     screenshot_summarization_poll_time: Optional[float] = Field(default=None, ge=1.0, le=1800.0)
     embedding_poll_time: Optional[float] = Field(default=None, ge=1.0, le=1800.0)
-
 
 @router.get(
     "/engine/workers",
@@ -697,7 +654,6 @@ async def get_engine_workers_endpoint():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": f"Failed to retrieve engine workers config: {str(e)}"}
         )
-
 
 @router.put(
     "/engine/workers",

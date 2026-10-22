@@ -31,7 +31,6 @@ import crypto
 import config_storage
 import log_manager
 
-
 class VaultTerminalFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         if record.levelno >= logging.WARNING:
@@ -47,7 +46,6 @@ class VaultTerminalFilter(logging.Filter):
         except Exception:
             return True
 
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -60,7 +58,6 @@ for _log_name in ("uvicorn", "uvicorn.access", "uvicorn.error", "mira.vault"):
     logging.getLogger(_log_name).addFilter(_vault_terminal_filter)
 
 logger = logging.getLogger("mira.vault.app")
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -98,7 +95,6 @@ async def lifespan(app: FastAPI):
     logger.info("MIRA Vault shutting down...")
     await log_manager.log_vault_event("MIRA Vault shutting down...")
 
-
 def create_app() -> FastAPI:
     app = FastAPI(
         title="MIRA Vault",
@@ -118,9 +114,7 @@ def create_app() -> FastAPI:
     app.include_router(vault_router)
     return app
 
-
 app = create_app()
-
 
 def start_app() -> None:
     host = config.SERVER_HOST
@@ -131,7 +125,6 @@ def start_app() -> None:
 
     logger.info(f"Starting MIRA Vault web server on http://{host}:{port}")
     uvicorn.run("app:app", host=host, port=port, reload=reload)
-
 
 if __name__ == "__main__":
     start_app()

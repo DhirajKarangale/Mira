@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 from typing import Dict, Optional
 
-
 def load_services_json() -> Dict[str, str]:
     candidate_paths = [
         Path(os.getenv("SERVICES_JSON_PATH", "")),
@@ -21,18 +20,14 @@ def load_services_json() -> Dict[str, str]:
                 pass
     return {}
 
-
 SERVICES: Dict[str, str] = load_services_json()
-
 
 def set_services(services_map: Dict[str, str]) -> None:
     global SERVICES
     SERVICES.update({k.lower().replace("-", "_"): v.rstrip("/") for k, v in services_map.items()})
 
-
 def get_services() -> Dict[str, str]:
     return dict(SERVICES)
-
 
 def get_service_url(module_name: str, default: Optional[str] = None) -> Optional[str]:
     key = module_name.lower().replace("-", "_")
@@ -51,7 +46,6 @@ def get_service_url(module_name: str, default: Optional[str] = None) -> Optional
     if default is not None:
         return default
     return None
-
 
 _vault_url = os.getenv("VAULT_URL", SERVICES.get("vault", ""))
 _parsed_host: Optional[str] = None

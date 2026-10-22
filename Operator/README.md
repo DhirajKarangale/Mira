@@ -6,11 +6,11 @@ The **Operator** is the desktop screen capture and system automation service wri
 
 ## 1. Purpose
 
-- **Silent Screen Capture**: Captures desktop frames in the background at regular intervals defined by `CAPTURE_INTERVAL_SECS`.
-- **Active App Detection & Filtering**: Detects foreground processes; automatically skips capture if an application has `allowed_to_capture = false`.
-- **System App Discovery & Sync**: Scans installed apps and active window processes, refreshing them with Vault.
-- **Message Broker Job Queuing**: Streams capture jobs asynchronously to the Message Broker (`screenshot_process` consumer group).
-- **Screenshot Cleanup**: Deletes local screenshot files on demand.
+- **Silent Screen Capture**: Captures desktop frames at regular intervals defined by `CAPTURE_INTERVAL_SECS`.
+- **Active App Detection & Filtering**: Detects foreground processes and enforces application capture permissions.
+- **System App Discovery**: Scans installed applications and active window processes, synchronizing state with Vault.
+- **Message Broker Queuing**: Dispatches capture jobs asynchronously to the Message Broker `ocr_extraction` stream.
+- **Screenshot Cleanup**: Deletes local screenshot files on demand via API.
 
 ---
 
@@ -19,15 +19,9 @@ The **Operator** is the desktop screen capture and system automation service wri
 ### 2.1 Health Check
 `GET /health`
 
-Checks if the service is online.
-
-- **Parameters**: None
 - **Response (`200 OK`):**
   ```json
-  {
-    "service": "Operator",
-    "status": "online"
-  }
+  { "service": "Operator", "status": "online" }
   ```
 
 ---
@@ -35,17 +29,12 @@ Checks if the service is online.
 ### 2.2 Capture Status
 `GET /status`
 
-Retrieves operational status and current capture interval.
-
-- **Parameters**: None
 - **Response (`200 OK`):**
   ```json
   {
     "service": "Operator",
     "status": "started",
-    "is_running": true,
     "is_capturing": true,
-    "auto_start": false,
     "capture_interval_secs": 10
   }
   ```
@@ -55,16 +44,9 @@ Retrieves operational status and current capture interval.
 ### 2.3 Start Capture
 `POST /start`
 
-Initiates the continuous background screen capture loop.
-
-- **Parameters**: None
 - **Response (`200 OK`):**
   ```json
-  {
-    "status": "started",
-    "message": "Screenshot capture loop started successfully",
-    "capture_interval_secs": 10
-  }
+  { "status": "started", "capture_interval_secs": 10 }
   ```
 
 ---
@@ -72,15 +54,9 @@ Initiates the continuous background screen capture loop.
 ### 2.4 Stop Capture
 `POST /stop`
 
-Stops the background screen capture loop.
-
-- **Parameters**: None
 - **Response (`200 OK`):**
   ```json
-  {
-    "status": "stopped",
-    "message": "Screenshot capture loop stopped cleanly"
-  }
+  { "status": "stopped" }
   ```
 
 ---
@@ -88,20 +64,13 @@ Stops the background screen capture loop.
 ### 2.5 Update Capture Interval
 `POST /interval`
 
-Updates the capture interval dynamically (1-3600 seconds).
-
 - **Request Body (JSON):**
   ```json
-  {
-    "capture_interval_secs": 15
-  }
+  { "capture_interval_secs": 15 }
   ```
 - **Response (`200 OK`):**
   ```json
-  {
-    "status": "updated",
-    "capture_interval_secs": 15
-  }
+  { "status": "updated", "capture_interval_secs": 15 }
   ```
 
 ---
@@ -109,38 +78,24 @@ Updates the capture interval dynamically (1-3600 seconds).
 ### 2.6 Delete Screenshot
 `POST /delete`
 
-Deletes a local screenshot file from disk.
-
 - **Request Body (JSON):**
   ```json
-  {
-    "image_path": "E:/Screenshots/msedge_frame.png"
-  }
+  { "image_path": "E:/FullStack/Mira/Operator/screenshots/frame.png" }
   ```
 - **Response (`200 OK`):**
   ```json
-  {
-    "status": "success",
-    "message": "Screenshot deleted successfully"
-  }
+  { "status": "success", "message": "Screenshot deleted successfully" }
   ```
 
 ---
 
-### 2.7 List Discovered Applications
+### 2.7 Get Apps & Permissions
 `GET /apps`
 
-Returns all discovered system applications along with their capture permissions.
-
-- **Parameters**: None
 - **Response (`200 OK`):**
   ```json
   [
-    {
-      "app_name": "Microsoft Edge",
-      "app_id": "msedge.exe",
-      "allowed_to_capture": true
-    }
+    { "app_name": "Visual Studio Code", "app_id": "code.exe", "allowed_to_capture": true }
   ]
   ```
 
@@ -149,16 +104,9 @@ Returns all discovered system applications along with their capture permissions.
 ### 2.8 Refresh Applications
 `POST /apps/refresh`
 
-Re-scans installed system applications and window processes, synchronizing with Vault.
-
-- **Parameters**: None
 - **Response (`200 OK`):**
   ```json
-  {
-    "status": "success",
-    "message": "Apps refreshed and synchronized with Vault",
-    "total_apps": 42
-  }
+  { "status": "success", "total_apps": 25 }
   ```
 
 ---
@@ -166,22 +114,13 @@ Re-scans installed system applications and window processes, synchronizing with 
 ### 2.9 Update App Permission
 `POST /apps/permission`
 
-Updates an application's capture permission and syncs the change with Vault.
-
 - **Request Body (JSON):**
   ```json
-  {
-    "app_id": "notepad.exe",
-    "allowed_to_capture": false
-  }
+  { "app_id": "chrome.exe", "allowed_to_capture": false }
   ```
 - **Response (`200 OK`):**
   ```json
-  {
-    "status": "success",
-    "app_id": "notepad.exe",
-    "allowed_to_capture": false
-  }
+  { "status": "success", "app_id": "chrome.exe", "allowed_to_capture": false }
   ```
 
 ---
@@ -189,17 +128,15 @@ Updates an application's capture permission and syncs the change with Vault.
 ## 3. Installation & Startup
 
 ### Install Dependencies
-Managed via Cargo:
-```bash
-cargo check
-```
+Requires Rust 1.78+ with `x86_64-pc-windows-gnu` or `x86_64-pc-windows-msvc`. Dependencies are managed in `Cargo.toml`.
 
 ### Start Server
 Run from the `Operator/` directory:
 ```bash
-cargo run
+cargo run -- --host 127.0.0.1 --port 9003
 ```
-Or with explicit port:
+Or build release binary:
 ```bash
-cargo run -- --port 9004
+cargo build --release
+./target/release/operator --host 127.0.0.1 --port 9003
 ```

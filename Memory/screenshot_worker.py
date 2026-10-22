@@ -18,19 +18,13 @@ from region_comparator import compare_ui_regions
 from vault_logger import log
 from vlm_service import analyze_regions_with_vlm, is_deeper_understanding_needed
 
-# Image difference threshold constant.
-# If cv2.absdiff normalized difference between consecutive frames of the same app
-# is below this threshold, the image is considered unchanged and skipped.
 DEFAULT_IMAGE_DIFF_THRESHOLD: float = 0.05
 IMAGE_DIFF_THRESHOLD: float = float(os.getenv("IMAGE_DIFF_THRESHOLD", str(DEFAULT_IMAGE_DIFF_THRESHOLD)))
 
-
 def get_current_threshold() -> float:
-    """Return the active threshold from worker_manager, env var, or calibrated default."""
     if "worker_manager" in globals() and hasattr(worker_manager, "_image_diff_threshold"):
         return worker_manager._image_diff_threshold
     return float(os.getenv("IMAGE_DIFF_THRESHOLD", str(DEFAULT_IMAGE_DIFF_THRESHOLD)))
-
 
 def get_broker_base_url() -> str:
     mb_url = config.get_service_url("message_broker") or config.MESSAGE_BROKER_URL
@@ -38,14 +32,11 @@ def get_broker_base_url() -> str:
         raise RuntimeError("Message Broker URL is not configured")
     return mb_url.rstrip("/")
 
-
 def get_operator_base_url() -> Optional[str]:
     op_url = config.get_service_url("operator") or config.OPERATOR_URL
     return op_url.rstrip("/") if op_url else None
 
-
 def call_operator_delete_screenshot(image_path: str) -> bool:
-    """Call Operator API to delete the screenshot file, with local fallback if needed."""
     operator_url = get_operator_base_url()
     if operator_url:
         endpoint = f"{operator_url}/delete"
@@ -56,7 +47,6 @@ def call_operator_delete_screenshot(image_path: str) -> bool:
         except Exception as e:
             log(f"Operator delete screenshot API call failed ({e}), attempting local removal")
 
-    # Local fallback in case Operator service is unavailable or file remains
     try:
         p = Path(image_path)
         if p.exists():
@@ -66,9 +56,7 @@ def call_operator_delete_screenshot(image_path: str) -> bool:
         log(f"Fallback deletion failed for '{image_path}': {e}")
     return False
 
-
 def poll_broker_jobs(consumer_key: str, count: int = 1) -> List[Dict[str, Any]]:
-    """Poll jobs from the specified Redis Stream consumer group via Message Broker."""
     base_url = get_broker_base_url()
     endpoint = f"{base_url}/jobs"
     params = {"consumer_key": consumer_key, "count": count}
@@ -81,9 +69,7 @@ def poll_broker_jobs(consumer_key: str, count: int = 1) -> List[Dict[str, Any]]:
         log(f"Polling '{consumer_key}' from Message Broker failed: {e}")
         return []
 
-
 def remove_broker_job(consumer_key: str, job_id: str) -> bool:
-    """Acknowledge and remove a job from the Redis Stream via Message Broker."""
     base_url = get_broker_base_url()
     endpoint = f"{base_url}/jobs"
     params = {"consumer_key": consumer_key, "job_id": job_id}
@@ -95,9 +81,7 @@ def remove_broker_job(consumer_key: str, job_id: str) -> bool:
         log(f"Failed to remove job {job_id} from {consumer_key}: {e}")
         return False
 
-
 def publish_broker_job(job_payload: Dict[str, Any]) -> bool:
-    """Publish a new job to a Redis Stream via Message Broker."""
     base_url = get_broker_base_url()
     endpoint = f"{base_url}/jobs"
 
@@ -109,20 +93,7 @@ def publish_broker_job(job_payload: Dict[str, Any]) -> bool:
         log(f"Failed to publish job to Message Broker: {e}")
         return False
 
-
 def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
-    """
-    Execute the enriched contextual screenshot extraction pipeline:
-    1. Capture window metadata (app_name, os, timestamp, resolution).
-    2. Extract pixel values, grayscale matrix, and OCR text with bounding boxes grouped into UI regions.
-    3. Compare current OpenCV difference and current OCR result with the previous result for the same application.
-    4. If difference is below threshold and no UI region changes, delete screenshot, remove job from ocr_extraction, skip.
-    5. When deeper understanding is needed, send relevant screenshot crops and structured OCR data to a VLM.
-    6. Store structured context (window metadata, UI regions, extracted text, changes, VLM analysis) in Redis via Message Broker.
-    7. Delete screenshot through Operator API.
-    8. Publish structured context to ocr_summarization.
-    9. Remove completed job from ocr_extraction.
-    """
     job_id = str(job.get("job_id") or "")
     app_name = str(job.get("app_name") or "Unknown").strip()
     os_name = str(job.get("os") or "Unknown").strip()
@@ -142,7 +113,6 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
 
     log(f"[Worker-{worker_id}] Processing screenshot job {job_id} for app '{app_name}'")
 
-    # Step 1 & 2: Extract pixel values, grayscale matrix, and structured OCR with UI regions
     try:
         pixel_values, grayscale_matrix = extract_pixels_and_grayscale(image_path)
     except Exception as e:
@@ -168,15 +138,12 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
         full_text = ""
         ui_regions = []
 
-    # Step 3: Compare current frame and OCR result with previous frame of the same application
     diff_score, prev_record = compare_app_images(app_name, grayscale_matrix)
 
-    # Retrieve previous structured context from previous record
     prev_metadata = prev_record.get("metadata", {}) if prev_record else {}
     prev_regions = prev_metadata.get("ui_regions", [])
     prev_text = prev_metadata.get("extracted_text", "")
 
-    # Compare UI regions between previous and current frame
     region_changes = compare_ui_regions(
         previous_regions=prev_regions,
         current_regions=ui_regions,
@@ -184,7 +151,6 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
         current_text=full_text,
     )
 
-    # Step 4: If difference is below threshold and no UI region changes, skip
     effective_threshold = get_current_threshold()
     is_image_unchanged = diff_score is not None and diff_score < effective_threshold
     is_ocr_unchanged = (not region_changes.get("has_changes", False)) if prev_regions else True
@@ -206,10 +172,9 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
     else:
         log(f"[Worker-{worker_id}] First frame or no prior comparison record for app '{app_name}'")
 
-    # Step 5: When deeper understanding is needed, send relevant crops & structured OCR data to VLM
     deeper_needed = is_deeper_understanding_needed(region_changes, ui_regions, diff_score)
     if deeper_needed:
-        # Determine candidate changed regions to inspect
+
         target_regions = region_changes.get("modified_regions", []) + region_changes.get("added_regions", [])
         if not target_regions:
             target_regions = ui_regions[:2]
@@ -230,7 +195,6 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
             "component_type": "standard",
         }
 
-    # Step 6: Store structured context in Redis via Message Broker, retaining 10 most recent images
     try:
         structured_metadata = {
             "window_metadata": window_metadata,
@@ -250,10 +214,8 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
     except Exception as e:
         log(f"[Worker-{worker_id}] Warning: failed to store image comparison in Redis: {e}")
 
-    # Step 7: Delete screenshot through Operator API
     call_operator_delete_screenshot(image_path)
 
-    # Step 8: Create and publish new structured job to ocr_summarization
     new_job_id = str(uuid.uuid4())
     summarization_job = {
         "job_id": new_job_id,
@@ -277,20 +239,13 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
     else:
         log(f"[Worker-{worker_id}] Failed to publish job {new_job_id} to 'ocr_summarization'")
 
-    # Step 9: Remove completed job from ocr_extraction
     removed = remove_broker_job("ocr_extraction", job_id)
     if removed:
         log(f"[Worker-{worker_id}] Completed and removed job {job_id} from 'ocr_extraction'")
 
     return True
 
-
 class ScreenshotExtractionWorkerManager:
-    """
-    Orchestrates multiple screenshot extraction workers running in parallel.
-    Polls the 'ocr_extraction' Redis Stream through Message Broker using the
-    configurable 'screenshot_extraction_poll_time' fetched from Vault.
-    """
 
     def __init__(self) -> None:
         self.is_running: bool = False
@@ -316,7 +271,6 @@ class ScreenshotExtractionWorkerManager:
             try:
                 self.refresh_config()
 
-                # Poll Message Broker for 1 job at a time for this worker
                 jobs = await asyncio.to_thread(poll_broker_jobs, "ocr_extraction", 1)
                 if jobs and len(jobs) > 0:
                     job = jobs[0]
@@ -370,13 +324,9 @@ class ScreenshotExtractionWorkerManager:
             "image_diff_threshold": self._image_diff_threshold,
         }
 
-
-# Global worker manager instance
 worker_manager = ScreenshotExtractionWorkerManager()
 
-
 async def run_standalone() -> None:
-    """Run workers directly as a standalone script until interrupted."""
     print(f"Starting MIRA Screenshot Extraction Workers (Threshold={IMAGE_DIFF_THRESHOLD})...")
     await worker_manager.start()
     try:
@@ -384,7 +334,6 @@ async def run_standalone() -> None:
             await asyncio.sleep(1)
     except (KeyboardInterrupt, asyncio.CancelledError):
         await worker_manager.stop()
-
 
 if __name__ == "__main__":
     asyncio.run(run_standalone())

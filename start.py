@@ -20,12 +20,10 @@ SERVICES_JSON_PATH = ROOT_DIR / "services.json"
 
 USE_COLOR = os.name != "nt" or "WT_SESSION" in os.environ or "TERM" in os.environ or sys.stdout.isatty()
 
-
 def color(text: str, code: str) -> str:
     if not USE_COLOR:
         return text
     return f"{code}{text}\033[0m"
-
 
 BOLD = "\033[1m"
 DIM = "\033[2m"
@@ -134,7 +132,6 @@ MODULE_REGISTRY: List[Dict[str, Any]] = [
     },
 ]
 
-
 def print_banner() -> None:
     lines = [
         color(" __  __ ___ ____      _     ", CYAN),
@@ -147,11 +144,9 @@ def print_banner() -> None:
     ]
     print("\n" + "\n".join(lines) + "\n")
 
-
 def log_sys(msg: str) -> None:
     tag = color("[MIRA SYSTEM]", MODULE_COLORS["system"])
     print(f"{tag} {msg}")
-
 
 def log_mod(mod_id: str, msg: str) -> None:
     color_code = MODULE_COLORS.get(mod_id, WHITE)
@@ -159,7 +154,6 @@ def log_mod(mod_id: str, msg: str) -> None:
     padded = f"{raw_tag:<16}"
     tag = color(padded, color_code)
     print(f"{tag} {msg}")
-
 
 def is_port_in_use(host: str, port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -176,7 +170,6 @@ def is_port_in_use(host: str, port: int) -> bool:
 
     return False
 
-
 def resolve_module_port(module: Dict[str, Any], allocated_ports: Set[int]) -> Tuple[int, bool]:
     host = module["default_host"]
     port = module["default_port"]
@@ -188,10 +181,9 @@ def resolve_module_port(module: Dict[str, Any], allocated_ports: Set[int]) -> Tu
 
     allocated_ports.add(port)
     if module.get("id") == "client":
-        # Defensively reserve port + 1 for client tools (e.g. Vite HMR WebSocket server)
+
         allocated_ports.add(port + 1)
     return port, was_incremented
-
 
 def allocate_all_ports(modules: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     allocated_ports: Set[int] = set()
@@ -210,7 +202,6 @@ def allocate_all_ports(modules: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any
 
     return results
 
-
 def load_services_json() -> Dict[str, str]:
     if SERVICES_JSON_PATH.exists():
         try:
@@ -220,12 +211,10 @@ def load_services_json() -> Dict[str, str]:
             pass
     return {}
 
-
 def update_services_json(url_map: Dict[str, str]) -> None:
     with open(SERVICES_JSON_PATH, "w", encoding="utf-8") as f:
         json.dump(url_map, f, indent=2)
     log_sys(f"Updated global service discovery registry -> {color(str(SERVICES_JSON_PATH), CYAN)}")
-
 
 def update_client_configs(url_map: Dict[str, str], client_port: int) -> None:
     client_dir = ROOT_DIR / "Client"
@@ -267,7 +256,6 @@ def update_client_configs(url_map: Dict[str, str], client_port: int) -> None:
         except Exception as e:
             log_sys(f"Notice: Failed to update tauri.conf.json devUrl ({e})")
 
-
 def check_service_health(url: str, timeout_sec: float = 1.0) -> bool:
     try:
         req = urllib.request.Request(
@@ -285,7 +273,6 @@ def check_service_health(url: str, timeout_sec: float = 1.0) -> bool:
         return e.code in (200, 204, 301, 302, 304, 404, 405)
     except Exception:
         return False
-
 
 def wait_for_service_ready(
     name: str,
@@ -311,7 +298,6 @@ def wait_for_service_ready(
         time.sleep(check_interval)
 
     return False
-
 
 class LogFilterManager:
     def __init__(self, vault_url: str):
@@ -365,7 +351,6 @@ class LogFilterManager:
                         self._last_fetch = time.time()
         except Exception:
             pass
-
 
 class ProcessRunner:
     def __init__(self, vault_url: str = ""):
@@ -528,7 +513,6 @@ class ProcessRunner:
         time.sleep(1.0)
         log_sys(f"{color('All MIRA services stopped cleanly. Goodbye!', GREEN)}")
 
-
 def kill_processes_on_ports(ports: List[int]) -> None:
     log_sys(f"Checking for lingering processes on ports: {ports}...")
     killed_count = 0
@@ -578,7 +562,6 @@ def kill_processes_on_ports(ports: List[int]) -> None:
     else:
         log_sys(f"{color('No lingering processes found on target ports.', GREEN)}")
 
-
 def check_system_status() -> None:
     print_banner()
     log_sys("Checking live status of all MIRA services...")
@@ -610,7 +593,6 @@ def check_system_status() -> None:
         print(f"{mod['name']:<18} {configured_url:<30} {port:<8} {status_text:<15}")
 
     print("=" * 78 + "\n")
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -740,7 +722,6 @@ def main() -> None:
             runner.shutdown()
             sys.exit(1)
 
-
     print("\n" + "=" * 82)
     log_sys(f"{color('ALL MIRA MODULES ARE ONLINE AND SYNCHRONIZED!', GREEN + BOLD)}")
     log_sys(f"Client UI:        {color(url_map.get('client', ''), CYAN)}")
@@ -768,7 +749,6 @@ def main() -> None:
             time.sleep(1.0)
     except KeyboardInterrupt:
         runner.shutdown()
-
 
 if __name__ == "__main__":
     main()

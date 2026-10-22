@@ -16,7 +16,6 @@ logger = logging.getLogger("mira.vault.crypto")
 _CREDENTIAL_KEY: Optional[str] = None
 _DERIVED_KEY: Optional[bytes] = None
 
-
 def derive_key_from_credential(
     credential_key: str,
     prefix: Optional[str] = None,
@@ -29,7 +28,6 @@ def derive_key_from_credential(
 
     combined_material = f"{prefix}{credential_key}{suffix}"
     return hashlib.sha256(combined_material.encode("utf-8")).digest()
-
 
 def init_encryption_key() -> None:
     global _CREDENTIAL_KEY, _DERIVED_KEY
@@ -65,7 +63,6 @@ def init_encryption_key() -> None:
         f"Derived final 256-bit encryption key successfully ({len(_DERIVED_KEY)} bytes in memory, kept strictly internal)."
     )
 
-
 def _get_internal_key() -> bytes:
     global _DERIVED_KEY
     if _DERIVED_KEY is None:
@@ -73,7 +70,6 @@ def _get_internal_key() -> bytes:
     if _DERIVED_KEY is None:
         raise RuntimeError("Failed to initialize internal encryption key in Vault.")
     return _DERIVED_KEY
-
 
 def encrypt_log_data(data: bytes, key: Optional[bytes] = None) -> bytes:
     if key is None:
@@ -83,7 +79,6 @@ def encrypt_log_data(data: bytes, key: Optional[bytes] = None) -> bytes:
     nonce = os.urandom(nonce_len)
     ciphertext = nb.crypto_aead_xchacha20poly1305_ietf_encrypt(data, None, nonce, key)
     return nonce + ciphertext
-
 
 def decrypt_log_data(encrypted_data: bytes, key: Optional[bytes] = None) -> bytes:
     if key is None:

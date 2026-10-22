@@ -20,14 +20,11 @@ TABLE_REGEX = re.compile(
     re.DOTALL | re.IGNORECASE
 )
 
-
 def get_schema_file_path() -> Path:
     return getattr(config, "SCHEMA_FILE_PATH", config.VAULT_DIR / "schema.sql")
 
-
 def get_encrypted_db_path() -> Path:
     return config.SYSTEM_DIR / "config.db.enc"
-
 
 def parse_schema_file(schema_path: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
     if schema_path is None:
@@ -67,7 +64,6 @@ def parse_schema_file(schema_path: Optional[Path] = None) -> Dict[str, Dict[str,
         }
 
     return tables
-
 
 def init_config_storage(
     schema_path: Optional[Path] = None,
@@ -140,7 +136,6 @@ def init_config_storage(
     _seed_default_ai_configs()
     save_config_storage(enc_db_path)
 
-
 def save_config_storage(enc_db_path: Optional[Path] = None) -> None:
     global _DB_CONN
     if _DB_CONN is None:
@@ -156,7 +151,6 @@ def save_config_storage(enc_db_path: Optional[Path] = None) -> None:
     temp_path.write_bytes(encrypted_bytes)
     temp_path.replace(enc_db_path)
     logger.debug(f"Saved and encrypted configuration storage to {enc_db_path}")
-
 
 def get_configuration(key: str) -> Dict[str, Any]:
     global _DB_CONN, _PARSED_SCHEMA
@@ -232,7 +226,6 @@ def get_configuration(key: str) -> Dict[str, Any]:
 
     raise KeyError(f"Configuration key '{key}' not found in Vault.")
 
-
 def update_configuration(table_name: str, updates: Dict[str, Any]) -> Dict[str, Any]:
     global _DB_CONN
     if _DB_CONN is None:
@@ -292,7 +285,6 @@ def update_configuration(table_name: str, updates: Dict[str, Any]) -> Dict[str, 
 
     return get_configuration(normalized_table)
 
-
 def get_all_app_permissions() -> List[Dict[str, Any]]:
     global _DB_CONN
     if _DB_CONN is None:
@@ -310,7 +302,6 @@ def get_all_app_permissions() -> List[Dict[str, Any]]:
         }
         for row in rows
     ]
-
 
 def refresh_app_permissions(discovered_apps: List[Dict[str, str]]) -> Dict[str, Any]:
     global _DB_CONN
@@ -379,7 +370,6 @@ def refresh_app_permissions(discovered_apps: List[Dict[str, str]]) -> Dict[str, 
         "preserved": preserved_count,
     }
 
-
 def update_app_permission(app_id: str, allowed_to_capture: bool) -> Dict[str, Any]:
     global _DB_CONN
     if _DB_CONN is None:
@@ -413,7 +403,6 @@ def update_app_permission(app_id: str, allowed_to_capture: bool) -> Dict[str, An
     logger.info(f"Updated capture permission for '{updated['app_name']}' ({clean_id}) -> {allowed_to_capture}")
     return updated
 
-
 def _seed_default_ai_configs() -> None:
     global _DB_CONN
     if _DB_CONN is None:
@@ -439,7 +428,6 @@ def _seed_default_ai_configs() -> None:
             )
     _DB_CONN.commit()
 
-
 def get_all_ai_providers() -> List[str]:
     global _DB_CONN
     if _DB_CONN is None:
@@ -448,7 +436,6 @@ def get_all_ai_providers() -> List[str]:
     cursor = _DB_CONN.execute("SELECT llm_provider FROM ai_configs ORDER BY id ASC")
     rows = cursor.fetchall()
     return [row[0] for row in rows]
-
 
 def get_all_ai_configs() -> List[Dict[str, Any]]:
     global _DB_CONN
@@ -477,7 +464,6 @@ def get_all_ai_configs() -> List[Dict[str, Any]]:
             "keys": [str(k) for k in keys_list]
         })
     return results
-
 
 def get_ai_config(provider: str) -> Dict[str, Any]:
     global _DB_CONN
@@ -511,7 +497,6 @@ def get_ai_config(provider: str) -> Dict[str, Any]:
         "current_key": int(row[3]) if row[3] is not None else 0,
         "keys": [str(k) for k in keys_list]
     }
-
 
 def update_ai_config(
     provider: str,
@@ -608,7 +593,6 @@ def update_ai_config(
         "keys": keys_list
     }
 
-
 def delete_ai_config(provider: str) -> Dict[str, Any]:
     global _DB_CONN
     if _DB_CONN is None:
@@ -634,7 +618,6 @@ def delete_ai_config(provider: str) -> Dict[str, Any]:
         "status": "success",
         "message": f"AI config for provider '{row[1]}' deleted successfully."
     }
-
 
 def get_ai_priorities() -> List[str]:
     global _DB_CONN
@@ -692,7 +675,6 @@ def get_ai_priorities() -> List[str]:
 
     return reconciled
 
-
 def update_ai_priorities(new_priorities: List[str]) -> List[str]:
     global _DB_CONN
     if _DB_CONN is None:
@@ -742,7 +724,6 @@ def update_ai_priorities(new_priorities: List[str]) -> List[str]:
 
     logger.info(f"Updated LLM provider priorities: {cleaned_order}")
     return cleaned_order
-
 
 def get_engine_workers() -> Dict[str, Any]:
     global _DB_CONN
@@ -802,7 +783,6 @@ def get_engine_workers() -> Dict[str, Any]:
         "embedding_poll_time": float(row_dict.get("embedding_poll_time") if row_dict.get("embedding_poll_time") is not None else 5.0),
     }
 
-
 def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
     global _DB_CONN
     if _DB_CONN is None:
@@ -813,7 +793,6 @@ def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
 
     current = get_engine_workers()
 
-    # Map aliases
     alias_map = {
         "extraction_workers": "screenshot_extraction_workers",
         "memory_extraction_workers": "screenshot_extraction_workers",
@@ -830,7 +809,6 @@ def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
 
     new_config = dict(current)
 
-    # Validate integer worker counts (1 - 50)
     int_fields = [
         "embedding_workers",
         "llm_workers",
@@ -846,7 +824,6 @@ def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
                 raise ValueError(f"{field} must be an integer between 1 and 50 inclusive.")
             new_config[field] = val
 
-    # Validate float poll times (1.0 - 1800.0)
     float_fields = [
         "screenshot_extraction_poll_time",
         "screenshot_summarization_poll_time",
@@ -912,4 +889,3 @@ def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
 
     logger.info(f"Updated engine workers configuration: {new_config}")
     return new_config
-

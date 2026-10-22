@@ -11,7 +11,6 @@ from redis_client import get_redis_client
 import consumer_group_manager as cgm
 from vault_logger import log
 
-
 async def ensure_consumer_group(stream_name: str, group_name: str) -> None:
     client = get_redis_client()
     try:
@@ -19,7 +18,6 @@ async def ensure_consumer_group(stream_name: str, group_name: str) -> None:
     except redis.exceptions.ResponseError as e:
         if "BUSYGROUP" not in str(e):
             log(f"Error ensuring consumer group {group_name} on {stream_name}: {e}")
-
 
 async def clean_all_consumer_groups() -> Dict[str, Any]:
     client = get_redis_client()
@@ -40,7 +38,6 @@ async def clean_all_consumer_groups() -> Dict[str, Any]:
         "cleaned_groups": cleaned
     }
 
-
 async def format_all_redis() -> Dict[str, Any]:
     client = get_redis_client()
     await client.flushdb()
@@ -57,7 +54,6 @@ async def format_all_redis() -> Dict[str, Any]:
         "status": "success",
         "initialized_groups": recreated
     }
-
 
 async def get_consumer_groups_details() -> List[Dict[str, Any]]:
     client = get_redis_client()
@@ -110,7 +106,6 @@ async def get_consumer_groups_details() -> List[Dict[str, Any]]:
 
     return results
 
-
 async def delete_consumer_group(group_name: str, stream_name: Optional[str] = None) -> Dict[str, Any]:
     client = get_redis_client()
     if not stream_name:
@@ -133,7 +128,6 @@ async def delete_consumer_group(group_name: str, stream_name: Optional[str] = No
         "stream_name": stream_name,
         "destroyed": destroyed
     }
-
 
 async def clean_consumer_group(
     group_name: Optional[str] = None,
@@ -192,7 +186,6 @@ async def clean_consumer_group(
         "cleaned_count": total_cleaned,
     }
 
-
 async def add_job_to_stream(job_data: Dict[str, Any]) -> Dict[str, str]:
     job_id = job_data.get("job_id")
     consumer_key = job_data.get("consumer_key")
@@ -221,7 +214,6 @@ async def add_job_to_stream(job_data: Dict[str, Any]) -> Dict[str, str]:
     await client.hset(f"{stream_name}:job_ids", str(job_id), stream_entry_id)
 
     return {"message": "successfully queued"}
-
 
 async def get_jobs_from_stream(consumer_key: str, count: int = 1) -> List[Dict[str, Any]]:
     consumer_group = cgm.get_consumer_group(consumer_key)
@@ -255,7 +247,6 @@ async def get_jobs_from_stream(consumer_key: str, count: int = 1) -> List[Dict[s
 
     return jobs
 
-
 async def delete_job_from_stream(consumer_key: str, job_id: str) -> Dict[str, str]:
     consumer_group = cgm.get_consumer_group(consumer_key)
     if not consumer_group:
@@ -285,11 +276,9 @@ async def delete_job_from_stream(consumer_key: str, job_id: str) -> Dict[str, st
     await client.hdel(f"{stream_name}:job_ids", str(job_id))
     return {"message": "successfully deleted"}
 
-
 IMAGE_COMPARISON_RECENT_KEY = "mira:image_comparison:recent"
 IMAGE_COMPARISON_DATA_KEY_PREFIX = "mira:image_comparison:data:"
 IMAGE_COMPARISON_MAX_COUNT = 10
-
 
 async def store_image_comparison_data(data: Dict[str, Any]) -> Dict[str, Any]:
     image_id = str(data.get("image_id") or uuid.uuid4())
@@ -309,11 +298,9 @@ async def store_image_comparison_data(data: Dict[str, Any]) -> Dict[str, Any]:
     data_key = f"{IMAGE_COMPARISON_DATA_KEY_PREFIX}{image_id}"
     await client.set(data_key, serialized)
 
-    # Maintain recent list
     await client.lrem(IMAGE_COMPARISON_RECENT_KEY, 0, image_id)
     await client.lpush(IMAGE_COMPARISON_RECENT_KEY, image_id)
 
-    # Retain only the 10 most recent images
     excess_ids = await client.lrange(IMAGE_COMPARISON_RECENT_KEY, IMAGE_COMPARISON_MAX_COUNT, -1)
     if excess_ids:
         for old_id in excess_ids:
@@ -334,7 +321,6 @@ async def store_image_comparison_data(data: Dict[str, Any]) -> Dict[str, Any]:
         "total_recent": total_count,
     }
 
-
 async def get_recent_image_comparison_data(limit: int = 10) -> List[Dict[str, Any]]:
     client = get_redis_client()
     limit = min(max(int(limit), 1), IMAGE_COMPARISON_MAX_COUNT)
@@ -350,7 +336,6 @@ async def get_recent_image_comparison_data(limit: int = 10) -> List[Dict[str, An
                 pass
     return results
 
-
 async def get_image_comparison_data_by_id(image_id: str) -> Optional[Dict[str, Any]]:
     client = get_redis_client()
     raw = await client.get(f"{IMAGE_COMPARISON_DATA_KEY_PREFIX}{image_id}")
@@ -360,7 +345,6 @@ async def get_image_comparison_data_by_id(image_id: str) -> Optional[Dict[str, A
         except Exception:
             return None
     return None
-
 
 async def search_image_comparison_data(app_name: Optional[str] = None, limit: int = 10) -> List[Dict[str, Any]]:
     client = get_redis_client()
@@ -388,7 +372,6 @@ async def search_image_comparison_data(app_name: Optional[str] = None, limit: in
 
     return results
 
-
 async def remove_image_comparison_data(
     image_id: Optional[str] = None,
     app_name: Optional[str] = None,
@@ -404,7 +387,6 @@ async def remove_image_comparison_data(
             removed_count += 1
         await client.delete(IMAGE_COMPARISON_RECENT_KEY)
 
-        # Also cleanup any orphaned keys matching prefix
         try:
             extra_keys = await client.keys(f"{IMAGE_COMPARISON_DATA_KEY_PREFIX}*")
             for ek in extra_keys:

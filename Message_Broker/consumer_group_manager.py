@@ -9,7 +9,6 @@ CONFIG_FILE_PATH = Path(__file__).resolve().parent / "consumer_groups.json"
 _CONSUMER_GROUPS_CACHE: Dict[str, str] = {}
 _CONFIG_MTIME: float = 0.0
 
-
 def _load_consumer_groups() -> Dict[str, str]:
     global _CONSUMER_GROUPS_CACHE, _CONFIG_MTIME
     if not CONFIG_FILE_PATH.exists():
@@ -21,22 +20,18 @@ def _load_consumer_groups() -> Dict[str, str]:
         _CONFIG_MTIME = current_mtime
     return _CONSUMER_GROUPS_CACHE
 
-
 def get_consumer_group(consumer_key: str) -> Optional[str]:
     groups = _load_consumer_groups()
     return groups.get(consumer_key)
-
 
 def get_all_consumer_groups() -> List[str]:
     groups = _load_consumer_groups()
     return list(groups.values())
 
-
 def get_stream_for_consumer_key(consumer_key: str) -> Optional[str]:
     if consumer_key not in _load_consumer_groups():
         return None
     return f"mira:stream:{consumer_key}"
-
 
 def get_stream_for_consumer_group(consumer_group: str) -> Optional[str]:
     mappings = _load_consumer_groups()

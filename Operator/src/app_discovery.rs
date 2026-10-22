@@ -246,4 +246,3 @@ fn discover_unix_apps(apps: &mut HashMap<String, DiscoveredApp>) {
         }
     }
 }
-

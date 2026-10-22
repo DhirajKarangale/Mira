@@ -6,11 +6,7 @@ import uuid
 
 from vault_logger import log
 
-
 class ActivitySession:
-    """
-    Represents an ongoing user activity session across multiple consecutive screenshot observations.
-    """
 
     def __init__(
         self,
@@ -77,12 +73,7 @@ class ActivitySession:
             "activity_summary": self.get_summary(),
         }
 
-
 class ActivityTracker:
-    """
-    Groups consecutive screenshot observations into coherent activity records over time,
-    preventing every 5-second screenshot from being treated as an isolated independent event.
-    """
 
     def __init__(self, idle_timeout_seconds: float = 90.0) -> None:
         self.idle_timeout: float = idle_timeout_seconds
@@ -133,6 +124,4 @@ class ActivityTracker:
     def get_current_activity(self) -> Optional[Dict[str, Any]]:
         return self.current_session.to_dict() if self.current_session else None
 
-
-# Global activity tracker instance
 activity_tracker = ActivityTracker()

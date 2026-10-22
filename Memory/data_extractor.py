@@ -13,7 +13,6 @@ from pytesseract import Output
 
 from vault_logger import log
 
-
 def _init_tesseract() -> None:
     candidate_paths = [
         os.environ.get("TESSERACT_CMD", ""),
@@ -31,9 +30,7 @@ def _init_tesseract() -> None:
                 os.environ["TESSDATA_PREFIX"] = tessdata_dir
             break
 
-
 _init_tesseract()
-
 
 def _read_image(image_path: Union[str, Path, np.ndarray]) -> np.ndarray:
     if isinstance(image_path, np.ndarray):
@@ -54,18 +51,11 @@ def _read_image(image_path: Union[str, Path, np.ndarray]) -> np.ndarray:
 
     return img
 
-
 def is_browser_application(app_name: str) -> bool:
-    """Check if the application is a web browser."""
     app_lower = app_name.lower()
     return any(b in app_lower for b in ("edge", "chrome", "firefox", "brave", "opera", "safari", "browser"))
 
-
 def is_mira_self_page(text: str, app_name: str = "") -> bool:
-    """
-    Check if the screen content belongs to MIRA's own interface (logs, telemetry, configs),
-    to prevent infinite feedback capture loops.
-    """
     t_lower = text.lower()
     mira_indicators = (
         "127.0.0.1:9004",
@@ -82,7 +72,6 @@ def is_mira_self_page(text: str, app_name: str = "") -> bool:
     )
     return any(ind in t_lower for ind in mira_indicators)
 
-
 def classify_token_irrelevant(
     bbox: List[int],
     text: str,
@@ -90,28 +79,18 @@ def classify_token_irrelevant(
     img_h: int,
     is_browser: bool,
 ) -> Optional[str]:
-    """
-    Determine if a token belongs to an irrelevant or noise UI region:
-    - browser_tab: top browser tab strip (y < 44px on 1080p)
-    - browser_nav: browser address bar / navigation (44px <= y <= 85px)
-    - taskbar: bottom OS taskbar (y >= img_h - 52px)
-    - noise: stray single-glyph or isolated punctuation
-    """
     x, y, w, h = bbox
     t_clean = text.strip()
 
-    # Bottom taskbar
     if y >= max(0, img_h - 52) or (y / max(img_h, 1)) >= 0.95:
         return "taskbar"
 
-    # Browser chrome
     if is_browser:
         if y < 44 or (y / max(img_h, 1)) < 0.042:
             return "browser_tab"
         if 44 <= y <= 85 and any(proto in t_clean.lower() for proto in ("http:", "https:", "127.0.0.1", "localhost", "www.", ".com")):
             return "browser_nav"
 
-    # Single-glyph noise
     if len(t_clean) <= 1 and not t_clean.isalnum():
         return "symbol_noise"
     if t_clean in ("©", "€", "€&", "+ x", "OW x", "~", "|"):
@@ -119,25 +98,21 @@ def classify_token_irrelevant(
 
     return None
 
-
 def clean_ocr_text(text: str) -> str:
-    """Clean known Tesseract OCR artifacts and misreads."""
     if not text:
         return ""
 
     t = text
-    # Fix common ligature / OCR misread patterns
+
     t = re.sub(r"\bMIRA\s+LIEN\b", "MIRA CLIENT", t, flags=re.IGNORECASE)
     t = re.sub(r"\bussrcesnoxen\b", "MESSAGE_BROKER", t, flags=re.IGNORECASE)
     t = re.sub(r"\boMIRA\b", "MIRA", t)
     t = re.sub(r"\bJobora\s+A[P™]\s*GS\b", "Jobora App", t)
     t = re.sub(r"Clean\s*[‘'`]?\s*J\s*Delete", "Clean / Delete", t)
 
-    # Remove non-printable / control characters
     t = "".join(c for c in t if c.isprintable() or c in ("\n", "\t", " "))
-    # Collapse duplicate whitespace
-    return " ".join(t.split())
 
+    return " ".join(t.split())
 
 def reprocess_low_confidence_region(
     img: np.ndarray,
@@ -145,19 +120,14 @@ def reprocess_low_confidence_region(
     initial_text: str,
     confidence: float,
 ) -> str:
-    """
-    Perform a secondary OCR pass on low-confidence regions using image preprocessing
-    (upscaling, CLAHE contrast enhancement, and adaptive thresholding).
-    Preserves initial_text if secondary pass yields empty output.
-    """
-    # Only reprocess if confidence is low (< 75.0) or text has obvious garbage patterns
+
     has_garbage = bool(re.search(r"[^\x00-\x7F]{2,}", initial_text)) or "LIEN" in initial_text or "ussr" in initial_text.lower()
     if confidence >= 75.0 and not has_garbage:
         return clean_ocr_text(initial_text)
 
     x, y, w, h = bbox
     h_img, w_img = img.shape[:2]
-    # Add slight padding
+
     x1 = max(0, x - 4)
     y1 = max(0, y - 4)
     x2 = min(w_img, x + w + 4)
@@ -170,21 +140,18 @@ def reprocess_low_confidence_region(
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if len(crop.shape) == 3 else crop
 
     try:
-        # 1. Scale up for small fonts
+
         scale_factor = 2 if gray.shape[0] < 50 else 1
         if scale_factor > 1:
             gray = cv2.resize(gray, (gray.shape[1] * scale_factor, gray.shape[0] * scale_factor), interpolation=cv2.INTER_CUBIC)
 
-        # 2. Contrast enhancement via CLAHE
         clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
         contrast = clahe.apply(gray)
 
-        # 3. Adaptive thresholding
         thresh = cv2.adaptiveThreshold(
             contrast, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
         )
 
-        # 4. Secondary OCR pass with PSM 6 (uniform block)
         sec_text = pytesseract.image_to_string(thresh, config="--psm 6").strip()
         cleaned_sec = clean_ocr_text(sec_text)
 
@@ -195,9 +162,7 @@ def reprocess_low_confidence_region(
 
     return clean_ocr_text(initial_text)
 
-
 def extract_text_from_image(image_path: Union[str, Path, np.ndarray]) -> str:
-    """Extract text from the specified image path using OCR (Tesseract)."""
     img = _read_image(image_path)
     try:
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
@@ -207,12 +172,9 @@ def extract_text_from_image(image_path: Union[str, Path, np.ndarray]) -> str:
         log(f"OCR extraction failed for '{image_path}': {e}")
         return ""
 
-
 extract_text = extract_text_from_image
 
-
 def extract_pixels_and_grayscale(image_path: Union[str, Path, np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
-    """Extract pixel values and grayscale matrix from an image path."""
     img = _read_image(image_path)
     if len(img.shape) == 3:
         grayscale = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -221,15 +183,9 @@ def extract_pixels_and_grayscale(image_path: Union[str, Path, np.ndarray]) -> Tu
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
     return img, grayscale
 
-
 extract_image_data = extract_pixels_and_grayscale
 
-
 def extract_ocr_tokens(image_path: Union[str, Path, np.ndarray]) -> Tuple[List[Dict[str, Any]], Tuple[int, int]]:
-    """
-    Extract OCR tokens with bounding boxes and confidence scores using pytesseract image_to_data.
-    Returns (tokens_list, (image_width, image_height)).
-    """
     img = _read_image(image_path)
     h, w = img.shape[:2]
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
@@ -272,7 +228,6 @@ def extract_ocr_tokens(image_path: Union[str, Path, np.ndarray]) -> Tuple[List[D
 
     return tokens, (w, h)
 
-
 def assign_stable_region_id(
     region_type: str,
     bbox: List[int],
@@ -280,17 +235,12 @@ def assign_stable_region_id(
     img_h: int,
     existing_ids: set,
 ) -> str:
-    """
-    Generate a stable, deterministic region ID based on spatial grid coordinates.
-    E.g. header_c3_r0, sidebar_c0_r3, content_c5_r4.
-    """
     w_safe = max(img_w, 1)
     h_safe = max(img_h, 1)
 
     cx = bbox[0] + (bbox[2] / 2.0)
     cy = bbox[1] + (bbox[3] / 2.0)
 
-    # 10x10 spatial grid
     col = min(9, max(0, int((cx / w_safe) * 10)))
     row = min(9, max(0, int((cy / h_safe) * 10)))
 
@@ -304,7 +254,6 @@ def assign_stable_region_id(
     existing_ids.add(candidate)
     return candidate
 
-
 def group_text_into_ui_regions(
     tokens: List[Dict[str, Any]],
     image_width: int,
@@ -312,25 +261,12 @@ def group_text_into_ui_regions(
     is_browser: bool = False,
     image_matrix: Optional[np.ndarray] = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """
-    Group OCR text tokens into logical UI regions with:
-    1. Line-level segmentation and refined bounding-box overlap handling.
-    2. Prevention of runaway header height (max header height 70px).
-    3. Column boundary separation (sidebar vs content).
-    4. Filtering of browser tabs, navigation bars, taskbars, and stray noise.
-    5. Stable spatial region IDs.
-    6. Secondary OCR pass on low-confidence regions for corrected_text.
-
-    Returns:
-        Tuple[valid_ui_regions, filtered_regions]
-    """
     if not tokens:
         return [], []
 
     w_thresh = max(image_width, 1)
     h_thresh = max(image_height, 1)
 
-    # 1. Filter irrelevant tokens (browser tabs, nav bar, taskbar, symbol noise)
     valid_tokens: List[Dict[str, Any]] = []
     filtered_tokens: List[Dict[str, Any]] = []
 
@@ -343,8 +279,6 @@ def group_text_into_ui_regions(
         else:
             valid_tokens.append(t)
 
-    # 2. Segment valid tokens into distinct horizontal text lines
-    # Tokens on the same vertical band (|y_diff| <= 8px) belong to the same line
     sorted_tokens = sorted(valid_tokens, key=lambda t: (t["bbox"][1], t["bbox"][0]))
     lines: List[Dict[str, Any]] = []
 
@@ -354,9 +288,9 @@ def group_text_into_ui_regions(
 
         for line in lines:
             lx, ly, lw, lh = line["bbox"]
-            # Check if token is on the same vertical line
+
             same_line = abs(by - ly) <= 8 or (by >= ly - 4 and by <= ly + lh + 4)
-            # Check horizontal proximity on the line (gap < 80px)
+
             horiz_near = (bx >= lx - 20) and (bx <= lx + lw + 80)
 
             if same_line and horiz_near:
@@ -375,10 +309,8 @@ def group_text_into_ui_regions(
                 "tokens": [t],
             })
 
-    # Sort lines top-to-bottom
     lines.sort(key=lambda l: (l["bbox"][1], l["bbox"][0]))
 
-    # 3. Group lines into UI regions with strict height & column constraints
     clusters: List[Dict[str, Any]] = []
 
     for line in lines:
@@ -386,10 +318,9 @@ def group_text_into_ui_regions(
         norm_y = ly / h_thresh
         norm_x = lx / w_thresh
 
-        # Determine preliminary region type for line
         if norm_y < 0.14:
             line_type = "header"
-            max_cluster_height = 70  # Prevent runaway header!
+            max_cluster_height = 70
         elif norm_x < 0.22 and lh > 60:
             line_type = "sidebar"
             max_cluster_height = 800
@@ -406,25 +337,20 @@ def group_text_into_ui_regions(
             cx, cy, cw, ch = c["bbox"]
             c_type = c["type"]
 
-            # Cannot merge lines of different types (e.g. header cannot merge with content or sidebar)
             if c_type != line_type:
                 continue
 
-            # Prevent runaway height
             if (ch + lh) > max_cluster_height:
                 continue
 
-            # Prevent merging across distinct horizontal columns
             c_is_sidebar = (cx / w_thresh) < 0.22
             line_is_sidebar = norm_x < 0.22
             if c_is_sidebar != line_is_sidebar:
                 continue
 
-            # Check vertical proximity between lines (gap <= 18px)
             vert_gap = ly - (cy + ch)
             vert_ok = -5 <= vert_gap <= 18
 
-            # Check horizontal overlap or close horizontal alignment
             horiz_overlap = max(0, min(cx + cw, lx + lw) - max(cx, lx))
             horiz_ok = (horiz_overlap > 0) or (abs(lx - cx) <= 30)
 
@@ -445,7 +371,6 @@ def group_text_into_ui_regions(
                 "tokens": list(line["tokens"]),
             })
 
-    # 4. Construct structured UI regions with stable IDs & secondary OCR correction
     existing_ids: set = set()
     ui_regions: List[Dict[str, Any]] = []
 
@@ -459,7 +384,6 @@ def group_text_into_ui_regions(
         confs = [t["confidence"] for t in c_tokens if t.get("confidence", -1) >= 0]
         avg_conf = float(np.mean(confs)) if confs else 80.0
 
-        # Perform secondary OCR pass for low-confidence text if image matrix available
         if image_matrix is not None:
             corrected_text = reprocess_low_confidence_region(image_matrix, bbox, raw_text, avg_conf)
         else:
@@ -471,7 +395,7 @@ def group_text_into_ui_regions(
             "bbox": bbox,
             "raw_text": raw_text,
             "corrected_text": corrected_text,
-            "text": corrected_text,  # Compatibility alias
+            "text": corrected_text,
             "word_count": len(c_tokens),
             "confidence": round(avg_conf, 2),
             "is_filtered": False,
@@ -485,10 +409,9 @@ def group_text_into_ui_regions(
             ],
         })
 
-    # Group filtered tokens into filtered summary regions
     filtered_regions: List[Dict[str, Any]] = []
     if filtered_tokens:
-        # Group by reason
+
         by_reason: Dict[str, List[Dict[str, Any]]] = {}
         for ft in filtered_tokens:
             by_reason.setdefault(ft["filter_reason"], []).append(ft)
@@ -510,19 +433,10 @@ def group_text_into_ui_regions(
 
     return ui_regions, filtered_regions
 
-
 def extract_structured_ocr(
     image_path: Union[str, Path, np.ndarray],
     app_name: str = "",
 ) -> Dict[str, Any]:
-    """
-    Extract structured OCR with:
-    - Raw OCR text preserved
-    - Secondary pass corrected text
-    - Refined UI regions with stable IDs
-    - Filtered browser chrome & taskbars
-    - MIRA self-page detection
-    """
     img = _read_image(image_path)
     tokens, (w, h) = extract_ocr_tokens(img)
     is_browser = is_browser_application(app_name)
@@ -542,7 +456,7 @@ def extract_structured_ocr(
     return {
         "raw_ocr_text": raw_full_text.strip(),
         "corrected_text": corrected_full_text.strip(),
-        "extracted_text": corrected_full_text.strip(),  # Backward compatibility
+        "extracted_text": corrected_full_text.strip(),
         "ui_regions": ui_regions,
         "filtered_regions": filtered_regions,
         "tokens": tokens,

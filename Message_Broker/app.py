@@ -31,7 +31,6 @@ from api import router as broker_router
 from redis_client import init_redis_connection, close_redis_connection
 from vault_logger import log
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
@@ -59,7 +58,6 @@ async def lifespan(app: FastAPI):
     await close_redis_connection()
     log("Redis connection closed.")
 
-
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Message Broker",
@@ -77,9 +75,7 @@ def create_app() -> FastAPI:
     app.include_router(broker_router)
     return app
 
-
 app = create_app()
-
 
 def start_app() -> None:
     try:
@@ -95,7 +91,6 @@ def start_app() -> None:
 
     log(f"Starting Message Broker server on http://{host}:{port}")
     uvicorn.run("app:app", host=host, port=port, reload=reload)
-
 
 if __name__ == "__main__":
     start_app()

@@ -9,19 +9,16 @@ import redis_service as rs
 
 router = APIRouter(prefix="", tags=["Message Broker"])
 
-
 class AddJobRequest(BaseModel):
     job_id: str = Field(..., min_length=1)
     consumer_key: str = Field(..., min_length=1)
 
     model_config = ConfigDict(extra="allow")
 
-
 class CleanConsumerGroupRequest(BaseModel):
     group_name: Optional[str] = None
     stream_name: Optional[str] = None
     reset_stream: Optional[bool] = True
-
 
 @router.get("/health", status_code=status.HTTP_200_OK)
 async def health():
@@ -29,7 +26,6 @@ async def health():
         "service": "Message Broker",
         "status": "online"
     }
-
 
 @router.post("/jobs", status_code=status.HTTP_201_CREATED)
 async def add_job(job_req: AddJobRequest):
@@ -46,7 +42,6 @@ async def add_job(job_req: AddJobRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": str(e)}
         )
-
 
 @router.get("/jobs", status_code=status.HTTP_200_OK)
 async def get_jobs(
@@ -66,7 +61,6 @@ async def get_jobs(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": str(e)}
         )
-
 
 @router.delete("/jobs", status_code=status.HTTP_200_OK)
 async def delete_job(
@@ -95,7 +89,6 @@ async def delete_job(
             detail={"message": str(e)}
         )
 
-
 @router.get("/redis/consumer-groups", status_code=status.HTTP_200_OK)
 async def get_redis_consumer_groups(raw: bool = Query(False)):
     if raw:
@@ -108,7 +101,6 @@ async def get_redis_consumer_groups(raw: bool = Query(False)):
             detail={"message": f"Failed to retrieve consumer groups: {str(e)}"}
         )
 
-
 @router.delete("/redis/consumer-groups/{group_name}", status_code=status.HTTP_200_OK)
 async def delete_consumer_group(group_name: str, stream_name: Optional[str] = Query(None)):
     try:
@@ -118,7 +110,6 @@ async def delete_consumer_group(group_name: str, stream_name: Optional[str] = Qu
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": f"Failed to delete consumer group: {str(e)}"}
         )
-
 
 @router.post("/redis/clean", status_code=status.HTTP_200_OK)
 async def clean_pending_messages(req: Optional[CleanConsumerGroupRequest] = None):
@@ -137,7 +128,6 @@ async def clean_pending_messages(req: Optional[CleanConsumerGroupRequest] = None
             detail={"message": f"Failed to clean messages: {str(e)}"}
         )
 
-
 @router.post("/redis/format", status_code=status.HTTP_200_OK)
 async def format_redis():
     try:
@@ -147,7 +137,6 @@ async def format_redis():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": f"Failed to format Redis: {str(e)}"}
         )
-
 
 class StoreImageComparisonRequest(BaseModel):
     image_id: Optional[str] = None
@@ -159,9 +148,7 @@ class StoreImageComparisonRequest(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-
 @router.post("/images/comparison", status_code=status.HTTP_201_CREATED)
-@router.post("/image-comparison", status_code=status.HTTP_201_CREATED)
 async def store_image_comparison(req: StoreImageComparisonRequest):
     try:
         return await rs.store_image_comparison_data(req.model_dump())
@@ -171,9 +158,7 @@ async def store_image_comparison(req: StoreImageComparisonRequest):
             detail={"message": f"Failed to store image comparison data: {str(e)}"}
         )
 
-
 @router.get("/images/comparison", status_code=status.HTTP_200_OK)
-@router.get("/image-comparison", status_code=status.HTTP_200_OK)
 async def get_recent_image_comparisons(limit: int = Query(10, ge=1, le=10)):
     try:
         return await rs.get_recent_image_comparison_data(limit=limit)
@@ -183,9 +168,7 @@ async def get_recent_image_comparisons(limit: int = Query(10, ge=1, le=10)):
             detail={"message": f"Failed to retrieve image comparison data: {str(e)}"}
         )
 
-
 @router.get("/images/comparison/search", status_code=status.HTTP_200_OK)
-@router.get("/image-comparison/search", status_code=status.HTTP_200_OK)
 async def search_image_comparisons(
     app_name: Optional[str] = Query(None),
     limit: int = Query(10, ge=1, le=10)
@@ -198,9 +181,7 @@ async def search_image_comparisons(
             detail={"message": f"Failed to search image comparison data: {str(e)}"}
         )
 
-
 @router.get("/images/comparison/{image_id}", status_code=status.HTTP_200_OK)
-@router.get("/image-comparison/{image_id}", status_code=status.HTTP_200_OK)
 async def get_image_comparison_by_id(image_id: str):
     try:
         data = await rs.get_image_comparison_data_by_id(image_id)
@@ -218,22 +199,7 @@ async def get_image_comparison_by_id(image_id: str):
             detail={"message": f"Failed to retrieve image comparison data: {str(e)}"}
         )
 
-
-@router.delete("/images/comparison/{image_id}", status_code=status.HTTP_200_OK)
-@router.delete("/image-comparison/{image_id}", status_code=status.HTTP_200_OK)
-async def delete_image_comparison_by_id(image_id: str):
-    try:
-        res = await rs.remove_image_comparison_data(image_id=image_id)
-        return res
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"message": f"Failed to remove image comparison data: {str(e)}"}
-        )
-
-
 @router.delete("/images/comparison", status_code=status.HTTP_200_OK)
-@router.delete("/image-comparison", status_code=status.HTTP_200_OK)
 async def delete_image_comparisons(
     image_id: Optional[str] = Query(None),
     app_name: Optional[str] = Query(None),
