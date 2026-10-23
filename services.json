@@ -1,8 +1,8 @@
 {
-  "vault": "http://127.0.0.1:9001",
-  "message_broker": "http://127.0.0.1:9002",
-  "operator": "http://127.0.0.1:9003",
-  "client": "http://127.0.0.1:9004",
-  "memory": "http://127.0.0.1:9006",
-  "engine": "http://127.0.0.1:9008"
+  "vault": "http://127.0.0.1:9002",
+  "message_broker": "http://127.0.0.1:9003",
+  "operator": "http://127.0.0.1:9004",
+  "client": "http://127.0.0.1:9005",
+  "memory": "http://127.0.0.1:9008",
+  "engine": "http://127.0.0.1:9009"
 }

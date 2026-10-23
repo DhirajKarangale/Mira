@@ -8,7 +8,7 @@ import requests
 from .config import (
     DEFAULT_BATCH_SIZE,
     CONSUMER_KEY_OCR_SUMMARIZATION,
-    CONSUMER_KEY_SUMMARY_EMBEDDING,
+    CONSUMER_KEY_EMBEDDING_MEMORY,
     get_broker_base_url,
 )
 from vault_logger import log, log_error
@@ -51,25 +51,28 @@ def poll_jobs(count: int = DEFAULT_BATCH_SIZE) -> List[Dict[str, Any]]:
         log_error(f"Failed to poll '{CONSUMER_KEY_OCR_SUMMARIZATION}' from Message Broker: {e}")
         return []
 
-def publish_summary_job(output_job: Dict[str, Any]) -> bool:
-    """Publishes a summarized output job to CONSUMER_GROUP_SUMMARY_EMBEDDING via Message Broker."""
+def publish_embedding_memory_job(output_job: Dict[str, Any]) -> bool:
+    """Publishes an output job with embedding to CONSUMER_KEY_EMBEDDING_MEMORY via Message Broker."""
     base_url = get_broker_base_url()
     endpoint = f"{base_url}/jobs"
 
     payload = {
         **output_job,
-        "consumer_key": CONSUMER_KEY_SUMMARY_EMBEDDING,
+        "consumer_key": CONSUMER_KEY_EMBEDDING_MEMORY,
     }
 
     try:
         resp = requests.post(endpoint, json=payload, timeout=5.0)
         if resp.status_code in (200, 201):
             return True
-        log_error(f"Publishing to '{CONSUMER_KEY_SUMMARY_EMBEDDING}' returned status {resp.status_code}: {resp.text}")
+        log_error(f"Publishing to '{CONSUMER_KEY_EMBEDDING_MEMORY}' returned status {resp.status_code}: {resp.text}")
         return False
     except Exception as e:
         log_error(f"Failed to publish output job {output_job.get('job_id')} to Message Broker: {e}")
         return False
+
+# Alias for backwards compatibility
+publish_summary_job = publish_embedding_memory_job
 
 def remove_input_job(job_id: str) -> bool:
     """Acknowledges and removes a processed job from CONSUMER_GROUP_OCR_TEXT_SUMMARIZATION."""

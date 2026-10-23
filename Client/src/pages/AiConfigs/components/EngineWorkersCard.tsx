@@ -1,7 +1,6 @@
 import { useState, useEffect, type FC, type ChangeEvent } from "react";
 import {
   Cpu,
-  Sparkles,
   Save,
   RotateCcw,
   CheckCircle2,
@@ -33,7 +32,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
   disabled = false,
 }) => {
   // Concurrency states
-  const [embeddingWorkers, setEmbeddingWorkers] = useState<string>("1");
   const [llmWorkers, setLlmWorkers] = useState<string>("1");
   const [screenshotExtractionWorkers, setScreenshotExtractionWorkers] = useState<string>("1");
   const [screenshotSummarizationWorkers, setScreenshotSummarizationWorkers] = useState<string>("1");
@@ -41,7 +39,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
   // Poll time states (in seconds)
   const [screenshotExtractionPollTime, setScreenshotExtractionPollTime] = useState<string>("5");
   const [screenshotSummarizationPollTime, setScreenshotSummarizationPollTime] = useState<string>("5");
-  const [embeddingPollTime, setEmbeddingPollTime] = useState<string>("5");
 
   const [isSaving, setIsSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
@@ -49,51 +46,41 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
   // Sync state whenever external config updates
   useEffect(() => {
     if (config) {
-      setEmbeddingWorkers(String(config.embedding_workers ?? 1));
       setLlmWorkers(String(config.llm_workers ?? 1));
       setScreenshotExtractionWorkers(String(config.screenshot_extraction_workers ?? 1));
       setScreenshotSummarizationWorkers(String(config.screenshot_summarization_workers ?? 1));
       setScreenshotExtractionPollTime(String(config.screenshot_extraction_poll_time ?? 5));
       setScreenshotSummarizationPollTime(String(config.screenshot_summarization_poll_time ?? 5));
-      setEmbeddingPollTime(String(config.embedding_poll_time ?? 5));
     }
   }, [config]);
 
   const persisted = {
-    embedding_workers: config?.embedding_workers ?? 1,
     llm_workers: config?.llm_workers ?? 1,
     screenshot_extraction_workers: config?.screenshot_extraction_workers ?? 1,
     screenshot_summarization_workers: config?.screenshot_summarization_workers ?? 1,
     screenshot_extraction_poll_time: config?.screenshot_extraction_poll_time ?? 5,
     screenshot_summarization_poll_time: config?.screenshot_summarization_poll_time ?? 5,
-    embedding_poll_time: config?.embedding_poll_time ?? 5,
   };
 
   const currentValues = {
-    embedding_workers: parseInt(embeddingWorkers, 10),
     llm_workers: parseInt(llmWorkers, 10),
     screenshot_extraction_workers: parseInt(screenshotExtractionWorkers, 10),
     screenshot_summarization_workers: parseInt(screenshotSummarizationWorkers, 10),
     screenshot_extraction_poll_time: parseFloat(screenshotExtractionPollTime),
     screenshot_summarization_poll_time: parseFloat(screenshotSummarizationPollTime),
-    embedding_poll_time: parseFloat(embeddingPollTime),
   };
 
   const hasChanges =
-    !isNaN(currentValues.embedding_workers) &&
     !isNaN(currentValues.llm_workers) &&
     !isNaN(currentValues.screenshot_extraction_workers) &&
     !isNaN(currentValues.screenshot_summarization_workers) &&
     !isNaN(currentValues.screenshot_extraction_poll_time) &&
     !isNaN(currentValues.screenshot_summarization_poll_time) &&
-    !isNaN(currentValues.embedding_poll_time) &&
-    (currentValues.embedding_workers !== persisted.embedding_workers ||
-      currentValues.llm_workers !== persisted.llm_workers ||
+    (currentValues.llm_workers !== persisted.llm_workers ||
       currentValues.screenshot_extraction_workers !== persisted.screenshot_extraction_workers ||
       currentValues.screenshot_summarization_workers !== persisted.screenshot_summarization_workers ||
       Math.abs(currentValues.screenshot_extraction_poll_time - persisted.screenshot_extraction_poll_time) > 0.001 ||
-      Math.abs(currentValues.screenshot_summarization_poll_time - persisted.screenshot_summarization_poll_time) > 0.001 ||
-      Math.abs(currentValues.embedding_poll_time - persisted.embedding_poll_time) > 0.001);
+      Math.abs(currentValues.screenshot_summarization_poll_time - persisted.screenshot_summarization_poll_time) > 0.001);
 
   const validateWorkerCount = (valStr: string, fieldName: string): number | null => {
     const trimmed = valStr.trim();
@@ -132,9 +119,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
   };
 
   const handleSave = async () => {
-    const embW = validateWorkerCount(embeddingWorkers, "Embedding workers");
-    if (embW === null) return;
-
     const llmW = validateWorkerCount(llmWorkers, "LLM workers");
     if (llmW === null) return;
 
@@ -150,19 +134,14 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
     const sumPt = validatePollTime(screenshotSummarizationPollTime, "Screenshot summarization poll time");
     if (sumPt === null) return;
 
-    const embPt = validatePollTime(embeddingPollTime, "Embedding worker poll time");
-    if (embPt === null) return;
-
     try {
       setIsSaving(true);
       await onSave({
-        embedding_workers: embW,
         llm_workers: llmW,
         screenshot_extraction_workers: extW,
         screenshot_summarization_workers: sumW,
         screenshot_extraction_poll_time: extPt,
         screenshot_summarization_poll_time: sumPt,
-        embedding_poll_time: embPt,
       });
       setJustSaved(true);
       setTimeout(() => setJustSaved(false), 3000);
@@ -178,13 +157,11 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
   };
 
   const handleReset = () => {
-    setEmbeddingWorkers(String(persisted.embedding_workers));
     setLlmWorkers(String(persisted.llm_workers));
     setScreenshotExtractionWorkers(String(persisted.screenshot_extraction_workers));
     setScreenshotSummarizationWorkers(String(persisted.screenshot_summarization_workers));
     setScreenshotExtractionPollTime(String(persisted.screenshot_extraction_poll_time));
     setScreenshotSummarizationPollTime(String(persisted.screenshot_summarization_poll_time));
-    setEmbeddingPollTime(String(persisted.embedding_poll_time));
   };
 
   const adjustWorker = (
@@ -268,60 +245,8 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {/* Tile 1: Embedding Workers */}
-            <div className="rounded-xl border border-white/[0.08] bg-zinc-950/50 p-3 hover:border-white/15 transition-all flex flex-col justify-between gap-2.5">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="p-1 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                    <Sparkles className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-semibold text-white leading-tight">Embedding</h4>
-                    <p className="text-[10px] text-zinc-400">Vector generation</p>
-                  </div>
-                </div>
-                <span className="text-[9px] font-mono text-indigo-300 bg-indigo-500/10 px-1.5 py-0.5 rounded">
-                  Qdrant
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between gap-1.5 pt-1">
-                <div className="flex items-center gap-1 bg-zinc-900/90 border border-white/10 rounded-lg p-0.5">
-                  <button
-                    type="button"
-                    disabled={disabled || isSaving || currentValues.embedding_workers <= 1}
-                    onClick={() => adjustWorker(setEmbeddingWorkers, embeddingWorkers, -1)}
-                    className="w-6 h-6 rounded hover:bg-white/10 text-zinc-400 hover:text-white flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    <Minus className="w-3 h-3" />
-                  </button>
-                  <input
-                    type="number"
-                    min={1}
-                    max={50}
-                    step={1}
-                    disabled={disabled || isSaving || isLoading}
-                    value={embeddingWorkers}
-                    onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                      setEmbeddingWorkers(e.target.value);
-                    }}
-                    className="w-10 text-center font-mono font-bold text-xs bg-transparent text-white focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    disabled={disabled || isSaving || currentValues.embedding_workers >= 50}
-                    onClick={() => adjustWorker(setEmbeddingWorkers, embeddingWorkers, 1)}
-                    className="w-6 h-6 rounded hover:bg-white/10 text-zinc-400 hover:text-white flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    <Plus className="w-3 h-3" />
-                  </button>
-                </div>
-                <span className="text-[11px] font-mono text-zinc-400">workers</span>
-              </div>
-            </div>
-
-            {/* Tile 2: LLM Workers */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Tile 1: LLM Workers */}
             <div className="rounded-xl border border-white/[0.08] bg-zinc-950/50 p-3 hover:border-white/15 transition-all flex flex-col justify-between gap-2.5">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -644,80 +569,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
               </div>
             </div>
 
-            {/* Poll 3: Embedding Poll Time */}
-            <div className="rounded-xl border border-white/[0.08] bg-zinc-950/50 p-3 hover:border-white/15 transition-all flex flex-col justify-between gap-2.5">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="p-1 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                    <Clock className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-semibold text-white leading-tight">Embedding Interval</h4>
-                    <p className="text-[10px] text-zinc-400">Vector batch poll</p>
-                  </div>
-                </div>
-                <span className="text-[9px] font-mono text-indigo-300 bg-indigo-500/10 px-1.5 py-0.5 rounded">
-                  Seconds
-                </span>
-              </div>
-
-              <div className="space-y-1.5 pt-0.5">
-                <div className="flex items-center justify-between gap-1.5">
-                  <div className="flex items-center gap-1 bg-zinc-900/90 border border-white/10 rounded-lg p-0.5">
-                    <button
-                      type="button"
-                      disabled={disabled || isSaving || currentValues.embedding_poll_time <= 1}
-                      onClick={() => adjustPollTime(setEmbeddingPollTime, embeddingPollTime, -1)}
-                      className="w-6 h-6 rounded hover:bg-white/10 text-zinc-400 hover:text-white flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                    >
-                      <Minus className="w-3 h-3" />
-                    </button>
-                    <input
-                      type="number"
-                      min={1}
-                      max={1800}
-                      step={0.5}
-                      disabled={disabled || isSaving || isLoading}
-                      value={embeddingPollTime}
-                      onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                        setEmbeddingPollTime(e.target.value);
-                      }}
-                      className="w-14 text-center font-mono font-bold text-xs bg-transparent text-white focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      disabled={disabled || isSaving || currentValues.embedding_poll_time >= 1800}
-                      onClick={() => adjustPollTime(setEmbeddingPollTime, embeddingPollTime, 1)}
-                      className="w-6 h-6 rounded hover:bg-white/10 text-zinc-400 hover:text-white flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </button>
-                  </div>
-                  <span className="text-[11px] font-mono text-zinc-400">sec</span>
-                </div>
-
-                {/* Preset Chips */}
-                <div className="flex items-center gap-1 flex-wrap pt-0.5">
-                  {pollPresets.map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => {
-                        setEmbeddingPollTime(String(p));
-                      }}
-                      className={cn(
-                        "px-1.5 py-0.5 rounded text-[9px] font-mono cursor-pointer transition-colors border",
-                        currentValues.embedding_poll_time === p
-                          ? "bg-indigo-500/20 text-indigo-300 border-indigo-500/30 font-bold"
-                          : "bg-white/[0.03] text-zinc-400 border-white/5 hover:text-white"
-                      )}
-                    >
-                      {p}s
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -729,8 +580,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
             <Layers className="w-3 h-3 text-cyan-400" />
             <span>Pools:</span>
           </span>
-          <span>{persisted.embedding_workers} emb</span>
-          <span className="text-zinc-600">/</span>
           <span>{persisted.llm_workers} llm</span>
           <span className="text-zinc-600">/</span>
           <span>{persisted.screenshot_extraction_workers} ext</span>
@@ -738,7 +587,7 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
           <span>{persisted.screenshot_summarization_workers} sum</span>
           <span className="text-zinc-600 hidden sm:inline">|</span>
           <span className="text-zinc-400 hidden sm:inline">Poll:</span>
-          <span className="hidden sm:inline">{persisted.embedding_poll_time}s / {persisted.screenshot_extraction_poll_time}s / {persisted.screenshot_summarization_poll_time}s</span>
+          <span className="hidden sm:inline">{persisted.screenshot_extraction_poll_time}s / {persisted.screenshot_summarization_poll_time}s</span>
         </div>
 
         <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">

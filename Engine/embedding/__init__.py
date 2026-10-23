@@ -1,46 +1,37 @@
-"""Embedding Module for MIRA Engine."""
+"""Embedding Module for MIRA Engine.
+
+Exposes a single public function `get_embedding` that accepts text and returns
+its embedding vector using Qwen/Qwen3-Embedding-0.6B.
+"""
 from __future__ import annotations
 
-from .worker import (
-    start_embedding,
-    stop_embedding,
-    get_embedding_status,
-    worker_manager,
-)
-from .embedder import process_batch_jobs, process_single_job, create_output_job
+from typing import List, Optional
 from .model import (
     generate_embedding,
-    generate_embeddings_batch,
     ensure_model_ready,
     is_model_ready,
     get_model,
-)
-from .config import (
-    DEFAULT_BATCH_SIZE,
     DEFAULT_MODEL_NAME,
-    CONSUMER_KEY_SUMMARY_EMBEDDING,
-    CONSUMER_GROUP_SUMMARY_EMBEDDING,
-    CONSUMER_KEY_EMBEDDING_MEMORY,
-    CONSUMER_GROUP_EMBEDDING_MEMORY,
 )
 
+def get_embedding(text: str) -> List[float]:
+    """Generates an embedding vector for the given text using Qwen/Qwen3-Embedding-0.6B.
+    
+    Accepts:
+        text: String to embed (e.g. summarized text).
+    Returns:
+        List of floats representing the embedding vector.
+    """
+    return generate_embedding(text)
+
+# Alias for backwards compatibility if needed
+generate = get_embedding
+
 __all__ = [
-    "start_embedding",
-    "stop_embedding",
-    "get_embedding_status",
-    "worker_manager",
-    "process_batch_jobs",
-    "process_single_job",
-    "create_output_job",
+    "get_embedding",
     "generate_embedding",
-    "generate_embeddings_batch",
     "ensure_model_ready",
     "is_model_ready",
     "get_model",
-    "DEFAULT_BATCH_SIZE",
     "DEFAULT_MODEL_NAME",
-    "CONSUMER_KEY_SUMMARY_EMBEDDING",
-    "CONSUMER_GROUP_SUMMARY_EMBEDDING",
-    "CONSUMER_KEY_EMBEDDING_MEMORY",
-    "CONSUMER_GROUP_EMBEDDING_MEMORY",
 ]

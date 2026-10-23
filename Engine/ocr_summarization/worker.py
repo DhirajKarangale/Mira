@@ -5,57 +5,93 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
+import uuid
 from .config import (
     DEFAULT_BATCH_SIZE,
     get_summarization_workers_count,
     get_summarization_poll_time,
 )
-from .broker_client import poll_jobs, publish_summary_job, remove_input_job
-from .summarizer import summarize_batch
+from .broker_client import poll_jobs, publish_embedding_memory_job, publish_summary_job, remove_input_job
+from .summarizer import summarize_job, summarize_single_job, summarize_batch
+from embedding import get_embedding
 from vault_logger import log, log_error
 
 logger = logging.getLogger("mira.engine.ocr_summarization.worker")
 
+def process_single_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
+    """Processes an individual OCR extraction job:
+    1. Summarizes its extracted text using the LLM.
+    2. Calls the embedding function with only the resulting summarized_text.
+    3. Builds output object: job_id (new UUID), app_name, os, timestamp, summarized_text, embedding.
+    4. Publishes to the 'embedding_memory' stream through Message Broker.
+    5. Acknowledges and removes input job on success; retains job on failure.
+    """
+    input_job_id = job.get("job_id")
+    if not input_job_id:
+        log_error(f"[SummarizationWorker-{worker_id}] Job missing 'job_id', skipping.")
+        return False
+
+    # 1. Summarize extracted text individually
+    summary_res = summarize_job(job)
+    if summary_res is None:
+        log_error(f"[SummarizationWorker-{worker_id}] Summarization failed for job {input_job_id}. Retaining job for retry.")
+        return False
+
+    app_name = summary_res.get("app_name", "Application")
+    summarized_text = summary_res.get("summary", "")
+
+    # 2. Call embedding function with only summarized_text
+    try:
+        embedding_vector = get_embedding(summarized_text)
+    except Exception as e:
+        log_error(f"[SummarizationWorker-{worker_id}] Embedding generation failed for job {input_job_id}: {e}. Retaining job for retry.")
+        return False
+
+    # 3. Create output object
+    output_job = {
+        "job_id": str(uuid.uuid4()),
+        "app_name": app_name,
+        "os": str(job.get("os") or "Unknown").strip(),
+        "timestamp": job.get("timestamp") or int(time.time()),
+        "summarized_text": summarized_text,
+        "embedding": embedding_vector,
+    }
+
+    # 4. Publish to embedding_memory Redis stream through Message Broker
+    published = publish_embedding_memory_job(output_job)
+    if not published:
+        log_error(f"[SummarizationWorker-{worker_id}] Failed to publish to 'embedding_memory' for job {input_job_id}. Preserving job for retry.")
+        return False
+
+    # 5. Acknowledge and remove input job from ocr_summarization
+    removed = remove_input_job(input_job_id)
+    if not removed:
+        log_error(f"[SummarizationWorker-{worker_id}] Warning: output published but failed to acknowledge input {input_job_id}")
+
+    return True
+
 def process_batch_jobs(jobs: List[Dict[str, Any]], worker_id: int = 1) -> bool:
-    """Processes a batch of OCR extraction jobs into summaries and publishes them."""
+    """Processes a batch of OCR extraction jobs individually and publishes them to embedding_memory."""
     if not jobs:
         return True
 
-    log(f"[SummarizationWorker-{worker_id}] Processing batch of {len(jobs)} jobs...")
+    log(f"[SummarizationWorker-{worker_id}] Processing {len(jobs)} jobs individually...")
     start_time = time.time()
 
-    # 1. Execute LLM batch summarization
-    output_jobs = summarize_batch(jobs)
-    if output_jobs is None:
-        log_error(f"[SummarizationWorker-{worker_id}] Batch summarization failed due to LLM error. Retaining {len(jobs)} jobs for retry.")
-        return False
-
-    # 2. Publish output jobs and acknowledge input jobs
     success_count = 0
     fail_count = 0
 
-    for idx, input_job in enumerate(jobs):
-        output_job = output_jobs[idx]
-        input_job_id = input_job.get("job_id")
-        out_job_id = output_job.get("job_id")
-
-        # Publish to CONSUMER_GROUP_SUMMARY_EMBEDDING
-        published = publish_summary_job(output_job)
-        if published:
-            # Acknowledge and remove from CONSUMER_GROUP_OCR_TEXT_SUMMARIZATION
-            if input_job_id:
-                removed = remove_input_job(input_job_id)
-                if not removed:
-                    log_error(f"[SummarizationWorker-{worker_id}] Warning: output published but failed to acknowledge input {input_job_id}")
+    for job in jobs:
+        success = process_single_job(job, worker_id=worker_id)
+        if success:
             success_count += 1
         else:
-            log_error(f"[SummarizationWorker-{worker_id}] Failed to publish summary for input job {input_job_id}. Preserving input job.")
             fail_count += 1
 
     elapsed = time.time() - start_time
     log(
-        f"[SummarizationWorker-{worker_id}] Batch complete in {elapsed:.2f}s "
-        f"({success_count} succeeded, {fail_count} failed out of {len(jobs)})"
+        f"[SummarizationWorker-{worker_id}] Completed {len(jobs)} jobs in {elapsed:.2f}s "
+        f"({success_count} succeeded, {fail_count} failed)"
     )
     return fail_count == 0
 

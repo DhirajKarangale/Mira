@@ -8,9 +8,10 @@ import threading
 from typing import Any, List, Optional
 
 from vault_logger import log, log_error
-from .config import get_embedding_model_name
 
 logger = logging.getLogger("mira.engine.embedding.model")
+
+DEFAULT_MODEL_NAME = "Qwen/Qwen3-Embedding-0.6B"
 
 _MODEL_INSTANCE: Any = None
 _MODEL_LOCK = threading.Lock()
@@ -45,7 +46,7 @@ def get_model(model_name: Optional[str] = None) -> Any:
         if _MODEL_INSTANCE is not None:
             return _MODEL_INSTANCE
 
-        target_name = model_name or get_embedding_model_name()
+        target_name = model_name or DEFAULT_MODEL_NAME
         log(f"[Embedding Model] Initializing embedding model '{target_name}'...")
 
         # 1. Ensure sentence-transformers is available

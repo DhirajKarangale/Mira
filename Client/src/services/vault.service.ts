@@ -29,23 +29,19 @@ export interface AIConfigUpdateRequest {
 }
 
 export interface EngineWorkersConfig {
-  embedding_workers: number;
   llm_workers: number;
   screenshot_extraction_workers: number;
   screenshot_summarization_workers: number;
   screenshot_extraction_poll_time: number;
   screenshot_summarization_poll_time: number;
-  embedding_poll_time: number;
 }
 
 export interface EngineWorkersUpdateRequest {
-  embedding_workers?: number;
   llm_workers?: number;
   screenshot_extraction_workers?: number;
   screenshot_summarization_workers?: number;
   screenshot_extraction_poll_time?: number;
   screenshot_summarization_poll_time?: number;
-  embedding_poll_time?: number;
 }
 
 export const vaultService = {

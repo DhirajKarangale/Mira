@@ -317,13 +317,11 @@ The **Vault** is the centralized security, secret management, encrypted configur
 - **Response (`200 OK`):**
   ```json
   {
-    "embedding_workers": 1,
     "llm_workers": 1,
     "screenshot_extraction_workers": 1,
     "screenshot_summarization_workers": 1,
     "screenshot_extraction_poll_time": 5.0,
-    "screenshot_summarization_poll_time": 5.0,
-    "embedding_poll_time": 5.0
+    "screenshot_summarization_poll_time": 5.0
   }
   ```
 
@@ -339,13 +337,11 @@ The **Vault** is the centralized security, secret management, encrypted configur
 - **Response (`200 OK`):**
   ```json
   {
-    "embedding_workers": 1,
     "llm_workers": 1,
     "screenshot_extraction_workers": 2,
     "screenshot_summarization_workers": 1,
     "screenshot_extraction_poll_time": 3.0,
-    "screenshot_summarization_poll_time": 5.0,
-    "embedding_poll_time": 5.0
+    "screenshot_summarization_poll_time": 5.0
   }
   ```
 

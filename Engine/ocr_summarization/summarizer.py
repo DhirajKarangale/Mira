@@ -40,6 +40,130 @@ def clean_fallback_app_name(raw_app: str) -> str:
     cleaned = cleaned.replace("_", " ").replace("-", " ")
     return cleaned.strip()
 
+def build_single_prompt(item: Dict[str, str]) -> str:
+    """Builds a structured prompt for a single record to identify real app name and provide a concise summary."""
+    raw_app = item.get("app_name", "Unknown")
+    os_name = item.get("os", "Unknown")
+    extracted_text = item.get("extracted_text", "")[:4000]
+
+    prompt = f"""You are the OCR Activity Summarization Engine for MIRA personal assistant.
+Analyze the following OCR text record captured from a user screen.
+The record represents a single user activity.
+
+Provide:
+1. "app_name": The actual, real human-readable application name (e.g. "Microsoft Edge", "Visual Studio Code", "Google Chrome", "Spotify", "Terminal"). Determine the real name from the extracted text, window titles, or context. Do NOT use raw executable filenames like "msedge.exe" or "code.exe".
+2. "summary": A complete, accurate description of what the user is doing.
+
+Strict Rules for the summary:
+- Describe what the user is doing completely, clearly, and accurately. The summary can be comprehensive and detailed based on the available text, with no arbitrary length limit.
+- Focus on meaningful actions and context; avoid unnecessary fluff, meta-commentary, or repetitive filler phrases.
+- Must include the real application name in the summary (e.g., "... in Microsoft Edge").
+- Avoid assumptions and hallucinations.
+- If the activity cannot be determined from the text, state: "User has <app_name> open, but the specific activity is unclear."
+
+Input:
+Raw Application: {raw_app}
+Operating System: {os_name}
+Extracted Text:
+{extracted_text}
+
+Output Format:
+You MUST return strictly a JSON object:
+{{
+  "app_name": "<Real Application Name>",
+  "summary": "<Comprehensive summary with app name>"
+}}
+"""
+    return prompt
+
+def parse_llm_single_response(raw_response: str, item: Dict[str, str]) -> Optional[Dict[str, str]]:
+    """Parses the LLM response for a single job into a dict with 'app_name' and 'summary'.
+    
+    Returns None if the response indicates complete provider failure.
+    """
+    if not raw_response or raw_response.strip() == AI_UNAVAILABLE_MESSAGE.strip():
+        log_error("LLM call failed or returned unavailable message.")
+        return None
+
+    cleaned = raw_response.strip()
+
+    # Strip markdown code blocks if present
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+        cleaned = cleaned.strip()
+
+    # Try to locate JSON object block
+    match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+    json_candidate = match.group(0) if match else cleaned
+
+    parsed_app_name: Optional[str] = None
+    parsed_summary: Optional[str] = None
+
+    try:
+        data = json.loads(json_candidate)
+        if isinstance(data, dict):
+            parsed_app_name = data.get("app_name")
+            parsed_summary = data.get("summary")
+        elif isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
+            parsed_app_name = data[0].get("app_name")
+            parsed_summary = data[0].get("summary")
+    except Exception as e:
+        log_error(f"Direct JSON parsing of LLM single response failed ({e}), attempting regex fallback.")
+
+    # Fallback regex if missing
+    if not parsed_summary:
+        summary_match = re.search(r'"summary"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', cleaned)
+        if summary_match:
+            parsed_summary = summary_match.group(1).strip()
+    if not parsed_app_name:
+        app_match = re.search(r'"app_name"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', cleaned)
+        if app_match:
+            parsed_app_name = app_match.group(1).strip()
+
+    default_app = clean_fallback_app_name(item.get("app_name", "Application"))
+    resolved_app = parsed_app_name.strip() if parsed_app_name and parsed_app_name.strip() else default_app
+
+    if parsed_summary and parsed_summary.strip():
+        resolved_summary = parsed_summary.strip()
+    else:
+        text = item.get("extracted_text", "")
+        if not text or len(text.strip()) < 5:
+            resolved_summary = f"User has {resolved_app} open, but the specific activity is unclear."
+        else:
+            resolved_summary = f"Activity in {resolved_app} cannot be determined from the available text."
+
+    # Ensure the real app name is explicitly mentioned in the summary
+    if resolved_app.lower() not in resolved_summary.lower():
+        if not resolved_summary.endswith("."):
+            resolved_summary += "."
+        resolved_summary += f" (in {resolved_app})"
+
+    return {
+        "app_name": resolved_app,
+        "summary": resolved_summary,
+    }
+
+def summarize_job(job: Dict[str, Any]) -> Optional[Dict[str, str]]:
+    """Summarizes a single OCR job using an individual LLM call.
+    
+    Returns a dict with 'app_name' and 'summary' on success, or None on failure.
+    """
+    sanitized = sanitize_job_input(job)
+    prompt = build_single_prompt(sanitized)
+
+    log(f"Invoking LLM for single job '{job.get('job_id', 'unknown')}' using work='summarization'...")
+    raw_response = call_llm(prompt=prompt, work="summarization")
+
+    parsed = parse_llm_single_response(raw_response, sanitized)
+    if parsed is None:
+        log_error(f"Single job summarization failed for job '{job.get('job_id')}': LLM provider unavailable.")
+        return None
+
+    return parsed
+
+summarize_single_job = summarize_job
+
 def build_batch_prompt(batch_items: List[Dict[str, str]]) -> str:
     """Builds a structured prompt instructing the LLM to identify real app names and provide concise summaries."""
     indexed_items = [

@@ -14,12 +14,6 @@ from ocr_summarization import (
     stop_ocr_summarization,
     get_summarization_status,
 )
-from embedding import (
-    start_embedding,
-    stop_embedding,
-    get_embedding_status,
-)
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log("Engine service starting up...")
@@ -35,20 +29,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         log_error(f"Failed to start OCR Summarization module: {e}")
 
-    try:
-        # Initialize and start the Embedding module
-        await start_embedding()
-    except Exception as e:
-        log_error(f"Failed to start Embedding module: {e}")
-
     yield
 
     log("Engine service shutting down cleanly...")
-    try:
-        await stop_embedding()
-    except Exception as e:
-        log_error(f"Error stopping Embedding module: {e}")
-
     try:
         await stop_ocr_summarization()
     except Exception as e:
@@ -83,7 +66,6 @@ async def get_status():
     active_prov = config.CONFIG.get_active_provider()
     workers = config.CONFIG.get_workers_config()
     summarization = get_summarization_status()
-    embedding = get_embedding_status()
     return {
         "service": "Engine",
         "status": "online",
@@ -91,7 +73,6 @@ async def get_status():
         "ai_priorities": priorities,
         "workers": workers,
         "ocr_summarization": summarization,
-        "embedding": embedding,
     }
 
 @app.get("/summarization/status", status_code=status.HTTP_200_OK)
@@ -107,20 +88,6 @@ async def summarization_start_endpoint():
 async def summarization_stop_endpoint():
     await stop_ocr_summarization()
     return {"status": "stopped", "details": get_summarization_status()}
-
-@app.get("/embedding/status", status_code=status.HTTP_200_OK)
-async def embedding_status_endpoint():
-    return get_embedding_status()
-
-@app.post("/embedding/start", status_code=status.HTTP_200_OK)
-async def embedding_start_endpoint():
-    started = await start_embedding()
-    return {"status": "started" if started else "already_running", "details": get_embedding_status()}
-
-@app.post("/embedding/stop", status_code=status.HTTP_200_OK)
-async def embedding_stop_endpoint():
-    await stop_embedding()
-    return {"status": "stopped", "details": get_embedding_status()}
 
 @app.post("/config/sync", status_code=status.HTTP_200_OK)
 async def sync_config():

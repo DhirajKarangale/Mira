@@ -26,13 +26,17 @@ Engine/
 ├── tests/
 │   ├── test_api.py            # FastAPI endpoint tests
 │   ├── test_llm.py            # LLM caller, parser, error analysis, and fallback tests
-│   └── test_ocr_summarization.py # OCR summarization batch, mapping, and worker tests
+│   ├── test_embedding.py      # Embedding submodule and Qwen model tests
+│   └── test_ocr_summarization.py # OCR summarization, individual processing, and worker tests
+├── embedding/
+│   ├── __init__.py            # Exposes get_embedding(text) -> List[float]
+│   └── model.py               # Singleton Qwen/Qwen3-Embedding-0.6B model loader
 ├── ocr_summarization/
 │   ├── __init__.py            # Public startup function start_ocr_summarization()
 │   ├── broker_client.py       # Message Broker polling, publishing, and acknowledgement
 │   ├── config.py              # Consumer group mappings & batch size constants
-│   ├── summarizer.py          # Batch formatting, single LLM call, and 1-to-1 output mapping
-│   └── worker.py              # Parallel non-blocking summarization worker manager
+│   ├── summarizer.py          # Prompt formatting, LLM summarization, and output mapping
+│   └── worker.py              # Parallel non-blocking summarization & embedding workers
 └── llm/
     ├── __init__.py            # Main public exports
     ├── caller.py              # Main LLM caller: call_llm(prompt, work)
@@ -155,13 +159,11 @@ Supported works, temperatures, and ordered model fallback lists:
     "active_provider": "gemini",
     "ai_priorities": ["gemini", "groq"],
     "workers": {
-      "embedding_workers": 1,
       "llm_workers": 1,
       "screenshot_extraction_workers": 1,
       "screenshot_summarization_workers": 1,
       "screenshot_extraction_poll_time": 5.0,
-      "screenshot_summarization_poll_time": 5.0,
-      "embedding_poll_time": 5.0
+      "screenshot_summarization_poll_time": 5.0
     }
   }
   ```
@@ -215,32 +217,40 @@ Supported works, temperatures, and ordered model fallback lists:
 
 ---
 
-## 6. OCR Summarization Architecture
+## 6. OCR Summarization & Embedding Pipeline Architecture
 
 ```text
 Message Broker (CONSUMER_GROUP_OCR_TEXT_SUMMARIZATION)
                          │
                          ▼
              Parallel Workers Polling
-             (screenshot_summarization_workers)
+        (screenshot_summarization_workers)
                          │
                          ▼
-             Batch Preparation (Up to 10 jobs)
+        Individual Job Processing Loop
+        For each job in retrieved batch:
+                         │
+                         ▼
+             1. Sanitize Job Input
              [app_name, os, extracted_text]
                          │
                          ▼
-             Single LLM Call (call_llm)
-             work="summarization"
+             2. Individual LLM Call (call_llm)
+             work="summarization" -> real app_name & clean summary
                          │
                          ▼
-             1-to-1 Mapping & Output Job Creation
-             [new UUID, original app, os, timestamp, summary]
+             3. Embedding Generation
+             get_embedding(summarized_text) using Qwen/Qwen3-Embedding-0.6B
                          │
                          ▼
-             Publish to Message Broker (CONSUMER_GROUP_SUMMARY_EMBEDDING)
+             4. Build Output Object
+             [job_id (new UUID), app_name, os, timestamp, summarized_text, embedding]
                          │
-                 (If successful)
                          ▼
-             Acknowledge & Delete from CONSUMER_GROUP_OCR_TEXT_SUMMARIZATION
+             5. Publish to Message Broker (embedding_memory stream)
+                         │
+                 (If publish successful)
+                         ▼
+             6. Acknowledge & Delete from CONSUMER_GROUP_OCR_TEXT_SUMMARIZATION
 ```
 

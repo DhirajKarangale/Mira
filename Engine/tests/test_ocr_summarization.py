@@ -14,20 +14,28 @@ if str(engine_dir) not in sys.path:
 
 from ocr_summarization.summarizer import (
     sanitize_job_input,
+    build_single_prompt,
     build_batch_prompt,
+    parse_llm_single_response,
     parse_llm_batch_response,
+    summarize_job,
     summarize_batch,
 )
 from ocr_summarization.broker_client import (
     poll_jobs,
+    publish_embedding_memory_job,
     publish_summary_job,
     remove_input_job,
 )
-from ocr_summarization.worker import process_batch_jobs, SummarizationWorkerManager
+from ocr_summarization.worker import (
+    process_single_job,
+    process_batch_jobs,
+    SummarizationWorkerManager,
+)
 from ocr_summarization.config import (
     DEFAULT_BATCH_SIZE,
     CONSUMER_KEY_OCR_SUMMARIZATION,
-    CONSUMER_KEY_SUMMARY_EMBEDDING,
+    CONSUMER_KEY_EMBEDDING_MEMORY,
 )
 from llm.caller import AI_UNAVAILABLE_MESSAGE
 
@@ -55,6 +63,14 @@ class TestBatchPreparationAndPrompt(unittest.TestCase):
         self.assertNotIn("job_id", sanitized)
         self.assertNotIn("ui_regions", sanitized)
 
+    def test_build_single_prompt(self):
+        item = {"app_name": "msedge.exe", "os": "Windows 11", "extracted_text": "Docs and search"}
+        prompt = build_single_prompt(item)
+        self.assertIn("msedge.exe", prompt)
+        self.assertIn("Windows 11", prompt)
+        self.assertIn("Docs and search", prompt)
+        self.assertIn("Output Format:", prompt)
+
     def test_build_batch_prompt(self):
         batch = [
             {"app_name": "Chrome", "os": "Windows", "extracted_text": "GitHub PR #1"},
@@ -68,7 +84,26 @@ class TestBatchPreparationAndPrompt(unittest.TestCase):
         self.assertIn("Strict Rules for the summary:", prompt)
         self.assertIn("JSON array", prompt)
 
-class TestLLMBatchResponseParsing(unittest.TestCase):
+class TestLLMResponseParsing(unittest.TestCase):
+    def test_parse_single_valid_json(self):
+        raw_llm = json.dumps({
+            "app_name": "Microsoft Edge",
+            "summary": "User is browsing technical documentation in Microsoft Edge."
+        })
+        item = {"app_name": "msedge.exe", "os": "Win", "extracted_text": "Documentation"}
+        parsed = parse_llm_single_response(raw_llm, item)
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed["app_name"], "Microsoft Edge")
+        self.assertEqual(parsed["summary"], "User is browsing technical documentation in Microsoft Edge.")
+
+    def test_parse_single_fallback_on_unclear(self):
+        raw_llm = "Non-json text"
+        item = {"app_name": "notepad.exe", "os": "Win", "extracted_text": ""}
+        parsed = parse_llm_single_response(raw_llm, item)
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed["app_name"], "notepad")
+        self.assertIn("unclear", parsed["summary"])
+
     def test_parse_valid_json_array(self):
         batch_items = [
             {"app_name": "chrome.exe", "os": "Windows", "extracted_text": "GitHub PR #1"},
@@ -86,131 +121,108 @@ class TestLLMBatchResponseParsing(unittest.TestCase):
         self.assertEqual(results[1]["app_name"], "Slack")
         self.assertEqual(results[1]["summary"], "User is chatting about a 3pm meeting in Slack.")
 
-    def test_parse_markdown_fenced_json(self):
-        batch_items = [
-            {"app_name": "WindowsTerminal.exe", "os": "Windows", "extracted_text": "git status"},
-        ]
-        raw_llm = "```json\n[\n  {\"index\": 0, \"app_name\": \"Terminal\", \"summary\": \"User is checking git status in Terminal.\"}\n]\n```"
-        results = parse_llm_batch_response(raw_llm, 1, batch_items)
-        self.assertIsNotNone(results)
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["app_name"], "Terminal")
-        self.assertEqual(results[0]["summary"], "User is checking git status in Terminal.")
-
-    def test_parse_fallback_when_app_identifiable_but_text_empty(self):
-        batch_items = [
-            {"app_name": "calculator.exe", "os": "Windows", "extracted_text": ""},
-        ]
-        raw_llm = "Invalid json response without proper structure"
-        results = parse_llm_batch_response(raw_llm, 1, batch_items)
-        self.assertIsNotNone(results)
-        self.assertEqual(results[0]["app_name"], "calculator")
-        self.assertIn("User has calculator open, but the specific activity is unclear", results[0]["summary"])
-
-    def test_parse_fallback_when_activity_cannot_be_determined(self):
-        batch_items = [
-            {"app_name": "UnknownApp.exe", "os": "Windows", "extracted_text": "12345 67890 obscure data"},
-        ]
-        raw_llm = "Invalid json response"
-        results = parse_llm_batch_response(raw_llm, 1, batch_items)
-        self.assertIsNotNone(results)
-        self.assertEqual(results[0]["app_name"], "UnknownApp")
-        self.assertIn("UnknownApp", results[0]["summary"])
-
     def test_provider_failure_returns_none(self):
-        batch_items = [{"app_name": "App", "os": "OS", "extracted_text": "text"}]
-        res = parse_llm_batch_response(AI_UNAVAILABLE_MESSAGE, 1, batch_items)
+        item = {"app_name": "App", "os": "OS", "extracted_text": "text"}
+        res = parse_llm_single_response(AI_UNAVAILABLE_MESSAGE, item)
         self.assertIsNone(res)
 
-class TestSummarizeBatchAndMapping(unittest.TestCase):
-    @patch("ocr_summarization.summarizer.call_llm")
-    def test_one_to_one_mapping_preservation(self, mock_call_llm):
-        input_jobs = [
-            {"job_id": "job_1", "app_name": "msedge.exe", "os": "Win", "timestamp": 1000.0, "extracted_text": "text A"},
-            {"job_id": "job_2", "app_name": "code.exe", "os": "Win", "timestamp": 2000.0, "extracted_text": "text B"},
-            {"job_id": "job_3", "app_name": "slack.exe", "os": "Win", "timestamp": 3000.0, "extracted_text": "text C"},
-        ]
-        mock_call_llm.return_value = json.dumps([
-            {"index": 0, "app_name": "Microsoft Edge", "summary": "User is browsing web in Microsoft Edge."},
-            {"index": 1, "app_name": "Visual Studio Code", "summary": "User is editing code in Visual Studio Code."},
-            {"index": 2, "app_name": "Slack", "summary": "User is messaging in Slack."},
-        ])
-
-        output_jobs = summarize_batch(input_jobs)
-        self.assertIsNotNone(output_jobs)
-        self.assertEqual(len(output_jobs), 3)
-
-        # Check real app name and 1-to-1 mapping
-        self.assertEqual(output_jobs[0]["app_name"], "Microsoft Edge")
-        self.assertEqual(output_jobs[1]["app_name"], "Visual Studio Code")
-        self.assertEqual(output_jobs[2]["app_name"], "Slack")
-
-        for idx in range(3):
-            in_j = input_jobs[idx]
-            out_j = output_jobs[idx]
-            self.assertNotEqual(out_j["job_id"], in_j["job_id"])  # Brand new UUID
-            uuid.UUID(out_j["job_id"])  # Valid UUID format
-            self.assertEqual(out_j["os"], in_j["os"])
-            self.assertEqual(out_j["timestamp"], in_j["timestamp"])
-            self.assertTrue(len(out_j["summarized_text"]) > 0)
-
-    @patch("ocr_summarization.summarizer.call_llm", return_value=AI_UNAVAILABLE_MESSAGE)
-    def test_llm_failure_preserves_jobs(self, mock_call_llm):
-        input_jobs = [{"job_id": "job_1", "app_name": "App", "os": "OS", "extracted_text": "text"}]
-        result = summarize_batch(input_jobs)
-        self.assertIsNone(result)
-
 class TestWorkerProcessingAndPublishing(unittest.TestCase):
-    @patch("ocr_summarization.worker.summarize_batch")
-    @patch("ocr_summarization.worker.publish_summary_job")
+    @patch("ocr_summarization.worker.summarize_job")
+    @patch("ocr_summarization.worker.get_embedding")
+    @patch("ocr_summarization.worker.publish_embedding_memory_job")
     @patch("ocr_summarization.worker.remove_input_job")
-    def test_successful_publish_acknowledges_input_jobs(self, mock_remove, mock_publish, mock_summarize):
-        input_jobs = [
-            {"job_id": "in_1", "app_name": "App1", "os": "Win", "timestamp": 1.0, "extracted_text": "t1"},
-            {"job_id": "in_2", "app_name": "App2", "os": "Win", "timestamp": 2.0, "extracted_text": "t2"},
-        ]
-        output_jobs = [
-            {"job_id": "out_1", "app_name": "App1", "os": "Win", "timestamp": 1.0, "summarized_text": "Sum1"},
-            {"job_id": "out_2", "app_name": "App2", "os": "Win", "timestamp": 2.0, "summarized_text": "Sum2"},
-        ]
-        mock_summarize.return_value = output_jobs
+    def test_process_single_job_success(self, mock_remove, mock_publish, mock_embed, mock_summarize):
+        input_job = {
+            "job_id": "in_1",
+            "app_name": "msedge.exe",
+            "os": "Windows 11",
+            "timestamp": 1729600000,
+            "extracted_text": "Python documentation",
+        }
+        mock_summarize.return_value = {
+            "app_name": "Microsoft Edge",
+            "summary": "User is reading Python docs in Microsoft Edge.",
+        }
+        mock_embed.return_value = [0.1, -0.2, 0.3]
         mock_publish.return_value = True
         mock_remove.return_value = True
 
-        success = process_batch_jobs(input_jobs, worker_id=1)
+        success = process_single_job(input_job, worker_id=1)
         self.assertTrue(success)
-        self.assertEqual(mock_publish.call_count, 2)
-        self.assertEqual(mock_remove.call_count, 2)
-        mock_remove.assert_any_call("in_1")
-        mock_remove.assert_any_call("in_2")
 
-    @patch("ocr_summarization.worker.summarize_batch")
-    @patch("ocr_summarization.worker.publish_summary_job")
+        # Verify summarizer called with input job
+        mock_summarize.assert_called_once_with(input_job)
+
+        # Verify embedding called with ONLY summarized_text
+        mock_embed.assert_called_once_with("User is reading Python docs in Microsoft Edge.")
+
+        # Verify output object structure
+        mock_publish.assert_called_once()
+        published_job = mock_publish.call_args[0][0]
+        self.assertNotEqual(published_job["job_id"], "in_1")
+        uuid.UUID(published_job["job_id"])  # Valid UUID
+        self.assertEqual(published_job["app_name"], "Microsoft Edge")
+        self.assertEqual(published_job["os"], "Windows 11")
+        self.assertEqual(published_job["timestamp"], 1729600000)
+        self.assertEqual(published_job["summarized_text"], "User is reading Python docs in Microsoft Edge.")
+        self.assertEqual(published_job["embedding"], [0.1, -0.2, 0.3])
+
+        # Verify input job was acknowledged and removed
+        mock_remove.assert_called_once_with("in_1")
+
+    @patch("ocr_summarization.worker.summarize_job")
+    @patch("ocr_summarization.worker.get_embedding")
+    @patch("ocr_summarization.worker.publish_embedding_memory_job")
     @patch("ocr_summarization.worker.remove_input_job")
-    def test_failed_publish_does_not_acknowledge_input_job(self, mock_remove, mock_publish, mock_summarize):
-        input_jobs = [
-            {"job_id": "in_1", "app_name": "App1", "os": "Win", "timestamp": 1.0, "extracted_text": "t1"},
-        ]
-        output_jobs = [
-            {"job_id": "out_1", "app_name": "App1", "os": "Win", "timestamp": 1.0, "summarized_text": "Sum1"},
-        ]
-        mock_summarize.return_value = output_jobs
-        # Simulate publishing failure
+    def test_failed_publish_preserves_input_job(self, mock_remove, mock_publish, mock_embed, mock_summarize):
+        input_job = {
+            "job_id": "in_1",
+            "app_name": "msedge.exe",
+            "os": "Windows 11",
+            "extracted_text": "test",
+        }
+        mock_summarize.return_value = {
+            "app_name": "Microsoft Edge",
+            "summary": "Browsing in Microsoft Edge.",
+        }
+        mock_embed.return_value = [0.1]
         mock_publish.return_value = False
 
-        success = process_batch_jobs(input_jobs, worker_id=1)
+        success = process_single_job(input_job, worker_id=1)
         self.assertFalse(success)
-        self.assertEqual(mock_publish.call_count, 1)
-        # remove_input_job MUST NOT be called!
         mock_remove.assert_not_called()
 
-    @patch("ocr_summarization.worker.summarize_batch", return_value=None)
+    @patch("ocr_summarization.worker.summarize_job", return_value=None)
     @patch("ocr_summarization.worker.remove_input_job")
-    def test_llm_failure_does_not_acknowledge_input_jobs(self, mock_remove, mock_summarize):
-        input_jobs = [{"job_id": "in_1", "app_name": "App", "os": "Win", "extracted_text": "text"}]
-        success = process_batch_jobs(input_jobs, worker_id=1)
+    def test_summarization_failure_preserves_input_job(self, mock_remove, mock_summarize):
+        input_job = {"job_id": "in_1", "app_name": "App", "os": "Win", "extracted_text": "text"}
+        success = process_single_job(input_job, worker_id=1)
         self.assertFalse(success)
         mock_remove.assert_not_called()
+
+    @patch("ocr_summarization.worker.summarize_job")
+    @patch("ocr_summarization.worker.get_embedding", side_effect=RuntimeError("Embedding error"))
+    @patch("ocr_summarization.worker.remove_input_job")
+    def test_embedding_failure_preserves_input_job(self, mock_remove, mock_embed, mock_summarize):
+        input_job = {"job_id": "in_1", "app_name": "App", "os": "Win", "extracted_text": "text"}
+        mock_summarize.return_value = {"app_name": "App", "summary": "Activity in App."}
+        success = process_single_job(input_job, worker_id=1)
+        self.assertFalse(success)
+        mock_remove.assert_not_called()
+
+    @patch("ocr_summarization.worker.process_single_job")
+    def test_process_batch_jobs_calls_process_single_job_individually(self, mock_process_single):
+        jobs = [
+            {"job_id": "in_1", "app_name": "App1", "os": "Win", "extracted_text": "t1"},
+            {"job_id": "in_2", "app_name": "App2", "os": "Win", "extracted_text": "t2"},
+        ]
+        mock_process_single.return_value = True
+
+        success = process_batch_jobs(jobs, worker_id=1)
+        self.assertTrue(success)
+        self.assertEqual(mock_process_single.call_count, 2)
+        mock_process_single.assert_any_call(jobs[0], worker_id=1)
+        mock_process_single.assert_any_call(jobs[1], worker_id=1)
 
 class TestWorkerManager(unittest.IsolatedAsyncioTestCase):
     async def test_start_and_stop_workers(self):
@@ -231,5 +243,3 @@ class TestWorkerManager(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-

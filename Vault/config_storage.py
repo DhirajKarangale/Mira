@@ -735,13 +735,11 @@ def get_engine_workers() -> Dict[str, Any]:
     ).fetchone()[0]
     if not exists:
         return {
-            "embedding_workers": 1,
             "llm_workers": 1,
             "screenshot_extraction_workers": 1,
             "screenshot_summarization_workers": 1,
             "screenshot_extraction_poll_time": 5.0,
             "screenshot_summarization_poll_time": 5.0,
-            "embedding_poll_time": 5.0,
         }
 
     cursor = _DB_CONN.execute("SELECT * FROM engine_workers LIMIT 1")
@@ -749,38 +747,32 @@ def get_engine_workers() -> Dict[str, Any]:
     if not row:
         _DB_CONN.execute(
             """INSERT INTO engine_workers (
-                embedding_workers,
                 llm_workers,
                 screenshot_extraction_workers,
                 screenshot_summarization_workers,
                 screenshot_extraction_poll_time,
-                screenshot_summarization_poll_time,
-                embedding_poll_time
-            ) VALUES (1, 1, 1, 1, 5.0, 5.0, 5.0)"""
+                screenshot_summarization_poll_time
+            ) VALUES (1, 1, 1, 5.0, 5.0)"""
         )
         _DB_CONN.commit()
         save_config_storage()
         return {
-            "embedding_workers": 1,
             "llm_workers": 1,
             "screenshot_extraction_workers": 1,
             "screenshot_summarization_workers": 1,
             "screenshot_extraction_poll_time": 5.0,
             "screenshot_summarization_poll_time": 5.0,
-            "embedding_poll_time": 5.0,
         }
 
     col_names = [d[0].lower() for d in cursor.description]
     row_dict = dict(zip(col_names, row))
 
     return {
-        "embedding_workers": int(row_dict.get("embedding_workers") or 1),
         "llm_workers": int(row_dict.get("llm_workers") or 1),
         "screenshot_extraction_workers": int(row_dict.get("screenshot_extraction_workers") or 1),
         "screenshot_summarization_workers": int(row_dict.get("screenshot_summarization_workers") or 1),
         "screenshot_extraction_poll_time": float(row_dict.get("screenshot_extraction_poll_time") if row_dict.get("screenshot_extraction_poll_time") is not None else 5.0),
         "screenshot_summarization_poll_time": float(row_dict.get("screenshot_summarization_poll_time") if row_dict.get("screenshot_summarization_poll_time") is not None else 5.0),
-        "embedding_poll_time": float(row_dict.get("embedding_poll_time") if row_dict.get("embedding_poll_time") is not None else 5.0),
     }
 
 def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
@@ -800,7 +792,6 @@ def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
         "engine_summarization_workers": "screenshot_summarization_workers",
         "extraction_poll_time": "screenshot_extraction_poll_time",
         "summarization_poll_time": "screenshot_summarization_poll_time",
-        "embedding_worker_poll_time": "embedding_poll_time",
     }
     normalized_updates = {}
     for k, v in updates.items():
@@ -810,7 +801,6 @@ def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
     new_config = dict(current)
 
     int_fields = [
-        "embedding_workers",
         "llm_workers",
         "screenshot_extraction_workers",
         "screenshot_summarization_workers",
@@ -827,7 +817,6 @@ def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
     float_fields = [
         "screenshot_extraction_poll_time",
         "screenshot_summarization_poll_time",
-        "embedding_poll_time",
     ]
     for field in float_fields:
         if field in normalized_updates and normalized_updates[field] is not None:
@@ -844,44 +833,36 @@ def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
     if row:
         _DB_CONN.execute(
             """UPDATE engine_workers SET
-                embedding_workers = ?,
                 llm_workers = ?,
                 screenshot_extraction_workers = ?,
                 screenshot_summarization_workers = ?,
                 screenshot_extraction_poll_time = ?,
-                screenshot_summarization_poll_time = ?,
-                embedding_poll_time = ?
+                screenshot_summarization_poll_time = ?
             WHERE id = ?""",
             (
-                new_config["embedding_workers"],
                 new_config["llm_workers"],
                 new_config["screenshot_extraction_workers"],
                 new_config["screenshot_summarization_workers"],
                 new_config["screenshot_extraction_poll_time"],
                 new_config["screenshot_summarization_poll_time"],
-                new_config["embedding_poll_time"],
                 row[0],
             ),
         )
     else:
         _DB_CONN.execute(
             """INSERT INTO engine_workers (
-                embedding_workers,
                 llm_workers,
                 screenshot_extraction_workers,
                 screenshot_summarization_workers,
                 screenshot_extraction_poll_time,
-                screenshot_summarization_poll_time,
-                embedding_poll_time
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                screenshot_summarization_poll_time
+            ) VALUES (?, ?, ?, ?, ?)""",
             (
-                new_config["embedding_workers"],
                 new_config["llm_workers"],
                 new_config["screenshot_extraction_workers"],
                 new_config["screenshot_summarization_workers"],
                 new_config["screenshot_extraction_poll_time"],
                 new_config["screenshot_summarization_poll_time"],
-                new_config["embedding_poll_time"],
             ),
         )
     _DB_CONN.commit()

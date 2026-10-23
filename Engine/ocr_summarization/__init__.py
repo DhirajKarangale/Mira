@@ -6,15 +6,23 @@ from .worker import (
     stop_ocr_summarization,
     get_summarization_status,
     worker_manager,
+    process_single_job,
     process_batch_jobs,
 )
-from .summarizer import summarize_batch, sanitize_job_input, build_batch_prompt
+from .summarizer import (
+    summarize_job,
+    summarize_single_job,
+    summarize_batch,
+    sanitize_job_input,
+    build_single_prompt,
+    build_batch_prompt,
+)
 from .config import (
     DEFAULT_BATCH_SIZE,
     CONSUMER_KEY_OCR_SUMMARIZATION,
     CONSUMER_GROUP_OCR_SUMMARIZATION,
-    CONSUMER_KEY_SUMMARY_EMBEDDING,
-    CONSUMER_GROUP_SUMMARY_EMBEDDING,
+    CONSUMER_KEY_EMBEDDING_MEMORY,
+    CONSUMER_GROUP_EMBEDDING_MEMORY,
 )
 
 __all__ = [
@@ -22,13 +30,17 @@ __all__ = [
     "stop_ocr_summarization",
     "get_summarization_status",
     "worker_manager",
+    "process_single_job",
     "process_batch_jobs",
+    "summarize_job",
+    "summarize_single_job",
     "summarize_batch",
     "sanitize_job_input",
+    "build_single_prompt",
     "build_batch_prompt",
     "DEFAULT_BATCH_SIZE",
     "CONSUMER_KEY_OCR_SUMMARIZATION",
     "CONSUMER_GROUP_OCR_SUMMARIZATION",
-    "CONSUMER_KEY_SUMMARY_EMBEDDING",
-    "CONSUMER_GROUP_SUMMARY_EMBEDDING",
+    "CONSUMER_KEY_EMBEDDING_MEMORY",
+    "CONSUMER_GROUP_EMBEDDING_MEMORY",
 ]
