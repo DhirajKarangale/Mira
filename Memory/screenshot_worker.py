@@ -224,10 +224,11 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
                 uia_res = extract_native_uia(app_name=app_name)
                 if uia_res.get("success"):
                     uia_text = uia_res.get("extracted_text", "")
-                    # Extract active focused element if available
-                    focus_match = re.search(r"## Active Focus:\s*\n-\s*Focused Element:[^\n]+", uia_text)
-                    if focus_match and "## Active Focus:" not in full_text:
-                        full_text = full_text.rstrip() + "\n\n" + focus_match.group(0) + "\n"
+                    # Extract active focused element in full if available
+                    focus_idx = uia_text.find("## Active Focus:")
+                    if focus_idx != -1 and "## Active Focus:" not in full_text:
+                        focus_part = uia_text[focus_idx:].strip()
+                        full_text = full_text.rstrip() + "\n\n" + focus_part + "\n"
                     # If OCR was completely empty (e.g., pure dark UI), fallback to UIA elements
                     if len(full_text.strip()) < 30 and len(uia_text.strip()) >= 30:
                         full_text = uia_text

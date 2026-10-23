@@ -143,6 +143,10 @@ def classify_token_irrelevant(
     if re.match(r"^[_\W]+$", t_clean):
         return "symbol_noise"
 
+    # 5. Technical screen resolution/dimension tokens (e.g., "1920x1080", "Screen: 1920x1080")
+    if re.match(r"^(?:Screen:?\s*)?\d{3,4}\s*[xX*×]\s*\d{3,4}$", t_clean, re.I):
+        return "screen_resolution_metadata"
+
     return None
 
 def preprocess_image_for_ocr(img: np.ndarray) -> Tuple[np.ndarray, float]:
@@ -644,6 +648,11 @@ def synthesize_markdown_from_regions(
             consumed_indices.add(i)
             continue
 
+        # Filter technical screen resolution / dimension strings
+        if re.search(r"^(?:Screen|Display|Resolution)?\s*:?\s*\d{3,4}\s*[xX*×]\s*\d{3,4}$", txt.strip(), re.I):
+            consumed_indices.add(i)
+            continue
+
         # Enhanced URL extraction with local address normalization (ignore internal ephemeral sockets > 10000)
         url_match = re.search(
             r"((?:https?://[^\s\)\`]+|(?:127\.0\.0\.1|localhost):(?:80|443|3000|5000|5173|8000|8080|900[0-9])(?:/[^\s\)\`]*)?|(?:127\.0\.0\.1|localhost)/(?:activity|api)[^\s\)\`]*|wronrsuny[^\s\)\`]*))",
@@ -779,6 +788,9 @@ def synthesize_markdown_from_regions(
             continue
         if c_text.lower() in ("key", "key:", "actions", "streams", "casts", "format"):
             continue
+        # Filter technical screen resolution / dimension strings
+        if re.search(r"^(?:Screen|Display|Resolution)?\s*:?\s*\d{3,4}\s*[xX*×]\s*\d{3,4}$", c_text.strip(), re.I):
+            continue
         if c_text != last_item:
             main_content.append(c_text)
             last_item = c_text
@@ -790,10 +802,9 @@ def synthesize_markdown_from_regions(
 
     app_header = app_name or "Desktop Application"
     win_header = window_title or app_header
-    dim_str = f" | Screen: {w_img}x{h_img}"
 
     lines: List[str] = [
-        f"Window: \"{win_header}\"{dim_str}",
+        f"Window: \"{win_header}\"",
         "",
     ]
     if url_locations:

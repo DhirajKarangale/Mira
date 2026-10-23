@@ -254,12 +254,12 @@ def format_uia_to_markdown(
 
     if nav_items:
         lines.append("## Navigation & Tabs:")
-        lines.append(" | ".join(nav_items[:15]))
+        lines.append(" | ".join(nav_items))
         lines.append("")
 
     if inputs:
         lines.append("## Inputs & Form Fields:")
-        lines.extend(inputs[:20])
+        lines.extend(inputs)
         lines.append("")
 
     if content_items:
@@ -274,7 +274,7 @@ def format_uia_to_markdown(
 
     if actions:
         lines.append("## Action Controls:")
-        lines.append("  ".join(actions[:20]))
+        lines.append("  ".join(actions))
         lines.append("")
 
     if focused_item:
