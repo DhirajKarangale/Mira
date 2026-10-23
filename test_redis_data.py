@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 import redis
 
-CONSUMER_GROUP = "summary_embedding"
+CONSUMER_GROUP = "embedding_memory"
 STREAM_KEY = "mira:stream:" + CONSUMER_GROUP
 DEFAULT_OUTPUT_FILE = "redis_data.txt"
 COUNT = 20

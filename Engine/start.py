@@ -20,9 +20,14 @@ from ocr_summarization import (
     stop_ocr_summarization,
     get_summarization_status,
 )
+from embedding import (
+    start_embedding,
+    stop_embedding,
+    get_embedding_status,
+)
 
 async def run_standalone_workers():
-    """Runs OCR Summarization workers in standalone asyncio loop."""
+    """Runs OCR Summarization and Embedding workers in standalone asyncio loop."""
     log("Initializing Engine configuration from Vault...")
     try:
         config.CONFIG.fetch_from_vault()
@@ -32,6 +37,10 @@ async def run_standalone_workers():
     log("Starting OCR Summarization module...")
     await start_ocr_summarization()
     log(f"OCR Summarization module initialized. Status: {get_summarization_status()}")
+
+    log("Starting Embedding module...")
+    await start_embedding()
+    log(f"Embedding module initialized. Status: {get_embedding_status()}")
 
     stop_event = asyncio.Event()
 
@@ -49,8 +58,15 @@ async def run_standalone_workers():
     except (KeyboardInterrupt, SystemExit):
         pass
     finally:
-        log("Shutting down OCR Summarization module...")
-        await stop_ocr_summarization()
+        log("Shutting down background worker modules...")
+        try:
+            await stop_embedding()
+        except Exception as e:
+            log_error(f"Error stopping embedding workers: {e}")
+        try:
+            await stop_ocr_summarization()
+        except Exception as e:
+            log_error(f"Error stopping summarization workers: {e}")
         log("Engine shutdown complete.")
 
 def main():
