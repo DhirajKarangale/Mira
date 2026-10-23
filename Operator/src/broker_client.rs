@@ -9,7 +9,7 @@ pub struct ScreenshotJob {
     pub consumer_key: String,
     pub os: String,
     pub app_name: String,
-    pub timestamp: String,
+    pub timestamp: u64,
     pub image_path: String,
 }
 

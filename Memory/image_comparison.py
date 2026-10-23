@@ -52,7 +52,7 @@ def store_image_data(
     pixel_values: Optional[np.ndarray],
     grayscale_matrix: np.ndarray,
     image_id: Optional[str] = None,
-    timestamp: Optional[Union[float, str]] = None,
+    timestamp: Optional[Union[int, float]] = None,
     metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     base_url = get_broker_base_url()
@@ -61,7 +61,7 @@ def store_image_data(
     payload = {
         "image_id": image_id,
         "app_name": app_name.strip(),
-        "timestamp": timestamp or time.time(),
+        "timestamp": timestamp if timestamp is not None else int(time.time()),
         "pixel_values": None,
         "grayscale_matrix": serialize_matrix(grayscale_matrix),
         "metadata": metadata or {},
@@ -140,11 +140,7 @@ def compare_app_images(
     prev_ts = prev_record.get("timestamp")
     if prev_ts is not None:
         try:
-            if isinstance(prev_ts, (int, float)):
-                age_secs = time.time() - float(prev_ts)
-            else:
-                dt = datetime.strptime(str(prev_ts), "%d/%m/%YT%H:%M:%S")
-                age_secs = (datetime.now() - dt).total_seconds()
+            age_secs = time.time() - float(prev_ts)
             if age_secs > max_lookback_seconds:
                 log(
                     f"Previous comparison record for app '{app_name}' is {age_secs:.0f}s old "

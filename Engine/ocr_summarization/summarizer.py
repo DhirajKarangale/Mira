@@ -170,7 +170,7 @@ def summarize_batch(batch_jobs: List[Dict[str, Any]]) -> Optional[List[Dict[str,
             "job_id": str(uuid.uuid4()),
             "app_name": str(input_job.get("app_name") or "Unknown").strip(),
             "os": str(input_job.get("os") or "Unknown").strip(),
-            "timestamp": input_job.get("timestamp") or time.time(),
+            "timestamp": input_job.get("timestamp") or int(time.time()),
             "summarized_text": summaries[idx],
         }
         output_jobs.append(out_job)

@@ -1,8 +1,7 @@
-from __future__ import annotations
-
+from datetime import datetime
 import json
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 import uuid
 
 import redis.exceptions
@@ -10,6 +9,38 @@ import redis.exceptions
 from redis_client import get_redis_client
 import consumer_group_manager as cgm
 from vault_logger import log
+
+def to_unix_timestamp(ts: Any) -> Union[int, float]:
+    if ts is None:
+        return int(time.time())
+    if isinstance(ts, (int, float)):
+        return ts
+    if isinstance(ts, str):
+        s = ts.strip()
+        try:
+            val = float(s)
+            return int(val) if val.is_integer() else val
+        except ValueError:
+            pass
+        for fmt in (
+            "%d/%m/%YT%H:%M:%S",
+            "%d/%m/%Y %H:%M:%S",
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%d %H:%M:%S",
+            "%d-%m-%YT%H-%M-%S",
+            "%d-%m-%Y %H:%M:%S",
+        ):
+            try:
+                dt = datetime.strptime(ts.strip(), fmt)
+                return int(dt.timestamp())
+            except ValueError:
+                pass
+        try:
+            dt = datetime.fromisoformat(ts.strip())
+            return int(dt.timestamp())
+        except Exception:
+            pass
+    return int(time.time())
 
 async def ensure_consumer_group(stream_name: str, group_name: str) -> None:
     client = get_redis_client()
@@ -205,6 +236,8 @@ async def add_job_to_stream(job_data: Dict[str, Any]) -> Dict[str, str]:
     for k, v in job_data.items():
         if k == "consumer_key":
             continue
+        if k == "timestamp":
+            v = to_unix_timestamp(v)
         if isinstance(v, (dict, list)):
             stream_fields[k] = json.dumps(v)
         elif v is not None:
@@ -288,7 +321,7 @@ async def store_image_comparison_data(data: Dict[str, Any]) -> Dict[str, Any]:
     record = {
         "image_id": image_id,
         "app_name": app_name,
-        "timestamp": data.get("timestamp") or time.time(),
+        "timestamp": to_unix_timestamp(data.get("timestamp")),
         "pixel_values": data.get("pixel_values"),
         "grayscale_matrix": data.get("grayscale_matrix"),
         "metadata": data.get("metadata") or {},

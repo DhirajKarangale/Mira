@@ -141,7 +141,7 @@ async def format_redis():
 class StoreImageComparisonRequest(BaseModel):
     image_id: Optional[str] = None
     app_name: str = Field(..., min_length=1)
-    timestamp: Optional[Union[float, str]] = None
+    timestamp: Optional[Union[int, float, str]] = None
     pixel_values: Optional[Any] = None
     grayscale_matrix: Optional[Any] = None
     metadata: Optional[Dict[str, Any]] = None

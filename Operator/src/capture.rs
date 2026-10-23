@@ -531,7 +531,10 @@ pub fn capture_silent_screenshot() -> Result<CapturedScreenshot, Box<dyn std::er
     let height = rgba_image.height();
 
     let job_id = Uuid::new_v4().to_string();
-    let timestamp = Local::now().format("%d/%m/%YT%H:%M:%S").to_string();
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
     let app_name = get_active_app_name();
 
     let base_app = app_name.strip_suffix(".exe").unwrap_or(&app_name);

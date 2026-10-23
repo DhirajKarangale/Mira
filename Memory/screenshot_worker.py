@@ -122,7 +122,8 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
             app_name = str(inner.get("app_name") or app_name).strip()
             os_name = str(inner.get("os") or os_name).strip()
             image_path = image_path or str(inner.get("image_path") or "").strip()
-            timestamp = timestamp or inner.get("timestamp")
+            if inner.get("timestamp") is not None:
+                timestamp = inner.get("timestamp")
 
     if not job_id or not image_path:
         log(f"[Worker-{worker_id}] Invalid job data (missing job_id or image_path): {job}")
@@ -174,10 +175,7 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
                 candidate = recent[0]
                 cand_ts = candidate.get("timestamp")
                 try:
-                    if isinstance(cand_ts, (int, float)):
-                        cand_age = time.time() - float(cand_ts)
-                    else:
-                        cand_age = (datetime.now() - datetime.strptime(str(cand_ts), "%d/%m/%YT%H:%M:%S")).total_seconds()
+                    cand_age = time.time() - float(cand_ts)
                     if cand_age < 15.0:
                         cand_gray = candidate.get("grayscale_matrix")
                         if cand_gray is not None:
@@ -268,11 +266,7 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
             prev_ts = prev_record.get("timestamp")
             if prev_ts:
                 try:
-                    if isinstance(prev_ts, (int, float)):
-                        time_since_prev = time.time() - float(prev_ts)
-                    else:
-                        dt = datetime.strptime(str(prev_ts), "%d/%m/%YT%H:%M:%S")
-                        time_since_prev = (datetime.now() - dt).total_seconds()
+                    time_since_prev = time.time() - float(prev_ts)
 
                     if 0 <= time_since_prev < 4.0:
                         overall_sim = float(region_changes.get("overall_text_similarity", 1.0))
