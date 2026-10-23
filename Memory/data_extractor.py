@@ -644,9 +644,9 @@ def synthesize_markdown_from_regions(
             consumed_indices.add(i)
             continue
 
-        # Enhanced URL extraction with local address normalization
+        # Enhanced URL extraction with local address normalization (ignore internal ephemeral sockets > 10000)
         url_match = re.search(
-            r"((?:https?://|127\.0\.0\.1|localhost|(?:\d{1,4}[.-]){2,4}:?900[1-6]|wronrsuny)[^\s\)\`]+)",
+            r"((?:https?://[^\s\)\`]+|(?:127\.0\.0\.1|localhost):(?:80|443|3000|5000|5173|8000|8080|900[0-9])(?:/[^\s\)\`]*)?|(?:127\.0\.0\.1|localhost)/(?:activity|api)[^\s\)\`]*|wronrsuny[^\s\)\`]*))",
             txt,
             flags=re.IGNORECASE
         )
@@ -656,8 +656,11 @@ def synthesize_markdown_from_regions(
             if not clean_url.startswith(("http://", "https://", "127.0.0.1", "localhost")):
                 if "9004" in clean_url:
                     clean_url = "127.0.0.1:9004" + clean_url[clean_url.find("9004") + 4:]
-            if clean_url not in url_locations:
-                url_locations.append(clean_url)
+            # Discard any raw internal socket with high ephemeral port (>10000) or trailing dots
+            clean_url = clean_url.rstrip("./")
+            if not re.search(r":\d{5}", clean_url) and len(clean_url) > 7:
+                if clean_url not in url_locations:
+                    url_locations.append(clean_url)
             consumed_indices.add(i)
             continue
 
