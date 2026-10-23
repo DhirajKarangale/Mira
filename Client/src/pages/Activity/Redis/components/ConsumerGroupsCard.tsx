@@ -5,8 +5,6 @@ import {
   Sparkles,
   RefreshCw,
   Search,
-  CheckCircle2,
-  AlertCircle,
   Copy,
   Check,
   Flame,
@@ -23,6 +21,7 @@ import { ConfirmModal } from "./ConfirmModal";
 import type { ConsumerGroup, CleanResult, FormatResult } from "../types";
 import { useRefreshAnimation } from "@/hooks/useRefreshAnimation";
 import { cn } from "@/lib/utils";
+import { toast } from "@/components";
 
 interface ConsumerGroupsCardProps {
   groups: ConsumerGroup[];
@@ -52,16 +51,12 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
   const [isCleanAllOpen, setIsCleanAllOpen] = useState(false);
   const [isFormatOpen, setIsFormatOpen] = useState(false);
 
-  const [feedback, setFeedback] = useState<{
-    type: "success" | "error";
-    text: string;
-  } | null>(null);
-
   const showFeedback = (type: "success" | "error", text: string) => {
-    setFeedback({ type, text });
-    setTimeout(() => {
-      setFeedback((curr) => (curr?.text === text ? null : curr));
-    }, 4500);
+    if (type === "success") {
+      toast.success(text, { title: "Message Broker" });
+    } else {
+      toast.error(text, { title: "Message Broker Error" });
+    }
   };
 
   const filteredGroups = useMemo(() => {
@@ -166,30 +161,6 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
 
   return (
     <div className="w-full space-y-5">
-      {feedback && (
-        <div
-          className={cn(
-            "flex items-center gap-3 p-3.5 rounded-xl border text-sm animate-in fade-in slide-in-from-top-1 duration-200",
-            feedback.type === "success"
-              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.1)]"
-              : "bg-red-500/10 border-red-500/30 text-red-300 shadow-[0_0_15px_rgba(239,68,68,0.1)]"
-          )}
-        >
-          {feedback.type === "success" ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-          ) : (
-            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-          )}
-          <span className="flex-1 font-medium">{feedback.text}</span>
-          <button
-            onClick={() => setFeedback(null)}
-            className="text-xs opacity-70 hover:opacity-100 hover:underline cursor-pointer"
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
-
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
         <div className="rounded-xl border border-white/[0.08] bg-zinc-900/50 backdrop-blur-sm p-4 relative overflow-hidden">
           <div className="flex items-center justify-between text-zinc-400 mb-2">

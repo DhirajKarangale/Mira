@@ -5,7 +5,6 @@ import {
   ChevronUp,
   ChevronDown,
   CheckCircle2,
-  AlertCircle,
   Loader2,
   Zap,
   Sparkles,
@@ -14,6 +13,7 @@ import {
 import { getProviderMeta } from "../types";
 import type { AIConfig } from "@/services";
 import { cn } from "@/lib/utils";
+import { toast } from "@/components";
 
 interface ProviderPriorityCardProps {
   providers: string[];
@@ -38,7 +38,6 @@ export const ProviderPriorityCard: FC<ProviderPriorityCardProps> = ({
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
 
   useEffect(() => {
@@ -81,12 +80,13 @@ export const ProviderPriorityCard: FC<ProviderPriorityCardProps> = ({
       newSet.size !== currentSet.size ||
       [...currentSet].some((p) => !newSet.has(p))
     ) {
-      setError("Reordering must preserve all configured providers without addition or removal.");
+      toast.warning("Reordering must preserve all configured providers without addition or removal.", {
+        title: "Priority Ordering",
+      });
       return;
     }
 
     setOrderedProviders(newOrder);
-    setError(null);
 
     try {
       setIsSaving(true);
@@ -94,7 +94,8 @@ export const ProviderPriorityCard: FC<ProviderPriorityCardProps> = ({
       setJustSaved(true);
       setTimeout(() => setJustSaved(false), 3000);
     } catch (err: any) {
-      setError(err?.response?.data?.detail?.message || "Failed to update priorities.");
+      const msg = err?.response?.data?.detail?.message || "Failed to update priorities.";
+      toast.error(msg, { title: "Priority Update Error" });
     } finally {
       setIsSaving(false);
     }
@@ -191,13 +192,6 @@ export const ProviderPriorityCard: FC<ProviderPriorityCardProps> = ({
       </div>
 
       <div className="p-6 space-y-3">
-        {error && (
-          <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 font-mono flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-            <span>{error}</span>
-          </div>
-        )}
-
         <div className="space-y-2.5">
           {orderedProviders.map((provider, index) => {
             const meta = getProviderMeta(provider);

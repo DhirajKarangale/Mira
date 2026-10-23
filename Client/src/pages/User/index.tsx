@@ -1,20 +1,16 @@
-import { useState, type FC } from "react";
-import { Loader2, AlertCircle, CheckCircle2, X } from "lucide-react";
+import { useState, useEffect, useRef, type FC } from "react";
+import { Loader2 } from "lucide-react";
 import { useUserDetailsQuery } from "./queries";
 import { UserHero } from "./components/UserHero";
 import { UserDetailsView } from "./components/UserDetailsView";
 import { UserDetailsForm } from "./components/UserDetailsForm";
 import type { UserDetails, UserPageMode } from "./types";
-
-interface FeedbackState {
-  type: "success" | "error";
-  message: string;
-}
+import { toast } from "@/components";
 
 export const UserPage: FC = () => {
   const { data: details = null, isLoading, isFetching, refetch, error } = useUserDetailsQuery();
   const [mode, setMode] = useState<UserPageMode>("view");
-  const [feedback, setFeedback] = useState<FeedbackState | null>(null);
+  const lastErrorRef = useRef<string | null>(null);
 
   const queryErrorMessage = error
     ? (error as any)?.response?.data?.detail?.message ||
@@ -22,20 +18,21 @@ export const UserPage: FC = () => {
       "Could not retrieve user details from Vault."
     : null;
 
+  useEffect(() => {
+    if (queryErrorMessage && queryErrorMessage !== lastErrorRef.current) {
+      lastErrorRef.current = queryErrorMessage;
+      toast.error(queryErrorMessage, { title: "Vault Sync Error" });
+    }
+  }, [queryErrorMessage]);
+
   const handleSaveSuccess = (updated: UserDetails) => {
     setMode("view");
-    setFeedback({
-      type: "success",
-      message:
-        updated.message ||
-        (mode === "add"
-          ? "User details created and stored securely in Vault!"
-          : "User details updated successfully in Vault!"),
-    });
-
-    setTimeout(() => {
-      setFeedback((prev) => (prev?.type === "success" ? null : prev));
-    }, 5000);
+    const msg =
+      updated.message ||
+      (mode === "add"
+        ? "User details created and stored securely in Vault!"
+        : "User details updated successfully in Vault!");
+    toast.success(msg, { title: "User Profile" });
   };
 
   const hasDetails =
@@ -62,35 +59,6 @@ export const UserPage: FC = () => {
           onRefresh={() => refetch()}
           hasDetails={hasDetails}
         />
-
-        {(feedback || queryErrorMessage) && (
-          <div
-            id="user-page-feedback-banner"
-            className={`flex items-start justify-between gap-3 p-4 rounded-xl border backdrop-blur-md transition-all animate-in fade-in ${
-              (feedback?.type || "error") === "success"
-                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
-                : "bg-rose-500/10 border-rose-500/20 text-rose-300"
-            }`}
-          >
-            <div className="flex items-center gap-2.5">
-              {(feedback?.type || "error") === "success" ? (
-                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-              ) : (
-                <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
-              )}
-              <span className="text-sm font-medium">
-                {feedback?.message || queryErrorMessage}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setFeedback(null)}
-              className="p-1 rounded-lg hover:bg-white/[0.06] text-zinc-400 hover:text-white transition-all cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
 
         {isLoading ? (
           <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-16 flex flex-col items-center justify-center gap-3 backdrop-blur-xl">

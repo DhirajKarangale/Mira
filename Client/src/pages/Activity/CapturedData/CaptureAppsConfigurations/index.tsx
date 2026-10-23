@@ -1,11 +1,8 @@
-import { useState, useMemo, type FC } from "react";
+import { useState, useMemo, useEffect, useRef, type FC } from "react";
 import {
   Search,
   RefreshCw,
   Loader2,
-  CheckCircle2,
-  AlertCircle,
-  X,
   Scan,
 } from "lucide-react";
 import {
@@ -17,6 +14,7 @@ import { AppsHeader } from "./components/AppsHeader";
 import { AppsFilterBar } from "./components/AppsFilterBar";
 import { AppPermissionCard } from "./components/AppPermissionCard";
 import type { AppFilterType } from "../types";
+import { toast } from "@/components";
 
 export const CaptureAppsConfigurationsPage: FC = () => {
   const { data: apps = [], isLoading, isFetching, error } = useAppPermissionsQuery();
@@ -25,9 +23,17 @@ export const CaptureAppsConfigurationsPage: FC = () => {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<AppFilterType>("all");
-  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(
-    null
-  );
+  const lastErrorRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (error) {
+      const msg = (error as Error)?.message || "An error occurred with app permissions.";
+      if (msg !== lastErrorRef.current) {
+        lastErrorRef.current = msg;
+        toast.error(msg, { title: "App Permissions" });
+      }
+    }
+  }, [error]);
 
   const totalCount = apps.length;
   const allowedCount = useMemo(() => apps.filter((a) => a.allowed_to_capture).length, [apps]);
@@ -58,18 +64,16 @@ export const CaptureAppsConfigurationsPage: FC = () => {
     try {
       const res = await refreshMutation.mutateAsync();
       const count = res.total_apps || res.total || apps.length;
-      setFeedback({
-        type: "success",
-        message: `App list refreshed successfully! ${count} applications synchronized.`,
+      toast.success(`App list refreshed successfully! ${count} applications synchronized.`, {
+        title: "Application Scanner",
       });
-      setTimeout(() => setFeedback(null), 5000);
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { detail?: { message?: string } } }; message?: string })
           ?.response?.data?.detail?.message ||
         (err as Error)?.message ||
         "Failed to refresh system applications.";
-      setFeedback({ type: "error", message: msg });
+      toast.error(msg, { title: "App Refresh Error" });
     }
   };
 
@@ -79,13 +83,19 @@ export const CaptureAppsConfigurationsPage: FC = () => {
         appId,
         allowedToCapture: !currentAllowed,
       });
+      toast.success(
+        currentAllowed
+          ? "Application marked as restricted from screen capture."
+          : "Application allowed for screen capture.",
+        { title: "Capture Permission" }
+      );
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { detail?: { message?: string } } }; message?: string })
           ?.response?.data?.detail?.message ||
         (err as Error)?.message ||
         "Failed to update app capture permission.";
-      setFeedback({ type: "error", message: msg });
+      toast.error(msg, { title: "Permission Error" });
     }
   };
 
@@ -102,35 +112,6 @@ export const CaptureAppsConfigurationsPage: FC = () => {
           onRefresh={handleRefreshApps}
           isRefreshing={refreshMutation.isPending || isFetching}
         />
-
-        {(feedback || error) && (
-          <div
-            id="apps-feedback-banner"
-            className={`flex items-start justify-between gap-3 p-4 rounded-xl border backdrop-blur-md transition-all animate-in fade-in ${
-              (feedback?.type || "error") === "success"
-                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
-                : "bg-rose-500/10 border-rose-500/20 text-rose-300"
-            }`}
-          >
-            <div className="flex items-center gap-2.5">
-              {(feedback?.type || "error") === "success" ? (
-                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-              ) : (
-                <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
-              )}
-              <span className="text-sm font-medium">
-                {feedback?.message || (error as Error)?.message || "An error occurred with app permissions."}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setFeedback(null)}
-              className="p-1 rounded-lg hover:bg-white/[0.06] text-zinc-400 hover:text-white transition-all cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
 
         <AppsFilterBar
           searchQuery={searchQuery}

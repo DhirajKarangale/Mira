@@ -2,7 +2,6 @@ import { useState, useEffect, type FC } from "react";
 import {
   Save,
   RotateCcw,
-  CheckCircle2,
   AlertCircle,
   Clock,
   Terminal,
@@ -20,6 +19,7 @@ import { useLogConfigQuery, useSaveLogConfigMutation } from "../queries";
 import type { LogConfig } from "../types";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { toast } from "@/components";
 
 interface LogConfigCardProps {
   onSaved?: () => void;
@@ -84,10 +84,6 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
 
   const [config, setConfig] = useState<LogConfig | null>(serverConfig ?? null);
   const [originalConfig, setOriginalConfig] = useState<LogConfig | null>(serverConfig ?? null);
-  const [feedback, setFeedback] = useState<{
-    type: "success" | "error";
-    message: string;
-  } | null>(null);
 
   useEffect(() => {
     if (serverConfig) {
@@ -175,27 +171,23 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
   const handleSave = async () => {
     if (!config) return;
     try {
-      setFeedback(null);
       const updated = await saveMutation.mutateAsync(config);
       setConfig(updated);
       setOriginalConfig(updated);
-      setFeedback({
-        type: "success",
-        message: "Log configurations successfully updated in Vault",
+      toast.success("Log configurations successfully updated in Vault", {
+        title: "Log Configurations",
       });
       onSaved?.();
-      setTimeout(() => setFeedback(null), 4000);
     } catch (err: unknown) {
       const errMsg =
         err instanceof Error ? err.message : "Failed to update log configurations";
-      setFeedback({ type: "error", message: errMsg });
+      toast.error(errMsg, { title: "Configuration Error" });
     }
   };
 
   const handleReset = () => {
     if (originalConfig) {
       setConfig({ ...originalConfig });
-      setFeedback(null);
     }
   };
 
@@ -263,23 +255,6 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
           </Button>
         </div>
       </div>
-
-      {feedback && (
-        <div
-          className={`flex items-center gap-2.5 p-3 rounded-lg text-xs font-medium border transition-all ${
-            feedback.type === "success"
-              ? "bg-emerald-950/60 text-emerald-200 border-emerald-500/30"
-              : "bg-rose-950/60 text-rose-200 border-rose-500/30"
-          }`}
-        >
-          {feedback.type === "success" ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-          ) : (
-            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-          )}
-          <span>{feedback.message}</span>
-        </div>
-      )}
 
       <div className="p-4 rounded-xl border border-white/[0.08] bg-zinc-900/40 backdrop-blur-sm space-y-3.5">
         <div className="flex items-center gap-2.5">

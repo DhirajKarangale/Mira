@@ -5,7 +5,6 @@ import {
   Save,
   RotateCcw,
   CheckCircle2,
-  AlertCircle,
   Loader2,
   Sliders,
   Minus,
@@ -18,6 +17,7 @@ import {
 } from "lucide-react";
 import type { EngineWorkersConfig, EngineWorkersUpdateRequest } from "@/services";
 import { cn } from "@/lib/utils";
+import { toast } from "@/components";
 
 interface EngineWorkersCardProps {
   config: EngineWorkersConfig | null | undefined;
@@ -43,7 +43,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
   const [screenshotSummarizationPollTime, setScreenshotSummarizationPollTime] = useState<string>("5");
   const [embeddingPollTime, setEmbeddingPollTime] = useState<string>("5");
 
-  const [validationError, setValidationError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
 
@@ -57,7 +56,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
       setScreenshotExtractionPollTime(String(config.screenshot_extraction_poll_time ?? 5));
       setScreenshotSummarizationPollTime(String(config.screenshot_summarization_poll_time ?? 5));
       setEmbeddingPollTime(String(config.embedding_poll_time ?? 5));
-      setValidationError(null);
     }
   }, [config]);
 
@@ -100,16 +98,16 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
   const validateWorkerCount = (valStr: string, fieldName: string): number | null => {
     const trimmed = valStr.trim();
     if (!trimmed) {
-      setValidationError(`${fieldName} cannot be empty.`);
+      toast.warning(`${fieldName} cannot be empty.`, { title: "Validation" });
       return null;
     }
     const num = Number(trimmed);
     if (!Number.isInteger(num)) {
-      setValidationError(`${fieldName} must be an integer.`);
+      toast.warning(`${fieldName} must be an integer.`, { title: "Validation" });
       return null;
     }
     if (num < 1 || num > 50) {
-      setValidationError(`${fieldName} must be between 1 and 50 inclusive.`);
+      toast.warning(`${fieldName} must be between 1 and 50 inclusive.`, { title: "Validation" });
       return null;
     }
     return num;
@@ -118,24 +116,22 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
   const validatePollTime = (valStr: string, fieldName: string): number | null => {
     const trimmed = valStr.trim();
     if (!trimmed) {
-      setValidationError(`${fieldName} cannot be empty.`);
+      toast.warning(`${fieldName} cannot be empty.`, { title: "Validation" });
       return null;
     }
     const num = Number(trimmed);
     if (isNaN(num)) {
-      setValidationError(`${fieldName} must be a valid number.`);
+      toast.warning(`${fieldName} must be a valid number.`, { title: "Validation" });
       return null;
     }
     if (num < 1 || num > 1800) {
-      setValidationError(`${fieldName} must be between 1 and 1800 seconds inclusive.`);
+      toast.warning(`${fieldName} must be between 1 and 1800 seconds inclusive.`, { title: "Validation" });
       return null;
     }
     return num;
   };
 
   const handleSave = async () => {
-    setValidationError(null);
-
     const embW = validateWorkerCount(embeddingWorkers, "Embedding workers");
     if (embW === null) return;
 
@@ -175,7 +171,7 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
         err?.response?.data?.detail?.message ||
         err?.message ||
         "Failed to update engine worker settings in Vault.";
-      setValidationError(msg);
+      toast.error(msg, { title: "Vault Save Error" });
     } finally {
       setIsSaving(false);
     }
@@ -189,7 +185,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
     setScreenshotExtractionPollTime(String(persisted.screenshot_extraction_poll_time));
     setScreenshotSummarizationPollTime(String(persisted.screenshot_summarization_poll_time));
     setEmbeddingPollTime(String(persisted.embedding_poll_time));
-    setValidationError(null);
   };
 
   const adjustWorker = (
@@ -201,7 +196,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
     const base = isNaN(parsed) ? 1 : parsed;
     const next = Math.max(1, Math.min(50, base + delta));
     setter(String(next));
-    setValidationError(null);
   };
 
   const adjustPollTime = (
@@ -213,7 +207,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
     const base = isNaN(parsed) ? 5 : parsed;
     const next = Math.max(1, Math.min(1800, Math.round((base + delta) * 10) / 10));
     setter(String(next));
-    setValidationError(null);
   };
 
   const pollPresets = [2, 5, 10, 30, 60];
@@ -259,14 +252,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
           )}
         </div>
       </div>
-
-      {/* Validation Alert */}
-      {validationError && (
-        <div className="mx-5 mt-4 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 font-mono flex items-center gap-2 animate-in fade-in">
-          <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-400" />
-          <span>{validationError}</span>
-        </div>
-      )}
 
       <div className="p-5 space-y-5">
         {/* SECTION 1: Worker Pools (Concurrency: 1 - 50) */}
@@ -320,7 +305,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
                     value={embeddingWorkers}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => {
                       setEmbeddingWorkers(e.target.value);
-                      setValidationError(null);
                     }}
                     className="w-10 text-center font-mono font-bold text-xs bg-transparent text-white focus:outline-none"
                   />
@@ -373,7 +357,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
                     value={llmWorkers}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => {
                       setLlmWorkers(e.target.value);
-                      setValidationError(null);
                     }}
                     className="w-10 text-center font-mono font-bold text-xs bg-transparent text-white focus:outline-none"
                   />
@@ -426,7 +409,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
                     value={screenshotExtractionWorkers}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => {
                       setScreenshotExtractionWorkers(e.target.value);
-                      setValidationError(null);
                     }}
                     className="w-10 text-center font-mono font-bold text-xs bg-transparent text-white focus:outline-none"
                   />
@@ -479,7 +461,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
                     value={screenshotSummarizationWorkers}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => {
                       setScreenshotSummarizationWorkers(e.target.value);
-                      setValidationError(null);
                     }}
                     className="w-10 text-center font-mono font-bold text-xs bg-transparent text-white focus:outline-none"
                   />
@@ -550,7 +531,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
                       value={screenshotExtractionPollTime}
                       onChange={(e: ChangeEvent<HTMLInputElement>) => {
                         setScreenshotExtractionPollTime(e.target.value);
-                        setValidationError(null);
                       }}
                       className="w-14 text-center font-mono font-bold text-xs bg-transparent text-white focus:outline-none"
                     />
@@ -574,7 +554,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
                       type="button"
                       onClick={() => {
                         setScreenshotExtractionPollTime(String(p));
-                        setValidationError(null);
                       }}
                       className={cn(
                         "px-1.5 py-0.5 rounded text-[9px] font-mono cursor-pointer transition-colors border",
@@ -627,7 +606,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
                       value={screenshotSummarizationPollTime}
                       onChange={(e: ChangeEvent<HTMLInputElement>) => {
                         setScreenshotSummarizationPollTime(e.target.value);
-                        setValidationError(null);
                       }}
                       className="w-14 text-center font-mono font-bold text-xs bg-transparent text-white focus:outline-none"
                     />
@@ -651,7 +629,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
                       type="button"
                       onClick={() => {
                         setScreenshotSummarizationPollTime(String(p));
-                        setValidationError(null);
                       }}
                       className={cn(
                         "px-1.5 py-0.5 rounded text-[9px] font-mono cursor-pointer transition-colors border",
@@ -704,7 +681,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
                       value={embeddingPollTime}
                       onChange={(e: ChangeEvent<HTMLInputElement>) => {
                         setEmbeddingPollTime(e.target.value);
-                        setValidationError(null);
                       }}
                       className="w-14 text-center font-mono font-bold text-xs bg-transparent text-white focus:outline-none"
                     />
@@ -728,7 +704,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
                       type="button"
                       onClick={() => {
                         setEmbeddingPollTime(String(p));
-                        setValidationError(null);
                       }}
                       className={cn(
                         "px-1.5 py-0.5 rounded text-[9px] font-mono cursor-pointer transition-colors border",

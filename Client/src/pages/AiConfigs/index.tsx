@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, type FC } from "react";
+import { useEffect, useRef, useMemo, type FC } from "react";
 import {
   Routes,
   Route,
@@ -9,9 +9,6 @@ import {
 } from "react-router-dom";
 import {
   Loader2,
-  AlertCircle,
-  CheckCircle2,
-  X,
   Cpu,
   Sparkles,
   RefreshCw,
@@ -32,9 +29,10 @@ import { AddApiKeyCard } from "./components/AddApiKeyCard";
 import { ApiKeyList } from "./components/ApiKeyList";
 import { ProviderPriorityCard } from "./components/ProviderPriorityCard";
 import { EngineWorkersCard } from "./components/EngineWorkersCard";
-import { getProviderMeta, type FeedbackNotification } from "./types";
+import { getProviderMeta } from "./types";
 import type { AIConfig, EngineWorkersUpdateRequest } from "@/services";
 import { cn } from "@/lib/utils";
+import { toast } from "@/components";
 
 interface ProviderViewProps {
   providers: string[];
@@ -171,14 +169,25 @@ export const AiConfigsPage: FC = () => {
   const updateMutation = useUpdateAIConfigMutation();
   const updatePrioritiesMutation = useUpdateAIPrioritiesMutation();
   const updateEngineMutation = useUpdateEngineWorkersMutation();
-
-  const [feedback, setFeedback] = useState<FeedbackNotification | null>(null);
-  const [dismissedQueryError, setDismissedQueryError] = useState(false);
-  const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastErrorRef = useRef<string | null>(null);
 
   const pathSegments = location.pathname.split("/").filter(Boolean);
   const currentSubRoute = (pathSegments[1] || "").toLowerCase();
   const isEngineTab = currentSubRoute === "engine-workers" || currentSubRoute === "";
+
+  const queryError = providersError || prioritiesError || engineError;
+  const queryErrorMessage = queryError
+    ? (queryError as any)?.response?.data?.detail?.message ||
+      (queryError as Error)?.message ||
+      "Could not connect to Vault to fetch AI configurations."
+    : null;
+
+  useEffect(() => {
+    if (queryErrorMessage && queryErrorMessage !== lastErrorRef.current) {
+      lastErrorRef.current = queryErrorMessage;
+      toast.error(queryErrorMessage, { title: "Vault Synchronization Error" });
+    }
+  }, [queryErrorMessage]);
 
   const orderedProviders = useMemo(() => {
     if (!providers || providers.length === 0) return [];
@@ -217,35 +226,18 @@ export const AiConfigsPage: FC = () => {
   const showFeedback = (
     type: "success" | "error" | "info",
     message: string,
-    durationMs = 4000
+    durationMs = 5000
   ) => {
-    if (feedbackTimeoutRef.current) {
-      clearTimeout(feedbackTimeoutRef.current);
+    if (type === "success") {
+      toast.success(message, { duration: durationMs, title: "AI Configurations" });
+    } else if (type === "error") {
+      toast.error(message, { duration: durationMs, title: "Configuration Error" });
+    } else {
+      toast.info(message, { duration: durationMs, title: "Vault Status" });
     }
-    setFeedback({ type, message });
-    feedbackTimeoutRef.current = setTimeout(() => {
-      setFeedback(null);
-    }, durationMs);
-  };
-
-  useEffect(() => {
-    return () => {
-      if (feedbackTimeoutRef.current) {
-        clearTimeout(feedbackTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  const handleDismissBanner = () => {
-    if (feedbackTimeoutRef.current) {
-      clearTimeout(feedbackTimeoutRef.current);
-    }
-    setFeedback(null);
-    setDismissedQueryError(true);
   };
 
   const handleRefresh = async () => {
-    setDismissedQueryError(false);
     await Promise.all([
       refetchProviders(),
       refetchPriorities(),
@@ -482,46 +474,6 @@ export const AiConfigsPage: FC = () => {
         className="flex-1 overflow-y-auto px-6 py-6"
       >
         <div className="max-w-7xl mx-auto space-y-6">
-          {(feedback || (!dismissedQueryError && (providersError || prioritiesError || engineError))) && (
-            <div
-              id="ai-config-feedback-banner"
-              className={`flex items-start justify-between gap-3 p-4 rounded-xl border backdrop-blur-md transition-all animate-in fade-in duration-200 ${
-                (feedback?.type || "error") === "success"
-                  ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
-                  : (feedback?.type || "error") === "error"
-                  ? "bg-rose-500/10 border-rose-500/20 text-rose-300"
-                  : "bg-cyan-500/10 border-cyan-500/20 text-cyan-300"
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                {(feedback?.type || "error") === "success" ? (
-                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                ) : (feedback?.type || "error") === "error" ? (
-                  <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
-                ) : (
-                  <Sparkles className="w-5 h-5 text-cyan-400 shrink-0" />
-                )}
-                <span className="text-xs sm:text-sm font-medium">
-                  {feedback?.message ||
-                    (providersError as any)?.response?.data?.detail?.message ||
-                    (prioritiesError as any)?.response?.data?.detail?.message ||
-                    (engineError as any)?.response?.data?.detail?.message ||
-                    (providersError as Error)?.message ||
-                    (prioritiesError as Error)?.message ||
-                    (engineError as Error)?.message ||
-                    "Could not connect to Vault to fetch AI configurations."}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={handleDismissBanner}
-                className="p-1 rounded-lg hover:bg-white/[0.06] text-zinc-400 hover:text-white transition-all cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-
           {isLoading && orderedProviders.length === 0 && !engineWorkers ? (
             <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-16 flex flex-col items-center justify-center gap-3 backdrop-blur-xl">
               <Loader2 className="w-8 h-8 animate-spin text-cyan-400" />

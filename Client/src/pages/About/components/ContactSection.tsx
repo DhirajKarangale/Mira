@@ -1,5 +1,6 @@
 import { useState, type FC } from "react";
 import { Mail, MessageSquare, Lightbulb, Bug, Users, Copy, Check, ExternalLink } from "lucide-react";
+import { toast } from "@/components";
 
 export const ContactSection: FC = () => {
   const [copied, setCopied] = useState(false);
@@ -8,6 +9,7 @@ export const ContactSection: FC = () => {
   const handleCopy = () => {
     navigator.clipboard.writeText(email);
     setCopied(true);
+    toast.success(`Email copied to clipboard: ${email}`, { title: "Clipboard" });
     setTimeout(() => setCopied(false), 2000);
   };
 

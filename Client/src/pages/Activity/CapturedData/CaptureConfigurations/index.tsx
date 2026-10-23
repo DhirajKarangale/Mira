@@ -10,6 +10,7 @@ import { CaptureIntervalCard } from "./components/CaptureIntervalCard";
 import { StoredDateRangeCard } from "./components/StoredDateRangeCard";
 import { DeleteConfirmModal } from "./components/DeleteConfirmModal";
 import type { CaptureStatus, StoredDataRange } from "../types";
+import { toast } from "@/components";
 
 const INITIAL_DEMO_RANGE: StoredDataRange = {
   startDate: "2026-10-14",
@@ -55,15 +56,44 @@ export const CaptureConfigurationsPage: FC = () => {
     if (toggleCaptureMutation.isPending) return;
     const isCurrentlyStarted = status === "Started";
     const nextStatus: CaptureStatus = isCurrentlyStarted ? "Stopped" : "Started";
-    await toggleCaptureMutation.mutateAsync(nextStatus);
+    try {
+      await toggleCaptureMutation.mutateAsync(nextStatus);
+      toast.success(
+        nextStatus === "Started"
+          ? "Screen capture started successfully."
+          : "Screen capture paused/stopped.",
+        { title: "Operator Capture" }
+      );
+    } catch (err: unknown) {
+      const msg = (err as Error)?.message || "Failed to update capture status.";
+      toast.error(msg, { title: "Capture Error" });
+    }
   };
 
   const handleToggleAutoStart = async () => {
-    await updateConfigMutation.mutateAsync({ AUTO_START: !autoStart });
+    const nextVal = !autoStart;
+    try {
+      await updateConfigMutation.mutateAsync({ AUTO_START: nextVal });
+      toast.success(
+        nextVal ? "Vault Auto-Start enabled (10s delay)." : "Vault Auto-Start disabled.",
+        { title: "Vault Configuration" }
+      );
+    } catch (err: unknown) {
+      const msg = (err as Error)?.message || "Failed to update AUTO_START.";
+      toast.error(msg, { title: "Configuration Error" });
+    }
   };
 
   const handleUpdateInterval = async (newSecs: number) => {
-    await updateConfigMutation.mutateAsync({ CAPTURE_INTERVAL_SECS: newSecs });
+    try {
+      await updateConfigMutation.mutateAsync({ CAPTURE_INTERVAL_SECS: newSecs });
+      toast.success(`Capture interval updated to ${newSecs}s in Vault.`, {
+        title: "Vault Configuration",
+      });
+    } catch (err: unknown) {
+      const msg = (err as Error)?.message || "Failed to update interval.";
+      toast.error(msg, { title: "Interval Update Error" });
+    }
   };
 
   const handleExecuteDelete = () => {
@@ -74,6 +104,9 @@ export const CaptureConfigurationsPage: FC = () => {
       hasData: false,
     });
     setDeletedSuccess(true);
+    toast.success("All stored screen capture data has been permanently cleared.", {
+      title: "Data Cleared",
+    });
   };
 
   return (

@@ -23,6 +23,7 @@ import {
   type UserFormErrors,
 } from "../types";
 import { cn } from "@/lib/utils";
+import { toast } from "@/components";
 
 interface UserDetailsFormProps {
   initialData: UserDetails | null;
@@ -59,7 +60,6 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
   const [errors, setErrors] = useState<UserFormErrors>(() =>
     mode === "edit" ? validateUserForm(initialValues) : {}
   );
-  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const submitting = saveMutation.isPending;
   const formIsValid = isFormValid(errors, formData);
@@ -74,10 +74,6 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
       ...prev,
       [field]: fieldError,
     }));
-
-    if (submitError) {
-      setSubmitError(null);
-    }
   };
 
   const handleBlur = (field: UserFormField) => (_e: FocusEvent<HTMLInputElement>) => {
@@ -100,7 +96,6 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
       country: false,
     });
     setErrors(mode === "edit" ? validateUserForm(initialValues) : {});
-    setSubmitError(null);
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -119,11 +114,11 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
     setErrors(currentErrors);
 
     if (Object.keys(currentErrors).length > 0) {
-      setSubmitError("Please correct the validation errors below before submitting.");
+      toast.warning("Please correct the validation errors in the form before submitting.", {
+        title: "Validation Incomplete",
+      });
       return;
     }
-
-    setSubmitError(null);
 
     try {
       const result = await saveMutation.mutateAsync({
@@ -138,7 +133,8 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
         err?.response?.data?.detail ||
         err?.message ||
         "Failed to save user details to Vault. Please try again.";
-      setSubmitError(typeof message === "string" ? message : JSON.stringify(message));
+      const msgStr = typeof message === "string" ? message : JSON.stringify(message);
+      toast.error(msgStr, { title: "Vault Transmission Error" });
     }
   };
 
@@ -184,19 +180,6 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
           )}
         </div>
       </div>
-
-      {submitError && (
-        <div
-          id="form-submit-error-banner"
-          className="flex items-start gap-3 p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-sm animate-in fade-in"
-        >
-          <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <p className="font-semibold text-rose-200">Validation or Transmission Error</p>
-            <p className="text-xs text-rose-300 mt-0.5">{submitError}</p>
-          </div>
-        </div>
-      )}
 
       <div className="space-y-4">
         <h3 className="text-xs font-mono uppercase tracking-wider text-zinc-500 flex items-center gap-2">

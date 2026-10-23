@@ -191,3 +191,40 @@ input[type="number"] {
   appearance: textfield !important;
 }
 
+/* ==========================================================================
+   Smooth Slide-in & Slide-out Keyframes for Bottom-Right Message Toast Overlay
+   ========================================================================== */
+@keyframes messageSlideInRight {
+  0% {
+    opacity: 0;
+    transform: translate3d(115%, 0, 0) scale(0.94);
+  }
+  65% {
+    opacity: 1;
+    transform: translate3d(-6px, 0, 0) scale(1.01);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes messageSlideOutRight {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(120%, 0, 0) scale(0.92);
+  }
+}
+
+.animate-message-slide-in {
+  animation: messageSlideInRight 0.42s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-message-slide-out {
+  animation: messageSlideOutRight 0.36s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+

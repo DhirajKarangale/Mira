@@ -1,5 +1,6 @@
 import type { FC } from "react";
 import { MessageSquare, Plus, Search, Sparkles, MessageCircle } from "lucide-react";
+import { toast } from "@/components";
 
 export const ChatsPage: FC = () => {
   return (
@@ -38,6 +39,7 @@ export const ChatsPage: FC = () => {
           <button
             type="button"
             id="btn-new-chat"
+            onClick={() => toast.info("New chat dialogue session initiated.", { title: "Chats Hub" })}
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white shadow-lg shadow-blue-500/25 transition-all duration-200 active:scale-95 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
@@ -46,6 +48,7 @@ export const ChatsPage: FC = () => {
           <button
             type="button"
             id="btn-search-chats"
+            onClick={() => toast.info("Search index is syncing with local chat store.", { title: "Search Threads" })}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-300 hover:text-white border border-white/[0.08] transition-all duration-200 active:scale-95 cursor-pointer"
           >
             <Search className="w-4 h-4 text-zinc-400" />

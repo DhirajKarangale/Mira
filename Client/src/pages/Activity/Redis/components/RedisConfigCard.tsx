@@ -4,8 +4,6 @@ import {
   Server,
   Save,
   RotateCcw,
-  CheckCircle2,
-  AlertCircle,
   Loader2,
   Eye,
   EyeOff,
@@ -17,6 +15,7 @@ import { useRedisConfigQuery, useUpdateRedisConfigMutation } from "../queries";
 import type { RedisConfig } from "../types";
 import { useRefreshAnimation } from "@/hooks/useRefreshAnimation";
 import { cn } from "@/lib/utils";
+import { toast } from "@/components";
 
 const DEFAULT_CONFIG: RedisConfig = {
   REDIS_HOST: "localhost",
@@ -40,10 +39,6 @@ export const RedisConfigCard: FC = () => {
   const [portInput, setPortInput] = useState<string>("6379");
   const [dbInput, setDbInput] = useState<string>("0");
   const [showPassword, setShowPassword] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<{
-    type: "success" | "error";
-    text: string;
-  } | null>(null);
 
   useEffect(() => {
     if (config) {
@@ -142,7 +137,6 @@ export const RedisConfigCard: FC = () => {
 
   const handleSave = async () => {
     if (!hasChanges || saving) return;
-    setStatusMessage(null);
 
     const validPort = Math.min(65535, Math.max(1, Number(draft.REDIS_PORT) || 6379));
     const validDb = Math.min(15, Math.max(0, Number(draft.REDIS_DB) || 0));
@@ -163,20 +157,13 @@ export const RedisConfigCard: FC = () => {
       setDraft(updated);
       setPortInput(String(updated.REDIS_PORT ?? 6379));
       setDbInput(String(updated.REDIS_DB ?? 0));
-      setStatusMessage({
-        type: "success",
-        text: "Redis configurations saved to Vault successfully.",
+      toast.success("Redis configurations saved to Vault successfully.", {
+        title: "Redis Configuration",
       });
-
-      setTimeout(() => {
-        setStatusMessage((current) => (current?.type === "success" ? null : current));
-      }, 4000);
     } catch (err: any) {
       console.error("Failed to save Redis config:", err);
-      setStatusMessage({
-        type: "error",
-        text: err?.response?.data?.detail?.message || "Failed to update configurations in Vault.",
-      });
+      const msg = err?.response?.data?.detail?.message || "Failed to update configurations in Vault.";
+      toast.error(msg, { title: "Redis Save Error" });
     }
   };
 
@@ -184,34 +171,10 @@ export const RedisConfigCard: FC = () => {
     setDraft(config);
     setPortInput(String(config.REDIS_PORT ?? 6379));
     setDbInput(String(config.REDIS_DB ?? 0));
-    setStatusMessage(null);
   };
 
   return (
     <div className="w-full space-y-6">
-      {statusMessage && (
-        <div
-          className={cn(
-            "flex items-center gap-3 p-4 rounded-xl border text-sm animate-in fade-in slide-in-from-top-1 duration-200",
-            statusMessage.type === "success"
-              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.1)]"
-              : "bg-red-500/10 border-red-500/30 text-red-300 shadow-[0_0_15px_rgba(239,68,68,0.1)]"
-          )}
-        >
-          {statusMessage.type === "success" ? (
-            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-          ) : (
-            <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
-          )}
-          <span className="flex-1 font-medium">{statusMessage.text}</span>
-          <button
-            onClick={() => setStatusMessage(null)}
-            className="text-xs opacity-75 hover:opacity-100 hover:underline cursor-pointer"
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
 
       {isLoading ? (
         <div className="flex flex-col items-center justify-center p-16 rounded-2xl border border-white/[0.08] bg-zinc-900/40 backdrop-blur-sm">

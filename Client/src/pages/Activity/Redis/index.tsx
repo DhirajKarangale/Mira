@@ -1,11 +1,11 @@
-import { type FC } from "react";
+import { useEffect, useRef, type FC } from "react";
 import { useLocation, useNavigate, Routes, Route, Navigate } from "react-router-dom";
-import { Database, Sliders, Layers, RefreshCw, AlertCircle } from "lucide-react";
+import { Database, Sliders, Layers } from "lucide-react";
 import { ConsumerGroupsCard } from "./components/ConsumerGroupsCard";
 import { RedisConfigCard } from "./components/RedisConfigCard";
 import { useConsumerGroupsQuery } from "./queries";
-import { useRefreshAnimation } from "@/hooks/useRefreshAnimation";
 import { cn } from "@/lib/utils";
+import { toast } from "@/components";
 
 export const RedisPage: FC = () => {
   const location = useLocation();
@@ -21,17 +21,20 @@ export const RedisPage: FC = () => {
     refetch,
   } = useConsumerGroupsQuery();
 
-  const { isRefreshing: isRetrying, handleRefresh: handleRetry } = useRefreshAnimation(
-    () => refetch(),
-    { minDurationMs: 650 }
-  );
-  const isRetryBusy = isFetching || isRetrying;
-
   const errorMessage = error
     ? (error as any)?.response?.data?.detail?.message ||
     error.message ||
     "Failed to connect to Message Broker. Ensure the service and Redis are running."
     : null;
+
+  const lastErrorRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (errorMessage && errorMessage !== lastErrorRef.current) {
+      lastErrorRef.current = errorMessage;
+      toast.error(errorMessage, { title: "Message Broker" });
+    }
+  }, [errorMessage]);
 
   return (
     <div
@@ -93,31 +96,6 @@ export const RedisPage: FC = () => {
 
       <div className="flex-1 overflow-y-auto px-6 py-6">
         <div className="max-w-7xl mx-auto">
-          {errorMessage && (
-            <div className="flex items-center justify-between p-4 mb-5 rounded-xl border border-red-500/30 bg-red-500/10 text-red-300 text-sm">
-              <div className="flex items-center gap-3">
-                <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
-                <span>{errorMessage}</span>
-              </div>
-              <button
-                type="button"
-                id="btn-retry-redis-connection"
-                onClick={handleRetry}
-                disabled={isRetryBusy}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors outline-none",
-                  isRetryBusy
-                    ? "bg-red-500/10 text-red-400/60 border border-red-500/20 cursor-not-allowed opacity-60"
-                    : "bg-red-500/20 hover:bg-red-500/30 text-red-200 cursor-pointer"
-                )}
-                title={isRetryBusy ? "Retrying connection..." : "Retry connection"}
-              >
-                <RefreshCw className={cn("w-3.5 h-3.5", isRetryBusy && "animate-spin")} />
-                <span>{isRetryBusy ? "Retrying..." : "Retry"}</span>
-              </button>
-            </div>
-          )}
-
           <Routes>
             <Route
               path="/"

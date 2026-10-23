@@ -5,7 +5,6 @@ import {
   Save,
   RotateCcw,
   CheckCircle2,
-  AlertCircle,
   Loader2,
   Minus,
   Plus,
@@ -14,6 +13,7 @@ import {
   CalendarDays,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toast } from "@/components";
 
 interface CaptureIntervalCardProps {
   intervalSecs: number;
@@ -49,7 +49,6 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
   const [inputVal, setInputVal] = useState<string>(String(intervalSecs || 10));
   const [saving, setSaving] = useState<boolean>(false);
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -66,7 +65,6 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
     const clamped = Math.min(MAX_INTERVAL_SECS, Math.max(MIN_INTERVAL_SECS, secs));
     setDraft(clamped);
     setInputVal(String(clamped));
-    setErrorMessage(null);
   };
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -75,7 +73,6 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
     if (raw === "") {
       setInputVal(String(MIN_INTERVAL_SECS));
       setDraft(MIN_INTERVAL_SECS);
-      setErrorMessage(null);
       requestAnimationFrame(() => {
         inputRef.current?.select();
       });
@@ -86,7 +83,6 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
     if (isNaN(val) || val < MIN_INTERVAL_SECS) {
       setInputVal(String(MIN_INTERVAL_SECS));
       setDraft(MIN_INTERVAL_SECS);
-      setErrorMessage(null);
       requestAnimationFrame(() => {
         inputRef.current?.select();
       });
@@ -96,13 +92,11 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
     if (val > MAX_INTERVAL_SECS) {
       setInputVal(String(MAX_INTERVAL_SECS));
       setDraft(MAX_INTERVAL_SECS);
-      setErrorMessage(null);
       return;
     }
 
     setInputVal(String(val));
     setDraft(val);
-    setErrorMessage(null);
   };
 
   const handleInputBlur = () => {
@@ -141,7 +135,6 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
     const next = Math.min(MAX_INTERVAL_SECS, Math.max(MIN_INTERVAL_SECS, draft + delta));
     setDraft(next);
     setInputVal(String(next));
-    setErrorMessage(null);
   };
 
   const handleReset = () => {
@@ -151,29 +144,28 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
     );
     setDraft(fallback);
     setInputVal(String(fallback));
-    setErrorMessage(null);
     setSaveSuccess(false);
   };
 
   const handleSave = async () => {
     if (draft < MIN_INTERVAL_SECS || draft > MAX_INTERVAL_SECS) {
-      setErrorMessage(
-        `Capture interval must be between ${MIN_INTERVAL_SECS} and ${MAX_INTERVAL_SECS} seconds (up to 1 hour).`
+      toast.warning(
+        `Capture interval must be between ${MIN_INTERVAL_SECS} and ${MAX_INTERVAL_SECS} seconds (up to 1 hour).`,
+        { title: "Invalid Interval" }
       );
       return;
     }
     setSaving(true);
-    setErrorMessage(null);
     try {
       await onUpdateInterval(draft);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err: any) {
       console.error("Failed to update capture interval:", err);
-      setErrorMessage(
+      const msg =
         err?.response?.data?.detail?.message ||
-          "Failed to update CAPTURE_INTERVAL_SECS in Vault."
-      );
+        "Failed to update CAPTURE_INTERVAL_SECS in Vault.";
+      toast.error(msg, { title: "Interval Update Error" });
     } finally {
       setSaving(false);
     }
@@ -399,13 +391,6 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
             Active: {intervalSecs}s | Draft: {draft}s
           </span>
         </div>
-
-        {errorMessage && (
-          <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
-            <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-            <span>{errorMessage}</span>
-          </div>
-        )}
 
         <div className="flex items-center justify-end gap-3 pt-2">
           <button
