@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import time
 from typing import Any, Dict, List, Optional, Union
@@ -12,7 +12,7 @@ from vault_logger import log
 
 def to_unix_timestamp(ts: Any) -> Union[int, float]:
     if ts is None:
-        return int(time.time())
+        return int(datetime.now(timezone.utc).timestamp())
     if isinstance(ts, (int, float)):
         return ts
     if isinstance(ts, str):
@@ -31,16 +31,19 @@ def to_unix_timestamp(ts: Any) -> Union[int, float]:
             "%d-%m-%Y %H:%M:%S",
         ):
             try:
-                dt = datetime.strptime(ts.strip(), fmt)
-                return int(dt.timestamp())
+                dt = datetime.strptime(s, fmt)
+                # Convert system local time to UTC timestamp
+                return int(dt.astimezone().timestamp())
             except ValueError:
                 pass
         try:
-            dt = datetime.fromisoformat(ts.strip())
+            dt = datetime.fromisoformat(s)
+            if dt.tzinfo is None:
+                dt = dt.astimezone()
             return int(dt.timestamp())
         except Exception:
             pass
-    return int(time.time())
+    return int(datetime.now(timezone.utc).timestamp())
 
 async def ensure_consumer_group(stream_name: str, group_name: str) -> None:
     client = get_redis_client()
