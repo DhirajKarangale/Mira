@@ -78,7 +78,6 @@ def clean_ocr_text(text: str) -> str:
 
     t = text.strip()
 
-    # Domain specific dictionary corrections
     t = re.sub(r"\b(?:WiRYA|IVIIRA|oMIRA|MIRAGGETENTS|MIRA\s+LIEN)\s*(?:\||\/)?\s*(?:\(?Gian[!\)]?|\(?CELENTs?\)?)?\b", "MIRA CLIENT", t, flags=re.IGNORECASE)
     t = re.sub(r"\bRecs\b", "Redis", t)
     t = re.sub(r"\b4p\s+natty\b", "Activity", t, flags=re.IGNORECASE)
@@ -94,7 +93,6 @@ def clean_ocr_text(text: str) -> str:
     t = re.sub(r"\bCONSUMERSGROUPZOCGRETLEXT@\s*SUMMARIZATION\b", "CONSUMER_GROUP_OCR_TEXT_SUMMARIZATION", t, flags=re.IGNORECASE)
     t = re.sub(r"\biKeysPocp¥sunmanszation\b", "mira:stream:ocr_summarization", t, flags=re.IGNORECASE)
 
-    # Strip unprintable characters while preserving spacing and common punctuation
     t = "".join(c for c in t if c.isprintable() or c in ("\n", "\t", " "))
 
     return " ".join(t.split())
@@ -109,25 +107,21 @@ def classify_token_irrelevant(
     x, y, w, h = bbox
     t_clean = text.strip()
 
-    # 1. Taskbar zone at bottom of screen
     if y >= max(0, img_h - 48) or (y / max(img_h, 1)) >= 0.955:
         return "taskbar"
 
-    # 2. Browser window controls and tab strip
     if is_browser:
         if y < 38 or (y / max(img_h, 1)) < 0.038:
             return "browser_tab"
         if (y / max(img_h, 1)) < 0.085 and (x / max(img_w, 1)) > 0.80:
             return "browser_extension_chrome"
 
-    # 3. Small vector icon glyph noise (buttons with icons parsed as random chars)
     if w <= 32 and h <= 32:
         if not any(c.isalnum() for c in t_clean):
             return "symbol_noise"
         if len(t_clean) <= 2 and not t_clean.isdigit():
             return "symbol_noise"
 
-    # 4. Known OCR symbol noise strings
     if t_clean in ("©", "€", "€&", "+ x", "OW x", "~", "|", "ti}", "A™", "Ay", "im)", "xX", "wy)", "(oe)", "i)", "IE", "tit", "oMIRA", "sie", "(Feat)", "aS)", "f(D"):
         return "symbol_noise"
 
@@ -143,36 +137,27 @@ def classify_token_irrelevant(
     if re.match(r"^[_\W]+$", t_clean):
         return "symbol_noise"
 
-    # 5. Technical screen resolution/dimension tokens (e.g., "1920x1080", "Screen: 1920x1080")
     if re.match(r"^(?:Screen:?\s*)?\d{3,4}\s*[xX*×]\s*\d{3,4}$", t_clean, re.I):
         return "screen_resolution_metadata"
 
     return None
 
 def preprocess_image_for_ocr(img: np.ndarray) -> Tuple[np.ndarray, float]:
-    """
-    Tier 3 Computer Vision Preprocessing:
-    1. Automatic dark mode detection: If background is dark (mean < 125), inverts with cv2.bitwise_not.
-    2. 2x bilinear/cubic font upscaling: Sharpens anti-aliased subpixels.
-    3. CLAHE contrast equalization: Balances light text on dark backgrounds.
-    Returns (preprocessed_image, scale_factor).
-    """
+
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
     mean_val = float(np.mean(gray))
 
-    # Dark mode inversion: Tesseract requires dark text on light background
     if mean_val < 125.0:
         gray = cv2.bitwise_not(gray)
 
     h, w = gray.shape[:2]
-    # Scale up for desktop ClearType fonts (11-14px -> 22-28px)
+
     scale_factor = 2.0 if (w < 2500 and h < 1500) else 1.0
     if scale_factor > 1.0:
         scaled = cv2.resize(gray, (int(w * scale_factor), int(h * scale_factor)), interpolation=cv2.INTER_CUBIC)
     else:
         scaled = gray
 
-    # Adaptive histogram equalization
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     contrasted = clahe.apply(scaled)
 
@@ -251,7 +236,6 @@ def extract_ocr_tokens(image_path: Union[str, Path, np.ndarray]) -> Tuple[List[D
     img = _read_image(image_path)
     orig_h, orig_w = img.shape[:2]
 
-    # Preprocess with dark-mode inversion and 2x upscale
     prep_img, scale = preprocess_image_for_ocr(img)
 
     try:
@@ -279,7 +263,6 @@ def extract_ocr_tokens(image_path: Union[str, Path, np.ndarray]) -> Tuple[List[D
         if 0 <= conf < 12.0:
             continue
 
-        # Map bounding box back to original coordinate space
         left = int(int(data["left"][i]) / scale)
         top = int(int(data["top"][i]) / scale)
         width = int(int(data["width"][i]) / scale)
@@ -327,10 +310,7 @@ def assign_stable_region_id(
     return candidate
 
 def reconstruct_markdown_tables(lines: List[Dict[str, Any]]) -> Tuple[List[str], List[Dict[str, Any]]]:
-    """
-    Detects lines that have aligned multi-column tokens and groups them into Markdown tables.
-    Returns (tables_markdown_list, remaining_unconsumed_lines).
-    """
+
     table_headers_keywords = (
         "CONSUMER GROUP", "STREAM NAME", "ACTIVE MESSAGES", "PENDING MESSAGES", 
         "LAST DELIVERED", "ACTIONS", "CONSUMER_GROUP"
@@ -344,12 +324,11 @@ def reconstruct_markdown_tables(lines: List[Dict[str, Any]]) -> Tuple[List[str],
             continue
 
         text_upper = line.get("text", "").upper()
-        # Must match at least 2 distinct table keywords
+
         matched_keywords = sum(1 for kw in table_headers_keywords if kw in text_upper)
         if matched_keywords < 2:
             continue
 
-        # Ignore prose sentences
         if any(w in text_upper for w in ("REAL-TIME", "TELEMETRY", "ACROSS", "ENTRIES", "AWAITING", "COUNT", "VAULT", "ROUTER", "MESSAGE BROKER")):
             continue
 
@@ -377,7 +356,7 @@ def reconstruct_markdown_tables(lines: List[Dict[str, Any]]) -> Tuple[List[str],
 
         if row_candidates:
             consumed_indices.add(i)
-            # Consume all lines located within the vertical span of this table to avoid cell/button leakage
+
             min_y = min(r["bbox"][1] for r in [line] + row_candidates) - 10
             max_y = max(r["bbox"][1] + r["bbox"][3] for r in [line] + row_candidates) + 40
             for k, other_line in enumerate(lines):
@@ -589,7 +568,7 @@ def group_text_into_ui_regions(
 def strip_icon_artifacts(s: str) -> str:
     if not s:
         return ""
-    # Repeatedly strip leading/trailing glyph & icon noise patterns (e.g. "(s) ", "(6) ", "ee) ", "aS) ", "(im) ", "f(D ", "aay]! ")
+
     prev = None
     while prev != s:
         prev = s
@@ -606,18 +585,7 @@ def synthesize_markdown_from_regions(
     window_title: str = "",
     dimensions: Optional[Dict[str, int]] = None,
 ) -> str:
-    """
-    Tier 4: Semantic Markdown Synthesizer.
-    Converts extracted UI regions into highly structured, LLM-readable Markdown:
-    - Application & Window headers
-    - Navigation & breadcrumb items
-    - Sidebar menu options
-    - Page Title / Subtitle Overview
-    - Reconstructed data tables (with full vertical line consumption)
-    - Key metrics & stats overview
-    - Interactive controls & buttons
-    - Cleaned substantive main content
-    """
+
     if not ui_regions:
         return ""
 
@@ -632,7 +600,6 @@ def synthesize_markdown_from_regions(
     url_locations: List[str] = []
     consumed_indices = set()
 
-    # Pass 1: Navigation, Sidebar, Page Title/Overview
     for i, reg in enumerate(ui_regions):
         bx, by, bw, bh = reg.get("bbox", [0, 0, 0, 0])
         txt = reg.get("corrected_text", "").strip() or reg.get("text", "").strip()
@@ -643,17 +610,14 @@ def synthesize_markdown_from_regions(
         norm_x = bx / float(w_img)
         norm_y = by / float(h_img)
 
-        # Filter browser top-right chrome/extension icons
         if norm_y < 0.085 and norm_x > 0.80:
             consumed_indices.add(i)
             continue
 
-        # Filter technical screen resolution / dimension strings
         if re.search(r"^(?:Screen|Display|Resolution)?\s*:?\s*\d{3,4}\s*[xX*×]\s*\d{3,4}$", txt.strip(), re.I):
             consumed_indices.add(i)
             continue
 
-        # Enhanced URL extraction with local address normalization (ignore internal ephemeral sockets > 10000)
         url_match = re.search(
             r"((?:https?://[^\s\)\`]+|(?:127\.0\.0\.1|localhost):(?:80|443|3000|5000|5173|8000|8080|900[0-9])(?:/[^\s\)\`]*)?|(?:127\.0\.0\.1|localhost)/(?:activity|api)[^\s\)\`]*|wronrsuny[^\s\)\`]*))",
             txt,
@@ -665,7 +629,7 @@ def synthesize_markdown_from_regions(
             if not clean_url.startswith(("http://", "https://", "127.0.0.1", "localhost")):
                 if "9004" in clean_url:
                     clean_url = "127.0.0.1:9004" + clean_url[clean_url.find("9004") + 4:]
-            # Discard any raw internal socket with high ephemeral port (>10000) or trailing dots
+
             clean_url = clean_url.rstrip("./")
             if not re.search(r":\d{5}", clean_url) and len(clean_url) > 7:
                 if clean_url not in url_locations:
@@ -678,24 +642,22 @@ def synthesize_markdown_from_regions(
             consumed_indices.add(i)
             continue
 
-        # Header zone
         if norm_y < 0.12 or reg.get("type") == "header":
             if c_item not in nav_items and c_item not in ("Bl", "Lb", "CoE", "Gens", "Gets", "Ges"):
                 nav_items.append(c_item)
             consumed_indices.add(i)
-        # Sidebar zone: Left rail below top bar (excluding timestamps, pagination, and pure numbers/code line numbers)
+
         elif (norm_x < 0.18 or reg.get("type") == "sidebar") and not re.search(r"\b(?:\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)|Showing\s+\d+-\d+)\b", txt, re.I):
             clean_token = c_item.strip()
             if not clean_token.isdigit() and not re.match(r"^\d{1,5}$", clean_token):
                 if c_item not in sidebar_items:
                     sidebar_items.append(c_item)
             consumed_indices.add(i)
-        # Page Title / Subtitle Overview band (below header, above stats cards)
+
         elif 0.12 <= norm_y <= 0.25 and norm_x >= 0.18:
             overview_items.append(c_item)
             consumed_indices.add(i)
 
-    # Pass 2: Metrics & Stats Cards
     card_cols: Dict[int, List[Dict[str, Any]]] = {1: [], 2: [], 3: []}
     has_stat_card_keywords = False
     for i, reg in enumerate(ui_regions):
@@ -749,7 +711,6 @@ def synthesize_markdown_from_regions(
                     card_str += f" ({desc})"
                 metric_cards.append(card_str)
 
-    # Pass 3: Action Controls & Buttons
     for i, reg in enumerate(ui_regions):
         if i in consumed_indices:
             continue
@@ -772,11 +733,9 @@ def synthesize_markdown_from_regions(
             action_buttons.append(f"[Search: {c_item}]")
             consumed_indices.add(i)
 
-    # Pass 4: Tables
     unconsumed_regions = [reg for i, reg in enumerate(ui_regions) if i not in consumed_indices]
     tables_md, remaining_after_tables = reconstruct_markdown_tables(unconsumed_regions)
 
-    # Pass 5: Remaining Content
     main_content: List[str] = []
     last_item = None
     for reg in remaining_after_tables:
@@ -788,14 +747,13 @@ def synthesize_markdown_from_regions(
             continue
         if c_text.lower() in ("key", "key:", "actions", "streams", "casts", "format"):
             continue
-        # Filter technical screen resolution / dimension strings
+
         if re.search(r"^(?:Screen|Display|Resolution)?\s*:?\s*\d{3,4}\s*[xX*×]\s*\d{3,4}$", c_text.strip(), re.I):
             continue
         if c_text != last_item:
             main_content.append(c_text)
             last_item = c_text
 
-    # Check substantive content
     has_substantive = bool(nav_items or sidebar_items or overview_items or metric_cards or tables_md or action_buttons or main_content)
     if not has_substantive:
         return ""
@@ -875,7 +833,6 @@ def extract_structured_ocr(
     raw_full_text = " ".join(t["text"] for t in tokens)
     is_mira_self = is_mira_self_page(raw_full_text, app_name)
 
-    # Synthesize clean Markdown layout
     markdown_text = synthesize_markdown_from_regions(
         ui_regions=ui_regions,
         app_name=app_name,

@@ -7,8 +7,8 @@ The **Operator** is the desktop screen capture and system automation service wri
 ## 1. Purpose
 
 - **Silent Screen Capture**: Captures desktop frames at regular intervals defined by `CAPTURE_INTERVAL_SECS`.
-- **Active App Detection & Filtering**: Detects foreground processes and enforces application capture permissions.
-- **System App Discovery**: Scans installed applications and active window processes, synchronizing state with Vault.
+- **Active App Filtering**: Detects foreground processes and enforces application capture permissions.
+- **System App Discovery**: Scans installed applications and synchronizes state with Vault.
 - **Message Broker Queuing**: Dispatches capture jobs asynchronously to the Message Broker `ocr_extraction` stream.
 - **Screenshot Cleanup**: Deletes local screenshot files on demand via API.
 
@@ -34,7 +34,9 @@ The **Operator** is the desktop screen capture and system automation service wri
   {
     "service": "Operator",
     "status": "started",
+    "is_running": true,
     "is_capturing": true,
+    "auto_start": false,
     "capture_interval_secs": 10
   }
   ```
@@ -89,7 +91,7 @@ The **Operator** is the desktop screen capture and system automation service wri
 
 ---
 
-### 2.7 Get Apps & Permissions
+### 2.7 Get Applications & Permissions
 `GET /apps`
 
 - **Response (`200 OK`):**
@@ -128,7 +130,10 @@ The **Operator** is the desktop screen capture and system automation service wri
 ## 3. Installation & Startup
 
 ### Install Dependencies
-Requires Rust 1.78+ with `x86_64-pc-windows-gnu` or `x86_64-pc-windows-msvc`. Dependencies are managed in `Cargo.toml`.
+Dependencies are managed in `Cargo.toml`. Requires Rust toolchain:
+```bash
+cargo build
+```
 
 ### Start Server
 Run from the `Operator/` directory:

@@ -1,31 +1,31 @@
 # Client
 
-The **Client** is the desktop graphical user interface and control center for MIRA, built with **Tauri v2**, **React 19**, **Vite**, and **TailwindCSS**.
+The **Client** is the desktop user interface and control center for MIRA, built with **Tauri v2**, **React 19**, **Vite**, and **TailwindCSS**.
 
 ---
 
 ## 1. Purpose
 
-- **Desktop Control Center**: Native desktop interface with custom window controls and responsive views.
+- **Desktop Interface**: Native desktop application with custom window controls and responsive views.
 - **Activity Monitoring**: Live screen capture controls, application permission toggles, encrypted log inspection, and Redis stream telemetry.
-- **Configuration Management**: Manages user details, AI provider API credentials, priority fallback order, and worker concurrency limits.
-- **Centralized Service Layer**: Interacts with backend microservices via unified service modules in `src/services/`.
+- **Configuration Management**: Manages user details, AI provider API credentials, priority order, and worker concurrency limits.
+- **Centralized Service Layer**: Interacts with backend services through unified client services in `src/services/`.
 
 ---
 
 ## 2. Integrated Backend Services
 
-The Client communicates directly with MIRA backend services using centralized HTTP clients (`src/services/`):
+The Client communicates directly with MIRA microservices via centralized HTTP clients (`src/services/`):
 
 ### 2.1 Vault Service (`http://127.0.0.1:9001`)
 - `GET /health`: Service health check.
 - `GET /user`, `POST /user`: User profile retrieval and persistence.
 - `GET /config/{key}`, `POST /config/{module}`: Module configurations (`logs`, `message_broker`, `operator`).
-- `GET /logs`: Encrypted log queries with module, search, and date filters.
+- `GET /logs`: Encrypted audit log queries with filtering and pagination.
 - `POST /retention/cleanup`: Trigger log retention purge.
-- `GET /os`: Host operating system detection.
+- `GET /os`: Operating system detection.
 - `GET /ai/providers`: Registered LLM providers.
-- `GET /ai/configs`, `GET /ai/configs/{provider}`, `POST /ai/configs/{provider}`, `DELETE /ai/configs/{provider}`: AI provider credentials.
+- `GET /ai/configs`, `GET /ai/configs/{provider}`, `POST /ai/configs/{provider}`, `DELETE /ai/configs/{provider}`: AI credentials.
 - `GET /ai/priorities`, `PUT /ai/priorities`: AI provider execution order.
 - `GET /engine/workers`, `PUT /engine/workers`: Background worker concurrency limits.
 
@@ -34,7 +34,7 @@ The Client communicates directly with MIRA backend services using centralized HT
 - `GET /redis/consumer-groups`: Stream and consumer group telemetry.
 - `DELETE /redis/consumer-groups/{group_name}`: Delete a consumer group.
 - `POST /redis/clean`: Clear pending messages.
-- `POST /redis/format`: Flush Redis database and reinitialize consumer groups.
+- `POST /redis/format`: Flush Redis database and reinitialize groups.
 - `POST /jobs`, `GET /jobs`, `DELETE /jobs`: Queue and manage stream jobs.
 
 ### 2.3 Operator Service (`http://127.0.0.1:9003`)
@@ -61,6 +61,7 @@ The Client communicates directly with MIRA backend services using centralized HT
 ## 3. Installation & Startup
 
 ### Install Dependencies
+Dependencies are managed in `package.json`:
 ```bash
 npm install
 ```

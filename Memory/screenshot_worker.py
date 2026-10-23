@@ -168,7 +168,7 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
             return True
 
         if not prev_record:
-            # Check most recent image across any app to catch transient focus switches (e.g., Desktop vs IDE)
+
             recent = get_recent_images(limit=1)
             if recent:
                 candidate = recent[0]
@@ -205,8 +205,6 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
         if active_win_title:
             window_metadata["window_title"] = active_win_title
 
-        # Step 1: ALWAYS run High-Resolution Structured Screen OCR to extract visual content
-        # (slides in PowerPoint, document text in Word, code, spreadsheets, tables, web pages)
         extraction_source = "ocr"
         try:
             ocr_result = extract_structured_ocr(pixel_values, app_name=app_name, window_title=active_win_title)
@@ -218,18 +216,17 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
             full_text = ""
             ui_regions = []
 
-        # Step 2: For native desktop apps, enrich with UIA accessibility info (focus, window title, action controls)
         if not is_browser:
             try:
                 uia_res = extract_native_uia(app_name=app_name)
                 if uia_res.get("success"):
                     uia_text = uia_res.get("extracted_text", "")
-                    # Extract active focused element in full if available
+
                     focus_idx = uia_text.find("## Active Focus:")
                     if focus_idx != -1 and "## Active Focus:" not in full_text:
                         focus_part = uia_text[focus_idx:].strip()
                         full_text = full_text.rstrip() + "\n\n" + focus_part + "\n"
-                    # If OCR was completely empty (e.g., pure dark UI), fallback to UIA elements
+
                     if len(full_text.strip()) < 30 and len(uia_text.strip()) >= 30:
                         full_text = uia_text
                         extraction_source = "uia"
@@ -267,9 +264,7 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
         )
 
         if prev_record:
-            # Check rapid frame throttling for same window / app:
-            # If previous frame was published < 4.0s ago on the same window and text similarity is >= 70% (e.g. scrolling),
-            # throttle to avoid duplicate spam.
+
             prev_ts = prev_record.get("timestamp")
             if prev_ts:
                 try:

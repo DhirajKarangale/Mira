@@ -116,7 +116,6 @@ def calculate_image_difference(
     if len(curr.shape) == 3:
         curr = cv2.cvtColor(curr, cv2.COLOR_BGR2GRAY)
 
-    # Standardize comparison resolution to 640x360 for speed and noise filtering
     target_size = (640, 360)
     if (prev.shape[1], prev.shape[0]) != target_size:
         prev = cv2.resize(prev, target_size, interpolation=cv2.INTER_AREA)
@@ -125,7 +124,6 @@ def calculate_image_difference(
 
     diff = cv2.absdiff(prev, curr)
 
-    # Suppress font anti-aliasing and subpixel dithering noise (< 12 levels)
     sig_diff = np.where(diff > 12, diff, 0)
     diff_score = float(np.mean(sig_diff)) / 255.0
     return diff_score
@@ -139,7 +137,6 @@ def compare_app_images(
     if not prev_record:
         return None, None
 
-    # Check record age - if older than max_lookback_seconds, treat as a fresh session
     prev_ts = prev_record.get("timestamp")
     if prev_ts is not None:
         try:

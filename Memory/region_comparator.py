@@ -215,20 +215,15 @@ def is_somewhat_similar(
     diff_score: Optional[float] = None,
     similarity_threshold: float = 0.85,
 ) -> Tuple[bool, str]:
-    """
-    Evaluates whether the current frame is 'somewhat similar' to the baseline frame
-    and can be ignored to avoid spamming summarization with micro-updates.
-    """
+
     if not region_changes.get("has_changes", False):
         if diff_score is not None and diff_score >= 0.015:
             return False, f"Visual pixel change detected (diff={diff_score:.4f})"
         return True, "No region changes detected"
 
-    # If the visual difference across the entire screen is noticeable (>= 5%), layout/content shifted
     if diff_score is not None and diff_score >= 0.05:
         return False, f"Major visual layout shift (diff={diff_score:.3f})"
 
-    # Check for modals, alerts, warnings, or prompts that require attention
     for r in region_changes.get("added_regions", []):
         rtype = str(r.get("type", "")).lower()
         rtext = str(r.get("text", "")).lower()
@@ -243,7 +238,6 @@ def is_somewhat_similar(
     overall_sim = float(region_changes.get("overall_text_similarity", 1.0))
     meaningful_count = int(region_changes.get("total_meaningful_changed", 0))
 
-    # If overall text similarity is high (>= similarity_threshold, default 85% identical)
     if overall_sim >= similarity_threshold:
         if meaningful_count >= 3:
             return False, f"{meaningful_count} distinct regions modified despite high text similarity"
@@ -251,7 +245,6 @@ def is_somewhat_similar(
             return False, f"Substantial visual change (diff={diff_score:.4f}) despite text similarity"
         return True, f"Text similarity {overall_sim:.1%} >= {similarity_threshold:.1%} (ignoring minor updates)"
 
-    # If there are zero meaningful changes and visual difference is minor (< 2.5%)
     if meaningful_count == 0 and (diff_score is None or diff_score < 0.025):
         return True, f"Zero meaningful content changes (overall_sim={overall_sim:.1%})"
 

@@ -14,10 +14,7 @@ from vault_logger import log
 _DESKTOP_ATTACHED = False
 
 def attach_to_active_desktop() -> bool:
-    """
-    Attaches the current process/thread to the active interactive desktop (WinSta0\\default).
-    This ensures UIA and Win32 functions work properly even when run from background processes.
-    """
+
     global _DESKTOP_ATTACHED
     if os.name != "nt":
         return False
@@ -42,11 +39,8 @@ def attach_to_active_desktop() -> bool:
         log(f"attach_to_active_desktop failed: {e}")
         return False
 
-
 def get_application_window_title(app_name: str = "") -> str:
-    """
-    Returns the true active window title of the target application (e.g. 'MIRA - Microsoft Edge').
-    """
+
     attach_to_active_desktop()
     target = app_name.lower().replace(".exe", "").strip()
 
@@ -89,15 +83,11 @@ def get_application_window_title(app_name: str = "") -> str:
     res = matches[0] if matches else app_name
     return res.replace("\u200b", "").replace("\ufeff", "").strip()
 
-
 def find_target_window(app_name: str = "") -> Optional[int]:
-    """
-    Finds the HWND for the target application or the current foreground window.
-    """
+
     attach_to_active_desktop()
     target = app_name.lower().replace(".exe", "").strip()
 
-    # Try foreground window first
     try:
         fg_hwnd = win32gui.GetForegroundWindow()
         if fg_hwnd and win32gui.IsWindowVisible(fg_hwnd):
@@ -111,7 +101,6 @@ def find_target_window(app_name: str = "") -> Optional[int]:
     except Exception:
         pass
 
-    # Search among all visible windows by process name
     matched_hwnds: List[Tuple[int, str]] = []
 
     def enum_cb(hwnd: int, extra: Any) -> bool:
@@ -141,11 +130,8 @@ def find_target_window(app_name: str = "") -> Optional[int]:
 
     return fg_hwnd if fg_hwnd else None
 
-
 def extract_uia_tree_from_hwnd(hwnd: int, max_elements: int = 120) -> List[Dict[str, Any]]:
-    """
-    Extracts UI Automation elements from a window handle.
-    """
+
     try:
         import uiautomation as auto
     except ImportError:
@@ -173,7 +159,6 @@ def extract_uia_tree_from_hwnd(hwnd: int, max_elements: int = 120) -> List[Dict[
             rect = ctrl.BoundingRectangle
             bbox = [rect.left, rect.top, rect.width(), rect.height()] if rect else [0, 0, 0, 0]
 
-            # Try to get value if available
             val = ""
             try:
                 val_pat = ctrl.GetValuePattern()
@@ -188,7 +173,6 @@ def extract_uia_tree_from_hwnd(hwnd: int, max_elements: int = 120) -> List[Dict[
             except Exception:
                 pass
 
-            # Filter meaningless empty elements
             meaningful_text = name or val
             if meaningful_text and len(meaningful_text) > 1 and bbox[2] > 0 and bbox[3] > 0:
                 elements.append({
@@ -208,15 +192,12 @@ def extract_uia_tree_from_hwnd(hwnd: int, max_elements: int = 120) -> List[Dict[
     walk(control)
     return elements
 
-
 def format_uia_to_markdown(
     app_name: str,
     window_title: str,
     elements: List[Dict[str, Any]],
 ) -> str:
-    """
-    Synthesizes clean structured Markdown from extracted UIA controls.
-    """
+
     lines = [
         f"Window: \"{window_title}\"",
         "",
@@ -264,7 +245,7 @@ def format_uia_to_markdown(
 
     if content_items:
         lines.append("## Main Content:")
-        # Deduplicate consecutive identical lines
+
         last = None
         for c in content_items:
             if c != last:
@@ -284,13 +265,8 @@ def format_uia_to_markdown(
 
     return "\n".join(lines).strip()
 
-
 def extract_native_uia(app_name: str = "") -> Dict[str, Any]:
-    """
-    Primary Tier 1 extraction: pulls native UI Automation accessibility tree from the OS.
-    If >= 5 meaningful text elements are discovered, returns structured Markdown.
-    Otherwise returns success=False to trigger OCR fallback.
-    """
+
     attach_to_active_desktop()
     hwnd = find_target_window(app_name)
     if not hwnd:
@@ -307,7 +283,6 @@ def extract_native_uia(app_name: str = "") -> Dict[str, Any]:
 
     elements = extract_uia_tree_from_hwnd(hwnd)
 
-    # Threshold check: requires at least 5 meaningful elements
     if len(elements) < 5:
         return {
             "success": False,

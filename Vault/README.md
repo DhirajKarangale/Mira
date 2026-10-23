@@ -6,10 +6,9 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 ## 1. Purpose
 
-- **Credential & Secret Storage**: Encrypted credential storage using OS keyring and sodium secretbox.
 - **Encrypted Configurations**: Stores system configurations (`logs`, `message_broker`, `operator`, `user_details`, `ai_configs`, `engine_workers`) in an encrypted SQLite database.
-- **Audit Logging**: Collects encrypted audit logs with full-text search, pagination, and automated retention cleanup.
-- **App Permissions**: Synchronizes screen capture permissions for system applications with Operator.
+- **Audit Logging**: Collects encrypted audit logs with search, pagination, and automated retention cleanup.
+- **App Permissions**: Stores and manages per-application screenshot capture permissions.
 - **AI & Concurrency Management**: Manages LLM API keys, provider priorities, and worker concurrency limits.
 
 ---
@@ -44,12 +43,12 @@ The **Vault** is the centralized security, secret management, encrypted configur
 `GET /logs`
 
 - **Query Parameters:**
-  - `module_name` (string, optional, default: `"all"`): Filter by module.
+  - `module_name` (string, optional, default: `"all"`): Module filter.
   - `search` (string, optional): Text search query.
-  - `start_date` / `end_date` (string, optional): Filter by date range (`YYYY-MM-DD`).
+  - `start_date` / `end_date` (string, optional): Date filter (`YYYY-MM-DD`).
   - `limit` (integer, optional, default: `50`): Max logs.
   - `page` (integer, optional): Page number.
-  - `envelope` (boolean, optional, default: `false`): Include pagination metadata.
+  - `envelope` (boolean, optional, default: `false`): Include pagination wrapper.
 - **Response (`200 OK`):**
   ```json
   {
@@ -76,7 +75,7 @@ The **Vault** is the centralized security, secret management, encrypted configur
 `GET /config/{key}`
 
 - **Path Parameters:**
-  - `key` (string, required): Configuration key (e.g. `logs`, `message_broker`, `operator`).
+  - `key` (string, required): Configuration key (e.g. `logs`, `message_broker`, `operator`, `user_details`).
 - **Response (`200 OK`):**
   ```json
   { "CAPTURE_INTERVAL_SECS": 10, "AUTO_START": false }
@@ -84,12 +83,38 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 ---
 
-### 2.6 Update Module Configurations
+### 2.6 Update Logs Configuration
 `POST /config/logs`
+
+- **Request Body (JSON):**
+  ```json
+  { "retention_period": 30, "show_logs_operator": true }
+  ```
+- **Response (`200 OK`):**
+  ```json
+  { "retention_period": 30, "show_logs_operator": true }
+  ```
+
+---
+
+### 2.7 Update Message Broker Configuration
 `POST /config/message_broker`
+
+- **Request Body (JSON):**
+  ```json
+  { "REDIS_HOST": "localhost", "REDIS_PORT": 6379 }
+  ```
+- **Response (`200 OK`):**
+  ```json
+  { "REDIS_HOST": "localhost", "REDIS_PORT": 6379 }
+  ```
+
+---
+
+### 2.8 Update Operator Configuration
 `POST /config/operator`
 
-- **Request Body (`POST /config/operator`):**
+- **Request Body (JSON):**
   ```json
   { "CAPTURE_INTERVAL_SECS": 15, "AUTO_START": true }
   ```
@@ -100,22 +125,31 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 ---
 
-### 2.7 User Details
+### 2.9 Get User Details
 `GET /user`
+
+- **Response (`200 OK`):**
+  ```json
+  { "user_name": "User", "email": "user@example.com", "exists": true }
+  ```
+
+---
+
+### 2.10 Save User Details
 `POST /user`
 
-- **Save User Details (`POST /user`):**
+- **Request Body (JSON):**
   ```json
-  { "user_name": "Alice", "email": "alice@example.com" }
+  { "user_name": "User", "email": "user@example.com" }
   ```
 - **Response (`200 OK`):**
   ```json
-  { "user_name": "Alice", "email": "alice@example.com", "exists": true }
+  { "user_name": "User", "email": "user@example.com", "exists": true, "message": "User details saved successfully" }
   ```
 
 ---
 
-### 2.8 OS Detection
+### 2.11 OS Detection
 `GET /os`
 
 - **Response (`200 OK`):**
@@ -123,11 +157,20 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 ---
 
-### 2.9 Service Discovery Registry
+### 2.12 Get Services Registry
 `GET /services`
+
+- **Response (`200 OK`):**
+  ```json
+  { "vault": "http://127.0.0.1:9001", "operator": "http://127.0.0.1:9003" }
+  ```
+
+---
+
+### 2.13 Update Services Registry
 `POST /services`
 
-- **Update Services (`POST /services`):**
+- **Request Body (JSON):**
   ```json
   { "vault": "http://127.0.0.1:9001", "operator": "http://127.0.0.1:9003" }
   ```
@@ -138,30 +181,90 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 ---
 
-### 2.10 App Capture Permissions
+### 2.14 Get Stored App Permissions
 `GET /apps`
+
+- **Response (`200 OK`):**
+  ```json
+  [
+    { "app_name": "Visual Studio Code", "app_id": "code.exe", "allowed_to_capture": true }
+  ]
+  ```
+
+---
+
+### 2.15 Refresh App Permissions Batch
 `POST /apps/refresh`
+
+- **Request Body (JSON):**
+  ```json
+  [
+    { "app_name": "Visual Studio Code", "app_id": "code.exe" }
+  ]
+  ```
+- **Response (`200 OK`):**
+  ```json
+  [
+    { "app_name": "Visual Studio Code", "app_id": "code.exe", "allowed_to_capture": true }
+  ]
+  ```
+
+---
+
+### 2.16 Update App Permission
 `POST /apps/permission`
 
-- **Update Permission (`POST /apps/permission`):**
+- **Request Body (JSON):**
   ```json
   { "app_id": "chrome.exe", "allowed_to_capture": false }
   ```
 - **Response (`200 OK`):**
   ```json
-  { "status": "success", "app": { "app_id": "chrome.exe", "allowed_to_capture": false } }
+  { "status": "success", "message": "App permission updated successfully", "app": { "app_id": "chrome.exe", "allowed_to_capture": false } }
   ```
 
 ---
 
-### 2.11 AI Provider Configurations
+### 2.17 Get AI Providers
 `GET /ai/providers`
-`GET /ai/configs`
-`GET /ai/configs/{provider}`
-`POST /ai/configs/{provider}`
-`DELETE /ai/configs/{provider}`
 
-- **Update Provider Config (`POST /ai/configs/Groq`):**
+- **Response (`200 OK`):**
+  ```json
+  ["Groq", "Gemini", "OpenAI"]
+  ```
+
+---
+
+### 2.18 Get All AI Configurations
+`GET /ai/configs`
+
+- **Response (`200 OK`):**
+  ```json
+  [
+    { "llm_provider": "Groq", "total_keys": 1, "current_key": 0, "keys": ["gsk_..."] }
+  ]
+  ```
+
+---
+
+### 2.19 Get AI Configuration by Provider
+`GET /ai/configs/{provider}`
+
+- **Path Parameters:**
+  - `provider` (string, required): Provider name.
+- **Response (`200 OK`):**
+  ```json
+  { "llm_provider": "Groq", "total_keys": 1, "current_key": 0, "keys": ["gsk_..."] }
+  ```
+
+---
+
+### 2.20 Update AI Configuration
+`POST /ai/configs/{provider}`
+
+- **Path Parameters:**
+  - `provider` (string, required): Provider name.
+- **Request Body (JSON):**
   ```json
   { "keys": ["gsk_..."], "current_key": 0 }
   ```
@@ -172,11 +275,32 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 ---
 
-### 2.12 AI Priorities
+### 2.21 Delete AI Configuration
+`DELETE /ai/configs/{provider}`
+
+- **Path Parameters:**
+  - `provider` (string, required): Provider name.
+- **Response (`200 OK`):**
+  ```json
+  { "status": "success", "message": "Deleted AI configuration for Groq" }
+  ```
+
+---
+
+### 2.22 Get AI Priorities
 `GET /ai/priorities`
+
+- **Response (`200 OK`):**
+  ```json
+  ["Groq", "Gemini", "OpenAI"]
+  ```
+
+---
+
+### 2.23 Update AI Priorities
 `PUT /ai/priorities`
 
-- **Update Priorities (`PUT /ai/priorities`):**
+- **Request Body (JSON):**
   ```json
   ["Groq", "Gemini", "OpenAI"]
   ```
@@ -187,17 +311,42 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 ---
 
-### 2.13 Engine Workers Concurrency
+### 2.24 Get Engine Workers Concurrency
 `GET /engine/workers`
+
+- **Response (`200 OK`):**
+  ```json
+  {
+    "embedding_workers": 1,
+    "llm_workers": 1,
+    "screenshot_extraction_workers": 1,
+    "screenshot_summarization_workers": 1,
+    "screenshot_extraction_poll_time": 5.0,
+    "screenshot_summarization_poll_time": 5.0,
+    "embedding_poll_time": 5.0
+  }
+  ```
+
+---
+
+### 2.25 Update Engine Workers Concurrency
 `PUT /engine/workers`
 
-- **Update Concurrency (`PUT /engine/workers`):**
+- **Request Body (JSON):**
   ```json
   { "screenshot_extraction_workers": 2, "screenshot_extraction_poll_time": 3.0 }
   ```
 - **Response (`200 OK`):**
   ```json
-  { "screenshot_extraction_workers": 2, "screenshot_extraction_poll_time": 3.0 }
+  {
+    "embedding_workers": 1,
+    "llm_workers": 1,
+    "screenshot_extraction_workers": 2,
+    "screenshot_summarization_workers": 1,
+    "screenshot_extraction_poll_time": 3.0,
+    "screenshot_summarization_poll_time": 5.0,
+    "embedding_poll_time": 5.0
+  }
   ```
 
 ---

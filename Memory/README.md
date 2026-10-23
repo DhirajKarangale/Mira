@@ -7,10 +7,9 @@ The **Memory** module is the screenshot extraction, OCR text processing, visual 
 ## 1. Purpose
 
 - **Parallel Screenshot Extraction**: Ingests screenshot jobs from the `ocr_extraction` Redis stream in parallel.
-- **Image Comparison**: Compares consecutive frames of the same application using OpenCV `cv2.absdiff()` to filter unchanged frames.
-- **OCR Text Extraction**: Extracts text with bounding boxes using Tesseract OCR, grouping text into logical UI regions.
-- **Context Enrichment**: Enriches UI regions and changes via Vision-Language Models (VLM) when deeper context is needed.
-- **Activity Tracking**: Aggregates screen observations into application activities and publishes context to `ocr_summarization`.
+- **Image Comparison**: Compares consecutive frames using OpenCV difference comparisons to filter unchanged frames.
+- **OCR Text Extraction**: Extracts structured text using Tesseract OCR and Windows UI Automation.
+- **Context Enrichment**: Publishes extracted screen context to the `ocr_summarization` stream for downstream AI workflows.
 
 ---
 
@@ -34,13 +33,8 @@ The **Memory** module is the screenshot extraction, OCR text processing, visual 
   {
     "service": "Memory",
     "status": "online",
-    "workers": {
-      "running": true,
-      "num_workers": 1,
-      "poll_interval": 5.0,
-      "jobs_processed": 0
-    },
-    "image_diff_threshold": 0.05
+    "workers": { "running": true, "num_workers": 1, "poll_interval": 5.0, "jobs_processed": 0 },
+    "image_diff_threshold": 0.008
   }
   ```
 
@@ -77,6 +71,7 @@ The **Memory** module is the screenshot extraction, OCR text processing, visual 
   ```json
   {
     "status": "success",
+    "image_path": "E:/Screenshots/frame_1.png",
     "shape": [1080, 1920, 3],
     "grayscale_shape": [1080, 1920],
     "extracted_text": "Extracted text content..."
