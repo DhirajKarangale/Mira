@@ -218,7 +218,7 @@ def format_uia_to_markdown(
     Synthesizes clean structured Markdown from extracted UIA controls.
     """
     lines = [
-        f"# Application: {app_name} | Window: \"{window_title}\"",
+        f"Window: \"{window_title}\"",
         "",
     ]
 

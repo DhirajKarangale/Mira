@@ -115,6 +115,8 @@ def classify_token_irrelevant(
     if is_browser:
         if y < 38 or (y / max(img_h, 1)) < 0.038:
             return "browser_tab"
+        if (y / max(img_h, 1)) < 0.085 and (x / max(img_w, 1)) > 0.80:
+            return "browser_extension_chrome"
 
     # 3. Small vector icon glyph noise (buttons with icons parsed as random chars)
     if w <= 32 and h <= 32:
@@ -265,6 +267,9 @@ def extract_ocr_tokens(image_path: Union[str, Path, np.ndarray]) -> Tuple[List[D
         except (ValueError, TypeError):
             conf = -1.0
 
+        if 0 <= conf < 20.0 and len(raw_token) <= 4:
+            continue
+
         if 0 <= conf < 12.0:
             continue
 
@@ -366,6 +371,13 @@ def reconstruct_markdown_tables(lines: List[Dict[str, Any]]) -> Tuple[List[str],
 
         if row_candidates:
             consumed_indices.add(i)
+            # Consume all lines located within the vertical span of this table to avoid cell/button leakage
+            min_y = min(r["bbox"][1] for r in [line] + row_candidates) - 10
+            max_y = max(r["bbox"][1] + r["bbox"][3] for r in [line] + row_candidates) + 40
+            for k, other_line in enumerate(lines):
+                if min_y <= other_line["bbox"][1] <= max_y:
+                    consumed_indices.add(k)
+
             cols = ["CONSUMER GROUP", "STREAM NAME", "ACTIVE MESSAGES", "PENDING MESSAGES", "LAST DELIVERED", "ACTIONS"]
             rows_md = ["| " + " | ".join(cols) + " |", "| " + " | ".join(["---"] * len(cols)) + " |"]
             added_keys = set()
@@ -454,10 +466,10 @@ def group_text_into_ui_regions(
         norm_y = ly / h_thresh
         norm_x = lx / w_thresh
 
-        if norm_y < 0.14:
+        if norm_y < 0.12:
             line_type = "header"
             max_cluster_height = 70
-        elif norm_x < 0.22 and lh > 60:
+        elif norm_x < 0.20:
             line_type = "sidebar"
             max_cluster_height = 800
         elif 0.20 <= norm_x <= 0.80 and 0.20 <= norm_y <= 0.70 and lw <= w_thresh * 0.6:
@@ -594,60 +606,177 @@ def synthesize_markdown_from_regions(
     - Application & Window headers
     - Navigation & breadcrumb items
     - Sidebar menu options
-    - Reconstructed data tables
+    - Page Title / Subtitle Overview
+    - Reconstructed data tables (with full vertical line consumption)
     - Key metrics & stats overview
     - Interactive controls & buttons
+    - Cleaned substantive main content
     """
-    dim_str = ""
-    if dimensions:
-        dim_str = f" | Screen: {dimensions.get('width', 1920)}x{dimensions.get('height', 1080)}"
+    if not ui_regions:
+        return ""
 
-    app_header = app_name or "Desktop Application"
-    win_header = window_title or app_header
-
-    lines: List[str] = [
-        f"# Application: {app_header} | Window: \"{win_header}\"{dim_str}",
-        "",
-    ]
+    w_img = (dimensions.get("width", 1920) if dimensions else 1920) or 1920
+    h_img = (dimensions.get("height", 1080) if dimensions else 1080) or 1080
 
     nav_items: List[str] = []
     sidebar_items: List[str] = []
+    overview_items: List[str] = []
     metric_cards: List[str] = []
     action_buttons: List[str] = []
-    content_lines_for_tables: List[Dict[str, Any]] = []
+    url_locations: List[str] = []
+    consumed_indices = set()
 
-    for reg in ui_regions:
-        rtype = reg.get("type", "content")
-        txt = reg.get("corrected_text", "").strip()
+    # Pass 1: Navigation, Sidebar, Page Title/Overview
+    for i, reg in enumerate(ui_regions):
+        bx, by, bw, bh = reg.get("bbox", [0, 0, 0, 0])
+        txt = reg.get("corrected_text", "").strip() or reg.get("text", "").strip()
         if not txt:
+            consumed_indices.add(i)
+            continue
+
+        norm_x = bx / float(w_img)
+        norm_y = by / float(h_img)
+
+        # Filter browser top-right chrome/extension icons
+        if norm_y < 0.085 and norm_x > 0.80:
+            consumed_indices.add(i)
             continue
 
         url_match = re.search(r"((?:https?://|127\.0\.0\.1|localhost)[^\s\)\`]+)", txt)
-        if rtype == "header":
-            if url_match:
-                clean_url = url_match.group(1).rstrip(",;)")
-                lines.append(f"> **URL / Location:** `{clean_url}`")
-                lines.append("")
-            else:
-                c_item = strip_icon_artifacts(txt)
-                if c_item and len(c_item) > 1 and not re.match(r"^[_\W]+$", c_item):
-                    nav_items.append(c_item)
-        elif rtype == "sidebar":
-            c_item = strip_icon_artifacts(txt)
-            if c_item and len(c_item) > 1 and not re.match(r"^[_\W]+$", c_item):
-                sidebar_items.append(c_item)
-        else:
-            c_item = strip_icon_artifacts(txt)
-            # Check for metric cards
-            if re.search(r"\b(ACTIVE MESSAGES|PENDING MESSAGES|CONSUMER GROUPS|Capture Rate|Daily Volume|Interval Vault|Presets)\b", txt, re.I):
-                if c_item and len(c_item) > 1:
-                    metric_cards.append(c_item)
-            # Check for action controls
-            if any(btn in txt for btn in ("Clean / Delete", "Clean All Pending", "Refresh", "Submit", "Save", "Cancel", "Confirm", "Auto Start")):
-                if c_item:
-                    action_buttons.append(c_item)
+        if url_match:
+            clean_url = url_match.group(1).rstrip(",;)")
+            if clean_url not in url_locations:
+                url_locations.append(clean_url)
+            consumed_indices.add(i)
+            continue
 
-            content_lines_for_tables.append(reg)
+        c_item = strip_icon_artifacts(txt)
+        if not c_item or len(c_item) <= 1:
+            consumed_indices.add(i)
+            continue
+
+        # Header zone
+        if norm_y < 0.12 or reg.get("type") == "header":
+            if c_item not in nav_items and c_item not in ("Bl", "Lb", "CoE", "Gens"):
+                nav_items.append(c_item)
+            consumed_indices.add(i)
+        # Sidebar zone: Left rail below top bar
+        elif norm_x < 0.18 or reg.get("type") == "sidebar":
+            if c_item not in sidebar_items:
+                sidebar_items.append(c_item)
+            consumed_indices.add(i)
+        # Page Title / Subtitle Overview band (below header, above stats cards)
+        elif 0.12 <= norm_y <= 0.25 and norm_x >= 0.18:
+            overview_items.append(c_item)
+            consumed_indices.add(i)
+
+    # Pass 2: Metrics & Stats Cards
+    card_cols: Dict[int, List[Dict[str, Any]]] = {1: [], 2: [], 3: []}
+    has_stat_card_keywords = False
+    for i, reg in enumerate(ui_regions):
+        if i in consumed_indices:
+            continue
+        bx, by, bw, bh = reg.get("bbox", [0, 0, 0, 0])
+        norm_x = bx / float(w_img)
+        norm_y = by / float(h_img)
+        txt = reg.get("corrected_text", "").strip() or reg.get("text", "").strip()
+
+        if 0.25 <= norm_y <= 0.42:
+            if any(k in txt.upper() for k in ("CONSUMER GROUPS", "ACTIVE MESSAGES", "PENDING MESSAGES", "CONFIGURED", "ACROSS", "AWAITING")):
+                has_stat_card_keywords = True
+            if norm_x < 0.35:
+                card_cols[1].append(reg)
+            elif norm_x < 0.65:
+                card_cols[2].append(reg)
+            else:
+                card_cols[3].append(reg)
+
+    if has_stat_card_keywords:
+        for c_idx in (1, 2, 3):
+            c_regs = card_cols[c_idx]
+            if not c_regs:
+                continue
+            for r in c_regs:
+                consumed_indices.add(ui_regions.index(r))
+            c_regs.sort(key=lambda r: r["bbox"][1])
+            title, val, desc = "", "", ""
+            for cr in c_regs:
+                ctxt = strip_icon_artifacts(cr.get("corrected_text") or cr.get("text", ""))
+                if not ctxt:
+                    continue
+                if any(k in ctxt.upper() for k in ("CONSUMER GROUPS", "ACTIVE MESSAGES", "PENDING MESSAGES")):
+                    title = ctxt
+                elif ctxt.isdigit() or (len(ctxt) <= 4 and re.match(r"^\d+", ctxt)):
+                    val = ctxt
+                elif any(k in ctxt.lower() for k in ("configured", "across", "awaiting", "redis", "stream")):
+                    desc = ctxt
+                elif not title:
+                    title = ctxt
+                elif not val:
+                    val = ctxt
+                else:
+                    desc = ctxt
+            if title:
+                card_str = f"**{title}**"
+                if val:
+                    card_str += f": {val}"
+                if desc:
+                    card_str += f" ({desc})"
+                metric_cards.append(card_str)
+
+    # Pass 3: Action Controls & Buttons
+    for i, reg in enumerate(ui_regions):
+        if i in consumed_indices:
+            continue
+        txt = reg.get("corrected_text", "").strip() or reg.get("text", "").strip()
+        c_item = strip_icon_artifacts(txt)
+        if not c_item:
+            continue
+
+        if any(btn in txt for btn in ("Clean / Delete", "Clean All Pending", "Refresh", "Submit", "Save", "Cancel", "Confirm", "Auto Start", "Format Redis")):
+            action_buttons.append(f"[Control: {c_item}]")
+            consumed_indices.add(i)
+        elif "search" in txt.lower() and len(txt) < 40:
+            action_buttons.append(f"[Search: {c_item}]")
+            consumed_indices.add(i)
+
+    # Pass 4: Tables
+    unconsumed_regions = [reg for i, reg in enumerate(ui_regions) if i not in consumed_indices]
+    tables_md, remaining_after_tables = reconstruct_markdown_tables(unconsumed_regions)
+
+    # Pass 5: Remaining Content
+    main_content: List[str] = []
+    last_item = None
+    for reg in remaining_after_tables:
+        txt = reg.get("corrected_text", "").strip() or reg.get("text", "").strip()
+        c_text = strip_icon_artifacts(txt)
+        if not c_text or len(c_text) <= 2:
+            continue
+        if re.match(r"^[\d\s\:\-\_\|\.]+$", c_text):
+            continue
+        if c_text.lower() in ("key", "key:", "actions", "streams", "casts", "format"):
+            continue
+        if c_text != last_item:
+            main_content.append(c_text)
+            last_item = c_text
+
+    # Check substantive content
+    has_substantive = bool(nav_items or sidebar_items or overview_items or metric_cards or tables_md or action_buttons or main_content)
+    if not has_substantive:
+        return ""
+
+    app_header = app_name or "Desktop Application"
+    win_header = window_title or app_header
+    dim_str = f" | Screen: {w_img}x{h_img}"
+
+    lines: List[str] = [
+        f"Window: \"{win_header}\"{dim_str}",
+        "",
+    ]
+    if url_locations:
+        for u in url_locations:
+            lines.append(f"> **URL / Location:** `{u}`")
+        lines.append("")
 
     if nav_items:
         lines.append("## Navigation & Top Bar:")
@@ -661,35 +790,33 @@ def synthesize_markdown_from_regions(
             lines.append(f"- {si}")
         lines.append("")
 
+    if overview_items:
+        lines.append("### Page Overview:")
+        lines.append("- " + " ".join(overview_items))
+        lines.append("")
+
     if metric_cards:
         lines.append("### Key Metrics & Overview:")
         for mc in metric_cards:
-            lines.append(f"- **{mc}**")
+            lines.append(f"- {mc}")
         lines.append("")
 
-    # Table reconstruction
-    tables_md, remaining_content = reconstruct_markdown_tables(content_lines_for_tables)
     if tables_md:
         lines.append("## Data Tables:")
-        for t_md in tables_md:
-            lines.append(t_md)
-            lines.append("")
-
-    if remaining_content:
-        lines.append("## Main Content:")
-        last_item = None
-        for rc in remaining_content:
-            text = rc.get("corrected_text", "").strip()
-            c_text = strip_icon_artifacts(text)
-            if c_text and len(c_text) > 1 and not re.match(r"^[_\W]+$", c_text) and c_text != last_item:
-                lines.append(f"- {c_text}")
-                last_item = c_text
+        for t in tables_md:
+            lines.append(t)
         lines.append("")
 
     if action_buttons:
         lines.append("## Action Controls & Buttons:")
         for ab in action_buttons:
-            lines.append(f"- [Control: {ab}]")
+            lines.append(f"- {ab}")
+        lines.append("")
+
+    if main_content:
+        lines.append("## Main Content:")
+        for mc in main_content:
+            lines.append(f"- {mc}")
         lines.append("")
 
     return "\n".join(lines).strip()

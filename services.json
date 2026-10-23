@@ -3,6 +3,6 @@
   "message_broker": "http://127.0.0.1:9002",
   "operator": "http://127.0.0.1:9003",
   "client": "http://127.0.0.1:9004",
-  "memory": "http://127.0.0.1:9006",
+  "memory": "http://127.0.0.1:9007",
   "engine": "http://127.0.0.1:9007"
 }

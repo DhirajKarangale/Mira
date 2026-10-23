@@ -18,7 +18,6 @@ from image_comparison import compare_app_images, store_image_data
 from region_comparator import compare_ui_regions, is_somewhat_similar
 from uia_extractor import extract_native_uia, get_application_window_title
 from vault_logger import log
-from vlm_service import analyze_regions_with_vlm, is_deeper_understanding_needed
 
 DEFAULT_IMAGE_DIFF_THRESHOLD: float = 0.008
 IMAGE_DIFF_THRESHOLD: float = float(os.getenv("IMAGE_DIFF_THRESHOLD", str(DEFAULT_IMAGE_DIFF_THRESHOLD)))
@@ -217,6 +216,11 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
                     log(f"[Worker-{worker_id}] Structured OCR fallback failed for '{image_path}': {e}")
                     full_text = ""
                     ui_regions = []
+        if not ui_regions or not full_text.strip():
+            log(f"[Worker-{worker_id}] No UI regions extracted for '{app_name}' (blank/transitional frame). Skipping summarization.")
+            call_operator_delete_screenshot(image_path)
+            remove_broker_job("ocr_extraction", job_id)
+            return True
 
         prev_metadata = prev_record.get("metadata", {}) if prev_record else {}
         prev_regions = prev_metadata.get("ui_regions", [])
@@ -240,28 +244,6 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
                 remove_broker_job("ocr_extraction", job_id)
                 return True
 
-        deeper_needed = is_deeper_understanding_needed(region_changes, ui_regions, diff_score)
-        if deeper_needed:
-            target_regions = region_changes.get("modified_regions", []) + region_changes.get("added_regions", [])
-            if not target_regions:
-                target_regions = ui_regions[:2]
-
-            log(f"[Worker-{worker_id}] Deeper understanding triggered for app '{app_name}'. Invoking VLM analysis...")
-            vlm_analysis = analyze_regions_with_vlm(
-                image=pixel_values,
-                changed_regions=target_regions,
-                window_metadata=window_metadata,
-            )
-            log(f"[Worker-{worker_id}] VLM analysis ({vlm_analysis.get('provider')}): {vlm_analysis.get('summary')}")
-        else:
-            vlm_analysis = {
-                "enriched": False,
-                "fallback": False,
-                "provider": "none",
-                "summary": region_changes.get("change_summary", "Standard extraction"),
-                "component_type": "standard",
-            }
-
         try:
             structured_metadata = {
                 "window_metadata": window_metadata,
@@ -269,7 +251,6 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
                 "ui_regions": ui_regions,
                 "extracted_text": full_text,
                 "changes": region_changes,
-                "vlm_analysis": vlm_analysis,
             }
             store_image_data(
                 app_name=app_name,
@@ -292,10 +273,6 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
             "os": os_name,
             "timestamp": timestamp,
             "extracted_text": full_text,
-            "extraction_source": extraction_source,
-            "ui_regions": ui_regions,
-            "changes": region_changes,
-            "vlm_analysis": vlm_analysis,
         }
 
         published = publish_broker_job(summarization_job)
