@@ -1,0 +1,63 @@
+{
+  "summarization": {
+    "temperature": 0.1,
+    "gemini": [
+      "gemini-2.5-flash",
+      "gemini-3.8-flash",
+      "gemini-2.5-flash-lite",
+      "gemini-1.5-flash"
+    ],
+    "groq": [
+      "llama-3.3-70b-versatile",
+      "qwen/qwen3.8-27b",
+      "openai/gpt-oss-120b",
+      "openai/gpt-oss-20b",
+      "llama-3.1-8b-instant"
+    ]
+  },
+  "chat": {
+    "temperature": 0.7,
+    "gemini": [
+      "gemini-2.5-flash",
+      "gemini-3.8-flash",
+      "gemini-2.5-flash-lite",
+      "gemini-1.5-flash"
+    ],
+    "groq": [
+      "llama-3.3-70b-versatile",
+      "qwen/qwen3.8-27b",
+      "openai/gpt-oss-120b",
+      "llama-3.1-8b-instant"
+    ]
+  },
+  "extraction": {
+    "temperature": 0.0,
+    "gemini": [
+      "gemini-2.5-flash",
+      "gemini-3.8-flash",
+      "gemini-2.5-flash-lite",
+      "gemini-1.5-flash"
+    ],
+    "groq": [
+      "llama-3.3-70b-versatile",
+      "qwen/qwen3.8-27b",
+      "openai/gpt-oss-120b",
+      "llama-3.1-8b-instant"
+    ]
+  },
+  "general": {
+    "temperature": 0.2,
+    "gemini": [
+      "gemini-2.5-flash",
+      "gemini-3.8-flash",
+      "gemini-2.5-flash-lite",
+      "gemini-1.5-flash"
+    ],
+    "groq": [
+      "llama-3.3-70b-versatile",
+      "qwen/qwen3.8-27b",
+      "openai/gpt-oss-120b",
+      "llama-3.1-8b-instant"
+    ]
+  }
+}
