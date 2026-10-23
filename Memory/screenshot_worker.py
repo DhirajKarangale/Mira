@@ -12,9 +12,11 @@ from data_extractor import (
     extract_pixels_and_grayscale,
     extract_structured_ocr,
     extract_text_from_image,
+    is_browser_application,
 )
 from image_comparison import compare_app_images, store_image_data
 from region_comparator import compare_ui_regions, is_somewhat_similar
+from uia_extractor import extract_native_uia, get_application_window_title
 from vault_logger import log
 from vlm_service import analyze_regions_with_vlm, is_deeper_understanding_needed
 
@@ -100,6 +102,21 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
     image_path = str(job.get("image_path") or "").strip()
     timestamp = job.get("timestamp")
 
+    if "job_data" in job:
+        inner = job["job_data"]
+        if isinstance(inner, str):
+            try:
+                import json
+                inner = json.loads(inner)
+            except Exception:
+                inner = {}
+        if isinstance(inner, dict):
+            job_id = job_id or str(inner.get("job_id") or "")
+            app_name = str(inner.get("app_name") or app_name).strip()
+            os_name = str(inner.get("os") or os_name).strip()
+            image_path = image_path or str(inner.get("image_path") or "").strip()
+            timestamp = timestamp or inner.get("timestamp")
+
     if not job_id or not image_path:
         log(f"[Worker-{worker_id}] Invalid job data (missing job_id or image_path): {job}")
         if job_id:
@@ -148,14 +165,58 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
         else:
             log(f"[Worker-{worker_id}] First frame or no prior comparison record for app '{app_name}'")
 
-        try:
-            ocr_result = extract_structured_ocr(pixel_values, app_name=app_name)
-            full_text = ocr_result.get("extracted_text") or ocr_result.get("corrected_text", "")
-            ui_regions = ocr_result.get("ui_regions", [])
-        except Exception as e:
-            log(f"[Worker-{worker_id}] Structured OCR failed for '{image_path}': {e}")
-            full_text = ""
-            ui_regions = []
+        is_browser = is_browser_application(app_name)
+        active_win_title = get_application_window_title(app_name)
+        if active_win_title:
+            window_metadata["window_title"] = active_win_title
+
+        if is_browser:
+            # Chromium/Edge render webpage HTML within an accelerated canvas opaque to standard UIA.
+            # Standard UIA on browsers returns only the bookmarks toolbar buttons and browser chrome.
+            # Therefore, web browsers MUST use high-resolution Preprocessed Screen OCR for webpage content.
+            extraction_source = "ocr"
+            try:
+                ocr_result = extract_structured_ocr(pixel_values, app_name=app_name, window_title=active_win_title)
+                full_text = ocr_result.get("extracted_text") or ocr_result.get("corrected_text", "")
+                ui_regions = ocr_result.get("ui_regions", [])
+                log(f"[Worker-{worker_id}] Browser OCR extraction used for '{app_name}' (Window: '{active_win_title}')")
+            except Exception as e:
+                log(f"[Worker-{worker_id}] Structured OCR failed for '{image_path}': {e}")
+                full_text = ""
+                ui_regions = []
+        else:
+            # Native desktop applications (Notepad, File Explorer, VS Code menus): UIA is 100% accurate
+            extraction_source = "ocr"
+            uia_res = extract_native_uia(app_name=app_name)
+            if uia_res.get("success"):
+                extraction_source = "uia"
+                full_text = uia_res.get("extracted_text", "")
+                window_title = uia_res.get("window_title", "") or active_win_title
+                window_metadata["window_title"] = window_title
+                ui_regions = [
+                    {
+                        "region_id": f"uia_{i}",
+                        "type": "header" if el["type"] in ("TabItemControl", "MenuItemControl") else ("sidebar" if (el["bbox"][0] / max(w_img, 1)) < 0.20 else "content"),
+                        "bbox": el["bbox"],
+                        "raw_text": el["name"] or el["value"],
+                        "corrected_text": el["name"] or el["value"],
+                        "text": el["name"] or el["value"],
+                        "confidence": 100.0,
+                        "is_filtered": False,
+                    }
+                    for i, el in enumerate(uia_res.get("elements", []))
+                ]
+                log(f"[Worker-{worker_id}] Native UIA extraction used for '{app_name}' ({uia_res.get('element_count', 0)} elements)")
+            else:
+                log(f"[Worker-{worker_id}] Native UIA returned < 5 elements for '{app_name}'. Falling back to Preprocessed OCR...")
+                try:
+                    ocr_result = extract_structured_ocr(pixel_values, app_name=app_name, window_title=active_win_title)
+                    full_text = ocr_result.get("extracted_text") or ocr_result.get("corrected_text", "")
+                    ui_regions = ocr_result.get("ui_regions", [])
+                except Exception as e:
+                    log(f"[Worker-{worker_id}] Structured OCR fallback failed for '{image_path}': {e}")
+                    full_text = ""
+                    ui_regions = []
 
         prev_metadata = prev_record.get("metadata", {}) if prev_record else {}
         prev_regions = prev_metadata.get("ui_regions", [])
@@ -204,6 +265,7 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
         try:
             structured_metadata = {
                 "window_metadata": window_metadata,
+                "extraction_source": extraction_source,
                 "ui_regions": ui_regions,
                 "extracted_text": full_text,
                 "changes": region_changes,
@@ -230,6 +292,7 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
             "os": os_name,
             "timestamp": timestamp,
             "extracted_text": full_text,
+            "extraction_source": extraction_source,
             "ui_regions": ui_regions,
             "changes": region_changes,
             "vlm_analysis": vlm_analysis,
@@ -238,7 +301,7 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
         published = publish_broker_job(summarization_job)
         if published:
             log(
-                f"[Worker-{worker_id}] Published structured job {new_job_id} to 'ocr_summarization' "
+                f"[Worker-{worker_id}] Published structured job {new_job_id} ({extraction_source}) to 'ocr_summarization' "
                 f"(extracted {len(full_text)} chars, {len(ui_regions)} UI regions from '{app_name}')"
             )
         else:

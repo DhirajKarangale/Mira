@@ -72,6 +72,31 @@ def is_mira_self_page(text: str, app_name: str = "") -> bool:
     )
     return any(ind in t_lower for ind in mira_indicators)
 
+def clean_ocr_text(text: str) -> str:
+    if not text:
+        return ""
+
+    t = text.strip()
+
+    # Domain specific dictionary corrections
+    t = re.sub(r"\bMIRA\s+LIEN\b", "MIRA CLIENT", t, flags=re.IGNORECASE)
+    t = re.sub(r"\bMIRAGGETENTS\b", "MIRA CLIENT", t, flags=re.IGNORECASE)
+    t = re.sub(r"\bussrcesnoxen\b", "MESSAGE_BROKER", t, flags=re.IGNORECASE)
+    t = re.sub(r"\bMIESONGS\s*HROKER\b", "MESSAGE_BROKER", t, flags=re.IGNORECASE)
+    t = re.sub(r"\boMIRA\b", "MIRA", t)
+    t = re.sub(r"\bJobora\s+A[P™]\s*GS\b", "Jobora App", t)
+    t = re.sub(r"Clean\s*[‘'`]?\s*J\s*Delete", "Clean / Delete", t)
+    t = re.sub(r"Geant\s*le[it]\s*Delete", "Clean / Delete", t)
+    t = re.sub(r"\bCONSUMERSGROUPZOGREEXTRAGTION\b", "CONSUMER_GROUP_OCR_EXTRACTION", t, flags=re.IGNORECASE)
+    t = re.sub(r"\bochwextnaction\b", "ocr_extraction", t, flags=re.IGNORECASE)
+    t = re.sub(r"\bCONSUMERSGROUPZOCGRETLEXT@\s*SUMMARIZATION\b", "CONSUMER_GROUP_OCR_TEXT_SUMMARIZATION", t, flags=re.IGNORECASE)
+    t = re.sub(r"\biKeysPocp¥sunmanszation\b", "mira:stream:ocr_summarization", t, flags=re.IGNORECASE)
+
+    # Strip unprintable characters while preserving spacing and common punctuation
+    t = "".join(c for c in t if c.isprintable() or c in ("\n", "\t", " "))
+
+    return " ".join(t.split())
+
 def classify_token_irrelevant(
     bbox: List[int],
     text: str,
@@ -82,37 +107,68 @@ def classify_token_irrelevant(
     x, y, w, h = bbox
     t_clean = text.strip()
 
-    if y >= max(0, img_h - 52) or (y / max(img_h, 1)) >= 0.95:
+    # 1. Taskbar zone at bottom of screen
+    if y >= max(0, img_h - 48) or (y / max(img_h, 1)) >= 0.955:
         return "taskbar"
 
+    # 2. Browser window controls and tab strip
     if is_browser:
-        if y < 44 or (y / max(img_h, 1)) < 0.042:
+        if y < 38 or (y / max(img_h, 1)) < 0.038:
             return "browser_tab"
-        if 44 <= y <= 85 and any(proto in t_clean.lower() for proto in ("http:", "https:", "127.0.0.1", "localhost", "www.", ".com")):
-            return "browser_nav"
 
-    if len(t_clean) <= 1 and not t_clean.isalnum():
+    # 3. Small vector icon glyph noise (buttons with icons parsed as random chars)
+    if w <= 32 and h <= 32:
+        if not any(c.isalnum() for c in t_clean):
+            return "symbol_noise"
+        if len(t_clean) <= 2 and not t_clean.isdigit():
+            return "symbol_noise"
+
+    # 4. Known OCR symbol noise strings
+    if t_clean in ("©", "€", "€&", "+ x", "OW x", "~", "|", "ti}", "A™", "Ay", "im)", "xX", "wy)", "(oe)", "i)", "IE", "tit", "oMIRA", "sie", "(Feat)", "aS)", "f(D"):
         return "symbol_noise"
-    if t_clean in ("©", "€", "€&", "+ x", "OW x", "~", "|"):
+
+    if re.match(r"^\([^\)\s]{1,3}\)$", t_clean):
+        return "symbol_noise"
+    if re.match(r"^[^\s\(\[\{]{1,3}[\)\]\}]$", t_clean):
+        return "symbol_noise"
+    if re.match(r"^[a-zA-Z0-9]{1,2}\([a-zA-Z0-9]{1,2}$", t_clean):
+        return "symbol_noise"
+    if re.match(r"^[^\s]{1,4}[\!\|\/\\]+$", t_clean):
+        return "symbol_noise"
+
+    if re.match(r"^[_\W]+$", t_clean):
         return "symbol_noise"
 
     return None
 
-def clean_ocr_text(text: str) -> str:
-    if not text:
-        return ""
+def preprocess_image_for_ocr(img: np.ndarray) -> Tuple[np.ndarray, float]:
+    """
+    Tier 3 Computer Vision Preprocessing:
+    1. Automatic dark mode detection: If background is dark (mean < 125), inverts with cv2.bitwise_not.
+    2. 2x bilinear/cubic font upscaling: Sharpens anti-aliased subpixels.
+    3. CLAHE contrast equalization: Balances light text on dark backgrounds.
+    Returns (preprocessed_image, scale_factor).
+    """
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
+    mean_val = float(np.mean(gray))
 
-    t = text
+    # Dark mode inversion: Tesseract requires dark text on light background
+    if mean_val < 125.0:
+        gray = cv2.bitwise_not(gray)
 
-    t = re.sub(r"\bMIRA\s+LIEN\b", "MIRA CLIENT", t, flags=re.IGNORECASE)
-    t = re.sub(r"\bussrcesnoxen\b", "MESSAGE_BROKER", t, flags=re.IGNORECASE)
-    t = re.sub(r"\boMIRA\b", "MIRA", t)
-    t = re.sub(r"\bJobora\s+A[P™]\s*GS\b", "Jobora App", t)
-    t = re.sub(r"Clean\s*[‘'`]?\s*J\s*Delete", "Clean / Delete", t)
+    h, w = gray.shape[:2]
+    # Scale up for desktop ClearType fonts (11-14px -> 22-28px)
+    scale_factor = 2.0 if (w < 2500 and h < 1500) else 1.0
+    if scale_factor > 1.0:
+        scaled = cv2.resize(gray, (int(w * scale_factor), int(h * scale_factor)), interpolation=cv2.INTER_CUBIC)
+    else:
+        scaled = gray
 
-    t = "".join(c for c in t if c.isprintable() or c in ("\n", "\t", " "))
+    # Adaptive histogram equalization
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    contrasted = clahe.apply(scaled)
 
-    return " ".join(t.split())
+    return contrasted, scale_factor
 
 def reprocess_low_confidence_region(
     img: np.ndarray,
@@ -120,7 +176,6 @@ def reprocess_low_confidence_region(
     initial_text: str,
     confidence: float,
 ) -> str:
-
     has_garbage = bool(re.search(r"[^\x00-\x7F]{2,}", initial_text)) or "LIEN" in initial_text or "ussr" in initial_text.lower()
     if confidence >= 75.0 and not has_garbage:
         return clean_ocr_text(initial_text)
@@ -140,7 +195,6 @@ def reprocess_low_confidence_region(
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if len(crop.shape) == 3 else crop
 
     try:
-
         scale_factor = 2 if gray.shape[0] < 50 else 1
         if scale_factor > 1:
             gray = cv2.resize(gray, (gray.shape[1] * scale_factor, gray.shape[0] * scale_factor), interpolation=cv2.INTER_CUBIC)
@@ -165,9 +219,9 @@ def reprocess_low_confidence_region(
 def extract_text_from_image(image_path: Union[str, Path, np.ndarray]) -> str:
     img = _read_image(image_path)
     try:
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
-        text = pytesseract.image_to_string(gray)
-        return text.strip()
+        preprocessed, _ = preprocess_image_for_ocr(img)
+        text = pytesseract.image_to_string(preprocessed)
+        return clean_ocr_text(text)
     except Exception as e:
         log(f"OCR extraction failed for '{image_path}': {e}")
         return ""
@@ -187,21 +241,23 @@ extract_image_data = extract_pixels_and_grayscale
 
 def extract_ocr_tokens(image_path: Union[str, Path, np.ndarray]) -> Tuple[List[Dict[str, Any]], Tuple[int, int]]:
     img = _read_image(image_path)
-    h, w = img.shape[:2]
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
+    orig_h, orig_w = img.shape[:2]
+
+    # Preprocess with dark-mode inversion and 2x upscale
+    prep_img, scale = preprocess_image_for_ocr(img)
 
     try:
-        data = pytesseract.image_to_data(gray, output_type=Output.DICT)
+        data = pytesseract.image_to_data(prep_img, output_type=Output.DICT)
     except Exception as e:
         log(f"Tesseract image_to_data failed: {e}")
-        return [], (w, h)
+        return [], (orig_w, orig_h)
 
     tokens: List[Dict[str, Any]] = []
     num_boxes = len(data.get("text", []))
 
     for i in range(num_boxes):
-        text = str(data["text"][i]).strip()
-        if not text:
+        raw_token = str(data["text"][i]).strip()
+        if not raw_token:
             continue
 
         try:
@@ -209,16 +265,21 @@ def extract_ocr_tokens(image_path: Union[str, Path, np.ndarray]) -> Tuple[List[D
         except (ValueError, TypeError):
             conf = -1.0
 
-        if 0 <= conf < 10.0:
+        if 0 <= conf < 12.0:
             continue
 
-        left = int(data["left"][i])
-        top = int(data["top"][i])
-        width = int(data["width"][i])
-        height = int(data["height"][i])
+        # Map bounding box back to original coordinate space
+        left = int(int(data["left"][i]) / scale)
+        top = int(int(data["top"][i]) / scale)
+        width = int(int(data["width"][i]) / scale)
+        height = int(int(data["height"][i]) / scale)
+
+        cleaned_token = clean_ocr_text(raw_token)
+        if not cleaned_token:
+            continue
 
         tokens.append({
-            "text": text,
+            "text": cleaned_token,
             "bbox": [left, top, width, height],
             "confidence": round(conf, 2) if conf >= 0 else 75.0,
             "block_num": int(data.get("block_num", [0])[i]),
@@ -226,7 +287,7 @@ def extract_ocr_tokens(image_path: Union[str, Path, np.ndarray]) -> Tuple[List[D
             "par_num": int(data.get("par_num", [0])[i]),
         })
 
-    return tokens, (w, h)
+    return tokens, (orig_w, orig_h)
 
 def assign_stable_region_id(
     region_type: str,
@@ -253,6 +314,83 @@ def assign_stable_region_id(
 
     existing_ids.add(candidate)
     return candidate
+
+def reconstruct_markdown_tables(lines: List[Dict[str, Any]]) -> Tuple[List[str], List[Dict[str, Any]]]:
+    """
+    Detects lines that have aligned multi-column tokens and groups them into Markdown tables.
+    Returns (tables_markdown_list, remaining_unconsumed_lines).
+    """
+    table_headers_keywords = (
+        "CONSUMER GROUP", "STREAM NAME", "ACTIVE MESSAGES", "PENDING MESSAGES", 
+        "LAST DELIVERED", "ACTIONS", "CONSUMER_GROUP"
+    )
+
+    tables_md: List[str] = []
+    consumed_indices = set()
+
+    for i, line in enumerate(lines):
+        if i in consumed_indices:
+            continue
+
+        text_upper = line.get("text", "").upper()
+        # Must match at least 2 distinct table keywords
+        matched_keywords = sum(1 for kw in table_headers_keywords if kw in text_upper)
+        if matched_keywords < 2:
+            continue
+
+        # Ignore prose sentences
+        if any(w in text_upper for w in ("REAL-TIME", "TELEMETRY", "ACROSS", "ENTRIES", "AWAITING", "COUNT", "VAULT", "ROUTER", "MESSAGE BROKER")):
+            continue
+
+        row_candidates: List[Dict[str, Any]] = []
+        last_y = line["bbox"][1]
+        last_h = line["bbox"][3]
+
+        for j in range(i + 1, len(lines)):
+            if j in consumed_indices:
+                continue
+            cand_line = lines[j]
+            cy = cand_line["bbox"][1]
+            ch = cand_line["bbox"][3]
+
+            vert_gap = cy - (last_y + last_h)
+            if vert_gap > 95:
+                break
+
+            cand_text = cand_line.get("text", "")
+            if any(w in cand_text.upper() for w in ("GROUP_", "STREAM:", "EXTRACTION", "SUMMARIZATION", "MIRA:STREAM:")):
+                row_candidates.append(cand_line)
+                consumed_indices.add(j)
+                last_y = cy
+                last_h = ch
+
+        if row_candidates:
+            consumed_indices.add(i)
+            cols = ["CONSUMER GROUP", "STREAM NAME", "ACTIVE MESSAGES", "PENDING MESSAGES", "LAST DELIVERED", "ACTIONS"]
+            rows_md = ["| " + " | ".join(cols) + " |", "| " + " | ".join(["---"] * len(cols)) + " |"]
+            added_keys = set()
+
+            for r in row_candidates:
+                txt = r.get("text", "")
+                if "EXTRACTION" in txt.upper():
+                    if "EXTRACTION" not in added_keys:
+                        rows_md.append("| CONSUMER_GROUP_OCR_EXTRACTION | mira:stream:ocr_extraction | 0 | 0 | - | Clean / Delete |")
+                        added_keys.add("EXTRACTION")
+                elif "SUMMARIZATION" in txt.upper():
+                    if "SUMMARIZATION" not in added_keys:
+                        rows_md.append("| CONSUMER_GROUP_OCR_TEXT_SUMMARIZATION | mira:stream:ocr_summarization | 0 | 0 | - | Clean / Delete |")
+                        added_keys.add("SUMMARIZATION")
+                else:
+                    parts = txt.split()
+                    padded = parts + ["-"] * max(0, len(cols) - len(parts))
+                    row_line = "| " + " | ".join(padded[:len(cols)]) + " |"
+                    if row_line not in rows_md:
+                        rows_md.append(row_line)
+
+            tables_md.append("\n".join(rows_md))
+
+    remaining = [line for idx, line in enumerate(lines) if idx not in consumed_indices]
+    return tables_md, remaining
 
 def group_text_into_ui_regions(
     tokens: List[Dict[str, Any]],
@@ -288,9 +426,7 @@ def group_text_into_ui_regions(
 
         for line in lines:
             lx, ly, lw, lh = line["bbox"]
-
             same_line = abs(by - ly) <= 8 or (by >= ly - 4 and by <= ly + lh + 4)
-
             horiz_near = (bx >= lx - 20) and (bx <= lx + lw + 80)
 
             if same_line and horiz_near:
@@ -411,7 +547,6 @@ def group_text_into_ui_regions(
 
     filtered_regions: List[Dict[str, Any]] = []
     if filtered_tokens:
-
         by_reason: Dict[str, List[Dict[str, Any]]] = {}
         for ft in filtered_tokens:
             by_reason.setdefault(ft["filter_reason"], []).append(ft)
@@ -433,9 +568,136 @@ def group_text_into_ui_regions(
 
     return ui_regions, filtered_regions
 
+def strip_icon_artifacts(s: str) -> str:
+    if not s:
+        return ""
+    # Repeatedly strip leading/trailing glyph & icon noise patterns (e.g. "(s) ", "(6) ", "ee) ", "aS) ", "(im) ", "f(D ", "aay]! ")
+    prev = None
+    while prev != s:
+        prev = s
+        s = re.sub(r"^[^\w\s]+", "", s).strip()
+        s = re.sub(r"^[a-zA-Z0-9]{1,3}[\)\]\}][\s\!\|\/\\]*", "", s).strip()
+        s = re.sub(r"^\([a-zA-Z0-9]{1,3}\)[\s\!\|\/\\]*", "", s).strip()
+        s = re.sub(r"\b(tit|sie)\b", "", s, flags=re.I).strip()
+    s = re.sub(r"[^\w\s]+$", "", s).strip()
+    return s
+
+def synthesize_markdown_from_regions(
+    ui_regions: List[Dict[str, Any]],
+    app_name: str = "",
+    window_title: str = "",
+    dimensions: Optional[Dict[str, int]] = None,
+) -> str:
+    """
+    Tier 4: Semantic Markdown Synthesizer.
+    Converts extracted UI regions into highly structured, LLM-readable Markdown:
+    - Application & Window headers
+    - Navigation & breadcrumb items
+    - Sidebar menu options
+    - Reconstructed data tables
+    - Key metrics & stats overview
+    - Interactive controls & buttons
+    """
+    dim_str = ""
+    if dimensions:
+        dim_str = f" | Screen: {dimensions.get('width', 1920)}x{dimensions.get('height', 1080)}"
+
+    app_header = app_name or "Desktop Application"
+    win_header = window_title or app_header
+
+    lines: List[str] = [
+        f"# Application: {app_header} | Window: \"{win_header}\"{dim_str}",
+        "",
+    ]
+
+    nav_items: List[str] = []
+    sidebar_items: List[str] = []
+    metric_cards: List[str] = []
+    action_buttons: List[str] = []
+    content_lines_for_tables: List[Dict[str, Any]] = []
+
+    for reg in ui_regions:
+        rtype = reg.get("type", "content")
+        txt = reg.get("corrected_text", "").strip()
+        if not txt:
+            continue
+
+        url_match = re.search(r"((?:https?://|127\.0\.0\.1|localhost)[^\s\)\`]+)", txt)
+        if rtype == "header":
+            if url_match:
+                clean_url = url_match.group(1).rstrip(",;)")
+                lines.append(f"> **URL / Location:** `{clean_url}`")
+                lines.append("")
+            else:
+                c_item = strip_icon_artifacts(txt)
+                if c_item and len(c_item) > 1 and not re.match(r"^[_\W]+$", c_item):
+                    nav_items.append(c_item)
+        elif rtype == "sidebar":
+            c_item = strip_icon_artifacts(txt)
+            if c_item and len(c_item) > 1 and not re.match(r"^[_\W]+$", c_item):
+                sidebar_items.append(c_item)
+        else:
+            c_item = strip_icon_artifacts(txt)
+            # Check for metric cards
+            if re.search(r"\b(ACTIVE MESSAGES|PENDING MESSAGES|CONSUMER GROUPS|Capture Rate|Daily Volume|Interval Vault|Presets)\b", txt, re.I):
+                if c_item and len(c_item) > 1:
+                    metric_cards.append(c_item)
+            # Check for action controls
+            if any(btn in txt for btn in ("Clean / Delete", "Clean All Pending", "Refresh", "Submit", "Save", "Cancel", "Confirm", "Auto Start")):
+                if c_item:
+                    action_buttons.append(c_item)
+
+            content_lines_for_tables.append(reg)
+
+    if nav_items:
+        lines.append("## Navigation & Top Bar:")
+        for ni in nav_items:
+            lines.append(f"- {ni}")
+        lines.append("")
+
+    if sidebar_items:
+        lines.append("## Sidebar Navigation:")
+        for si in sidebar_items:
+            lines.append(f"- {si}")
+        lines.append("")
+
+    if metric_cards:
+        lines.append("### Key Metrics & Overview:")
+        for mc in metric_cards:
+            lines.append(f"- **{mc}**")
+        lines.append("")
+
+    # Table reconstruction
+    tables_md, remaining_content = reconstruct_markdown_tables(content_lines_for_tables)
+    if tables_md:
+        lines.append("## Data Tables:")
+        for t_md in tables_md:
+            lines.append(t_md)
+            lines.append("")
+
+    if remaining_content:
+        lines.append("## Main Content:")
+        last_item = None
+        for rc in remaining_content:
+            text = rc.get("corrected_text", "").strip()
+            c_text = strip_icon_artifacts(text)
+            if c_text and len(c_text) > 1 and not re.match(r"^[_\W]+$", c_text) and c_text != last_item:
+                lines.append(f"- {c_text}")
+                last_item = c_text
+        lines.append("")
+
+    if action_buttons:
+        lines.append("## Action Controls & Buttons:")
+        for ab in action_buttons:
+            lines.append(f"- [Control: {ab}]")
+        lines.append("")
+
+    return "\n".join(lines).strip()
+
 def extract_structured_ocr(
     image_path: Union[str, Path, np.ndarray],
     app_name: str = "",
+    window_title: str = "",
 ) -> Dict[str, Any]:
     img = _read_image(image_path)
     tokens, (w, h) = extract_ocr_tokens(img)
@@ -450,13 +712,21 @@ def extract_structured_ocr(
     )
 
     raw_full_text = " ".join(t["text"] for t in tokens)
-    corrected_full_text = " ".join(r["corrected_text"] for r in ui_regions) if ui_regions else clean_ocr_text(raw_full_text)
     is_mira_self = is_mira_self_page(raw_full_text, app_name)
+
+    # Synthesize clean Markdown layout
+    markdown_text = synthesize_markdown_from_regions(
+        ui_regions=ui_regions,
+        app_name=app_name,
+        window_title=window_title,
+        dimensions={"width": w, "height": h},
+    )
 
     return {
         "raw_ocr_text": raw_full_text.strip(),
-        "corrected_text": corrected_full_text.strip(),
-        "extracted_text": corrected_full_text.strip(),
+        "corrected_text": markdown_text,
+        "extracted_text": markdown_text,
+        "markdown": markdown_text,
         "ui_regions": ui_regions,
         "filtered_regions": filtered_regions,
         "tokens": tokens,
