@@ -1,5 +1,6 @@
 {
   "ocr_extraction": "CONSUMER_GROUP_OCR_EXTRACTION",
   "ocr_summarization": "CONSUMER_GROUP_OCR_TEXT_SUMMARIZATION",
-  "summary_embedding": "CONSUMER_GROUP_SUMMARY_EMBEDDING"
+  "summary_embedding": "CONSUMER_GROUP_SUMMARY_EMBEDDING",
+  "embedding_memory": "CONSUMER_GROUP_EMBEDDING_MEMORY"
 }
