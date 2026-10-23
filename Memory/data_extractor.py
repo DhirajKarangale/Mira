@@ -674,10 +674,12 @@ def synthesize_markdown_from_regions(
             if c_item not in nav_items and c_item not in ("Bl", "Lb", "CoE", "Gens", "Gets", "Ges"):
                 nav_items.append(c_item)
             consumed_indices.add(i)
-        # Sidebar zone: Left rail below top bar (excluding timestamps and pagination)
+        # Sidebar zone: Left rail below top bar (excluding timestamps, pagination, and pure numbers/code line numbers)
         elif (norm_x < 0.18 or reg.get("type") == "sidebar") and not re.search(r"\b(?:\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)|Showing\s+\d+-\d+)\b", txt, re.I):
-            if c_item not in sidebar_items:
-                sidebar_items.append(c_item)
+            clean_token = c_item.strip()
+            if not clean_token.isdigit() and not re.match(r"^\d{1,5}$", clean_token):
+                if c_item not in sidebar_items:
+                    sidebar_items.append(c_item)
             consumed_indices.add(i)
         # Page Title / Subtitle Overview band (below header, above stats cards)
         elif 0.12 <= norm_y <= 0.25 and norm_x >= 0.18:

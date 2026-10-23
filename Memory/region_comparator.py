@@ -220,10 +220,12 @@ def is_somewhat_similar(
     and can be ignored to avoid spamming summarization with micro-updates.
     """
     if not region_changes.get("has_changes", False):
+        if diff_score is not None and diff_score >= 0.015:
+            return False, f"Visual pixel change detected (diff={diff_score:.4f})"
         return True, "No region changes detected"
 
-    # If the visual difference across the entire screen is large, it's a major visual change
-    if diff_score is not None and diff_score >= 0.15:
+    # If the visual difference across the entire screen is noticeable (>= 5%), layout/content shifted
+    if diff_score is not None and diff_score >= 0.05:
         return False, f"Major visual layout shift (diff={diff_score:.3f})"
 
     # Check for modals, alerts, warnings, or prompts that require attention
@@ -245,10 +247,12 @@ def is_somewhat_similar(
     if overall_sim >= similarity_threshold:
         if meaningful_count >= 3:
             return False, f"{meaningful_count} distinct regions modified despite high text similarity"
+        if diff_score is not None and diff_score >= 0.035:
+            return False, f"Substantial visual change (diff={diff_score:.4f}) despite text similarity"
         return True, f"Text similarity {overall_sim:.1%} >= {similarity_threshold:.1%} (ignoring minor updates)"
 
-    # If there are zero meaningful changes and visual difference is minor (< 8%)
-    if meaningful_count == 0 and (diff_score is None or diff_score < 0.08):
+    # If there are zero meaningful changes and visual difference is minor (< 2.5%)
+    if meaningful_count == 0 and (diff_score is None or diff_score < 0.025):
         return True, f"Zero meaningful content changes (overall_sim={overall_sim:.1%})"
 
     return False, f"Meaningful change detected (similarity={overall_sim:.1%}, {meaningful_count} changed region(s))"

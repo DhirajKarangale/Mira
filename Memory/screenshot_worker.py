@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import uuid
 import requests
+import re
+import time
+from datetime import datetime
 
 import config
 from data_extractor import (
@@ -14,7 +17,12 @@ from data_extractor import (
     extract_text_from_image,
     is_browser_application,
 )
-from image_comparison import compare_app_images, store_image_data
+from image_comparison import (
+    compare_app_images,
+    store_image_data,
+    get_recent_images,
+    calculate_image_difference,
+)
 from region_comparator import compare_ui_regions, is_somewhat_similar
 from uia_extractor import extract_native_uia, get_application_window_title
 from vault_logger import log
@@ -159,6 +167,34 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
             remove_broker_job("ocr_extraction", job_id)
             return True
 
+        if not prev_record:
+            # Check most recent image across any app to catch transient focus switches (e.g., Desktop vs IDE)
+            recent = get_recent_images(limit=1)
+            if recent:
+                candidate = recent[0]
+                cand_ts = candidate.get("timestamp")
+                try:
+                    if isinstance(cand_ts, (int, float)):
+                        cand_age = time.time() - float(cand_ts)
+                    else:
+                        cand_age = (datetime.now() - datetime.strptime(str(cand_ts), "%d/%m/%YT%H:%M:%S")).total_seconds()
+                    if cand_age < 15.0:
+                        cand_gray = candidate.get("grayscale_matrix")
+                        if cand_gray is not None:
+                            d = calculate_image_difference(cand_gray, grayscale_matrix)
+                            if d < effective_threshold:
+                                log(
+                                    f"[Worker-{worker_id}] Duplicate frame detected across app boundary "
+                                    f"('{candidate.get('app_name')}' -> '{app_name}', diff={d:.4f} < {effective_threshold:.4f}). Skipping extraction."
+                                )
+                                call_operator_delete_screenshot(image_path)
+                                remove_broker_job("ocr_extraction", job_id)
+                                return True
+                            diff_score = d
+                            prev_record = candidate
+                except Exception:
+                    pass
+
         if diff_score is not None:
             log(f"[Worker-{worker_id}] App '{app_name}' changed (diff={diff_score:.4f} >= threshold={effective_threshold:.4f})")
         else:
@@ -169,53 +205,49 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
         if active_win_title:
             window_metadata["window_title"] = active_win_title
 
-        if is_browser:
-            # Chromium/Edge render webpage HTML within an accelerated canvas opaque to standard UIA.
-            # Standard UIA on browsers returns only the bookmarks toolbar buttons and browser chrome.
-            # Therefore, web browsers MUST use high-resolution Preprocessed Screen OCR for webpage content.
-            extraction_source = "ocr"
+        # Step 1: ALWAYS run High-Resolution Structured Screen OCR to extract visual content
+        # (slides in PowerPoint, document text in Word, code, spreadsheets, tables, web pages)
+        extraction_source = "ocr"
+        try:
+            ocr_result = extract_structured_ocr(pixel_values, app_name=app_name, window_title=active_win_title)
+            full_text = ocr_result.get("extracted_text") or ocr_result.get("corrected_text", "")
+            ui_regions = ocr_result.get("ui_regions", [])
+            log(f"[Worker-{worker_id}] Screen OCR extracted {len(full_text)} chars, {len(ui_regions)} regions for '{app_name}' (Window: '{active_win_title}')")
+        except Exception as e:
+            log(f"[Worker-{worker_id}] Structured OCR failed for '{image_path}': {e}")
+            full_text = ""
+            ui_regions = []
+
+        # Step 2: For native desktop apps, enrich with UIA accessibility info (focus, window title, action controls)
+        if not is_browser:
             try:
-                ocr_result = extract_structured_ocr(pixel_values, app_name=app_name, window_title=active_win_title)
-                full_text = ocr_result.get("extracted_text") or ocr_result.get("corrected_text", "")
-                ui_regions = ocr_result.get("ui_regions", [])
-                log(f"[Worker-{worker_id}] Browser OCR extraction used for '{app_name}' (Window: '{active_win_title}')")
+                uia_res = extract_native_uia(app_name=app_name)
+                if uia_res.get("success"):
+                    uia_text = uia_res.get("extracted_text", "")
+                    # Extract active focused element if available
+                    focus_match = re.search(r"## Active Focus:\s*\n-\s*Focused Element:[^\n]+", uia_text)
+                    if focus_match and "## Active Focus:" not in full_text:
+                        full_text = full_text.rstrip() + "\n\n" + focus_match.group(0) + "\n"
+                    # If OCR was completely empty (e.g., pure dark UI), fallback to UIA elements
+                    if len(full_text.strip()) < 30 and len(uia_text.strip()) >= 30:
+                        full_text = uia_text
+                        extraction_source = "uia"
+                        ui_regions = [
+                            {
+                                "region_id": f"uia_{i}",
+                                "type": "header" if el["type"] in ("TabItemControl", "MenuItemControl") else ("sidebar" if (el["bbox"][0] / max(w_img, 1)) < 0.20 else "content"),
+                                "bbox": el["bbox"],
+                                "raw_text": el["name"] or el["value"],
+                                "corrected_text": el["name"] or el["value"],
+                                "text": el["name"] or el["value"],
+                                "confidence": 100.0,
+                                "is_filtered": False,
+                            }
+                            for i, el in enumerate(uia_res.get("elements", []))
+                        ]
             except Exception as e:
-                log(f"[Worker-{worker_id}] Structured OCR failed for '{image_path}': {e}")
-                full_text = ""
-                ui_regions = []
-        else:
-            # Native desktop applications (Notepad, File Explorer, VS Code menus): UIA is 100% accurate
-            extraction_source = "ocr"
-            uia_res = extract_native_uia(app_name=app_name)
-            if uia_res.get("success"):
-                extraction_source = "uia"
-                full_text = uia_res.get("extracted_text", "")
-                window_title = uia_res.get("window_title", "") or active_win_title
-                window_metadata["window_title"] = window_title
-                ui_regions = [
-                    {
-                        "region_id": f"uia_{i}",
-                        "type": "header" if el["type"] in ("TabItemControl", "MenuItemControl") else ("sidebar" if (el["bbox"][0] / max(w_img, 1)) < 0.20 else "content"),
-                        "bbox": el["bbox"],
-                        "raw_text": el["name"] or el["value"],
-                        "corrected_text": el["name"] or el["value"],
-                        "text": el["name"] or el["value"],
-                        "confidence": 100.0,
-                        "is_filtered": False,
-                    }
-                    for i, el in enumerate(uia_res.get("elements", []))
-                ]
-                log(f"[Worker-{worker_id}] Native UIA extraction used for '{app_name}' ({uia_res.get('element_count', 0)} elements)")
-            else:
-                log(f"[Worker-{worker_id}] Native UIA returned < 5 elements for '{app_name}'. Falling back to Preprocessed OCR...")
-                try:
-                    ocr_result = extract_structured_ocr(pixel_values, app_name=app_name, window_title=active_win_title)
-                    full_text = ocr_result.get("extracted_text") or ocr_result.get("corrected_text", "")
-                    ui_regions = ocr_result.get("ui_regions", [])
-                except Exception as e:
-                    log(f"[Worker-{worker_id}] Structured OCR fallback failed for '{image_path}': {e}")
-                    full_text = ""
-                    ui_regions = []
+                log(f"[Worker-{worker_id}] UIA enrichment exception for '{app_name}': {e}")
+
         if not ui_regions or not full_text.strip():
             log(f"[Worker-{worker_id}] No UI regions extracted for '{app_name}' (blank/transitional frame). Skipping summarization.")
             call_operator_delete_screenshot(image_path)
@@ -234,6 +266,31 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
         )
 
         if prev_record:
+            # Check rapid frame throttling for same window / app:
+            # If previous frame was published < 4.0s ago on the same window and text similarity is >= 70% (e.g. scrolling),
+            # throttle to avoid duplicate spam.
+            prev_ts = prev_record.get("timestamp")
+            if prev_ts:
+                try:
+                    if isinstance(prev_ts, (int, float)):
+                        time_since_prev = time.time() - float(prev_ts)
+                    else:
+                        dt = datetime.strptime(str(prev_ts), "%d/%m/%YT%H:%M:%S")
+                        time_since_prev = (datetime.now() - dt).total_seconds()
+
+                    if 0 <= time_since_prev < 4.0:
+                        overall_sim = float(region_changes.get("overall_text_similarity", 1.0))
+                        if overall_sim >= 0.70:
+                            log(
+                                f"[Worker-{worker_id}] Throttling rapid consecutive frame for '{app_name}' "
+                                f"({time_since_prev:.1f}s ago, similarity={overall_sim:.1%}). Skipping summarization."
+                            )
+                            call_operator_delete_screenshot(image_path)
+                            remove_broker_job("ocr_extraction", job_id)
+                            return True
+                except Exception:
+                    pass
+
             is_similar, reason = is_somewhat_similar(region_changes, diff_score, similarity_threshold=0.85)
             if is_similar:
                 log(

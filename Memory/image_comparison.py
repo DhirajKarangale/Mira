@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import time
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import cv2
@@ -132,10 +133,29 @@ def calculate_image_difference(
 def compare_app_images(
     app_name: str,
     current_gray: np.ndarray,
+    max_lookback_seconds: float = 300.0,
 ) -> Tuple[Optional[float], Optional[Dict[str, Any]]]:
     prev_record = get_latest_image_for_app(app_name)
     if not prev_record:
         return None, None
+
+    # Check record age - if older than max_lookback_seconds, treat as a fresh session
+    prev_ts = prev_record.get("timestamp")
+    if prev_ts is not None:
+        try:
+            if isinstance(prev_ts, (int, float)):
+                age_secs = time.time() - float(prev_ts)
+            else:
+                dt = datetime.strptime(str(prev_ts), "%d/%m/%YT%H:%M:%S")
+                age_secs = (datetime.now() - dt).total_seconds()
+            if age_secs > max_lookback_seconds:
+                log(
+                    f"Previous comparison record for app '{app_name}' is {age_secs:.0f}s old "
+                    f"(> {max_lookback_seconds}s). Treating as fresh session."
+                )
+                return None, None
+        except Exception:
+            pass
 
     prev_gray_raw = prev_record.get("grayscale_matrix")
     if prev_gray_raw is None:
