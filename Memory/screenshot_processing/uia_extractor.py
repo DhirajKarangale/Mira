@@ -2,19 +2,28 @@ from __future__ import annotations
 
 import ctypes
 import os
+from pathlib import Path
 import re
+import sys
 from typing import Any, Dict, List, Optional, Tuple
 
 import win32gui
 import win32process
 import psutil
 
-from vault_logger import log
+# Ensure Memory module root is in sys.path
+_memory_dir = Path(__file__).resolve().parent.parent
+if str(_memory_dir) not in sys.path:
+    sys.path.insert(0, str(_memory_dir))
+
+try:
+    from vault_logger import log
+except ImportError:
+    from Memory.vault_logger import log
 
 _DESKTOP_ATTACHED = False
 
 def attach_to_active_desktop() -> bool:
-
     global _DESKTOP_ATTACHED
     if os.name != "nt":
         return False
@@ -40,7 +49,6 @@ def attach_to_active_desktop() -> bool:
         return False
 
 def get_application_window_title(app_name: str = "") -> str:
-
     attach_to_active_desktop()
     target = app_name.lower().replace(".exe", "").strip()
 
@@ -84,7 +92,6 @@ def get_application_window_title(app_name: str = "") -> str:
     return res.replace("\u200b", "").replace("\ufeff", "").strip()
 
 def find_target_window(app_name: str = "") -> Optional[int]:
-
     attach_to_active_desktop()
     target = app_name.lower().replace(".exe", "").strip()
 
@@ -131,7 +138,6 @@ def find_target_window(app_name: str = "") -> Optional[int]:
     return fg_hwnd if fg_hwnd else None
 
 def extract_uia_tree_from_hwnd(hwnd: int, max_elements: int = 120) -> List[Dict[str, Any]]:
-
     try:
         import uiautomation as auto
     except ImportError:
@@ -147,7 +153,6 @@ def extract_uia_tree_from_hwnd(hwnd: int, max_elements: int = 120) -> List[Dict[
         return []
 
     elements: List[Dict[str, Any]] = []
-    visited_addrs = set()
 
     def walk(ctrl: Any, depth: int = 0) -> None:
         if depth > 7 or len(elements) >= max_elements:
@@ -197,7 +202,6 @@ def format_uia_to_markdown(
     window_title: str,
     elements: List[Dict[str, Any]],
 ) -> str:
-
     lines = [
         f"Window: \"{window_title}\"",
         "",
@@ -245,7 +249,6 @@ def format_uia_to_markdown(
 
     if content_items:
         lines.append("## Main Content:")
-
         last = None
         for c in content_items:
             if c != last:
@@ -266,7 +269,6 @@ def format_uia_to_markdown(
     return "\n".join(lines).strip()
 
 def extract_native_uia(app_name: str = "") -> Dict[str, Any]:
-
     attach_to_active_desktop()
     hwnd = find_target_window(app_name)
     if not hwnd:

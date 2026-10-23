@@ -13,9 +13,33 @@ The **Memory** module is the screenshot extraction, OCR text processing, visual 
 
 ---
 
-## 2. API Endpoints
+## 2. Architecture & Submodule Structure
 
-### 2.1 Health Check
+The Memory module organizes screenshot processing into a dedicated submodule:
+
+```
+Memory/
+├── app.py                      # FastAPI application server and endpoints
+├── config.py                   # Service configuration and service discovery
+├── vault_logger.py             # Centralized logging to Vault
+├── requirements.txt            # Python dependencies
+├── README.md                   # Documentation
+├── screenshot_processing/      # Dedicated screenshot processing submodule
+│   ├── __init__.py             # Submodule public API exports
+│   ├── worker.py               # Parallel extraction worker loop & broker coordination
+│   ├── screenshot_worker.py    # Compatibility alias for worker
+│   ├── data_extractor.py       # Tesseract OCR & structured UI text extraction
+│   ├── image_comparison.py     # OpenCV frame diffing & Redis comparison storage
+│   ├── region_comparator.py    # UI region IoU, text normalization & change detection
+│   └── uia_extractor.py        # Windows UI Automation tree extraction & formatting
+└── tests/                      # Unit and integration tests for Memory module
+```
+
+---
+
+## 3. API Endpoints
+
+### 3.1 Health Check
 `GET /health`
 
 - **Response (`200 OK`):**
@@ -25,7 +49,7 @@ The **Memory** module is the screenshot extraction, OCR text processing, visual 
 
 ---
 
-### 2.2 Worker Status
+### 3.2 Worker Status
 `GET /status`
 
 - **Response (`200 OK`):**
@@ -40,7 +64,7 @@ The **Memory** module is the screenshot extraction, OCR text processing, visual 
 
 ---
 
-### 2.3 Start Workers
+### 3.3 Start Workers
 `POST /workers/start`
 
 - **Response (`200 OK`):**
@@ -50,7 +74,7 @@ The **Memory** module is the screenshot extraction, OCR text processing, visual 
 
 ---
 
-### 2.4 Stop Workers
+### 3.4 Stop Workers
 `POST /workers/stop`
 
 - **Response (`200 OK`):**
@@ -60,7 +84,7 @@ The **Memory** module is the screenshot extraction, OCR text processing, visual 
 
 ---
 
-### 2.5 Extract Data
+### 3.5 Extract Data
 `POST /extract`
 
 - **Request Body (JSON):**
@@ -80,7 +104,7 @@ The **Memory** module is the screenshot extraction, OCR text processing, visual 
 
 ---
 
-### 2.6 Process Job
+### 3.6 Process Job
 `POST /process-job`
 
 - **Request Body (JSON):**
@@ -99,7 +123,7 @@ The **Memory** module is the screenshot extraction, OCR text processing, visual 
 
 ---
 
-## 3. Installation & Startup
+## 4. Installation & Startup
 
 ### Install Dependencies
 ```bash

@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import sys
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import cv2
@@ -11,7 +12,15 @@ import numpy as np
 import pytesseract
 from pytesseract import Output
 
-from vault_logger import log
+# Ensure Memory module root is in sys.path for direct or module execution
+_memory_dir = Path(__file__).resolve().parent.parent
+if str(_memory_dir) not in sys.path:
+    sys.path.insert(0, str(_memory_dir))
+
+try:
+    from vault_logger import log
+except ImportError:
+    from Memory.vault_logger import log
 
 def _init_tesseract() -> None:
     candidate_paths = [
@@ -143,7 +152,6 @@ def classify_token_irrelevant(
     return None
 
 def preprocess_image_for_ocr(img: np.ndarray) -> Tuple[np.ndarray, float]:
-
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
     mean_val = float(np.mean(gray))
 
@@ -310,7 +318,6 @@ def assign_stable_region_id(
     return candidate
 
 def reconstruct_markdown_tables(lines: List[Dict[str, Any]]) -> Tuple[List[str], List[Dict[str, Any]]]:
-
     table_headers_keywords = (
         "CONSUMER GROUP", "STREAM NAME", "ACTIVE MESSAGES", "PENDING MESSAGES", 
         "LAST DELIVERED", "ACTIONS", "CONSUMER_GROUP"
@@ -585,7 +592,6 @@ def synthesize_markdown_from_regions(
     window_title: str = "",
     dimensions: Optional[Dict[str, int]] = None,
 ) -> str:
-
     if not ui_regions:
         return ""
 

@@ -38,7 +38,6 @@ def normalize_text(text: str, mask_numbers: bool = False) -> str:
     t = re.sub(r"\b\d+(?:\.\d+)?\s*(?:/\s*(?:min|sec|hr|hour|day)|kb|mb|gb|shots|entries)\b", "", t)
 
     if mask_numbers:
-
         t = re.sub(r"\b\d+\b", "#", t)
 
     t = re.sub(r"[^\w\s]", " ", t)
@@ -215,7 +214,6 @@ def is_somewhat_similar(
     diff_score: Optional[float] = None,
     similarity_threshold: float = 0.85,
 ) -> Tuple[bool, str]:
-
     if not region_changes.get("has_changes", False):
         if diff_score is not None and diff_score >= 0.015:
             return False, f"Visual pixel change detected (diff={diff_score:.4f})"
@@ -249,4 +247,3 @@ def is_somewhat_similar(
         return True, f"Zero meaningful content changes (overall_sim={overall_sim:.1%})"
 
     return False, f"Meaningful change detected (similarity={overall_sim:.1%}, {meaningful_count} changed region(s))"
-

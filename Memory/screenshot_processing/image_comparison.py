@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import base64
 import json
+from pathlib import Path
+import sys
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -10,8 +12,17 @@ import cv2
 import numpy as np
 import requests
 
-import config
-from vault_logger import log
+# Ensure Memory module root is in sys.path
+_memory_dir = Path(__file__).resolve().parent.parent
+if str(_memory_dir) not in sys.path:
+    sys.path.insert(0, str(_memory_dir))
+
+try:
+    import config
+    from vault_logger import log
+except ImportError:
+    from Memory import config
+    from Memory.vault_logger import log
 
 def serialize_matrix(mat: np.ndarray) -> Dict[str, Any]:
     if not isinstance(mat, np.ndarray):

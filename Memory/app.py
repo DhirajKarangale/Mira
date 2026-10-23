@@ -7,8 +7,13 @@ from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
 
 import config
-from data_extractor import extract_pixels_and_grayscale, extract_text_from_image
-from screenshot_worker import worker_manager, process_screenshot_job, IMAGE_DIFF_THRESHOLD
+from screenshot_processing import (
+    worker_manager,
+    process_screenshot_job,
+    IMAGE_DIFF_THRESHOLD,
+    extract_pixels_and_grayscale,
+    extract_text_from_image,
+)
 from vault_logger import log
 
 @asynccontextmanager

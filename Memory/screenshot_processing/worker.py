@@ -7,25 +7,56 @@ from typing import Any, Dict, List, Optional
 import uuid
 import requests
 import re
+import sys
 import time
 from datetime import datetime
 
-import config
-from data_extractor import (
-    extract_pixels_and_grayscale,
-    extract_structured_ocr,
-    extract_text_from_image,
-    is_browser_application,
-)
-from image_comparison import (
-    compare_app_images,
-    store_image_data,
-    get_recent_images,
-    calculate_image_difference,
-)
-from region_comparator import compare_ui_regions, is_somewhat_similar
-from uia_extractor import extract_native_uia, get_application_window_title
-from vault_logger import log
+# Ensure Memory module root is in sys.path
+_memory_dir = Path(__file__).resolve().parent.parent
+if str(_memory_dir) not in sys.path:
+    sys.path.insert(0, str(_memory_dir))
+
+try:
+    import config
+    from vault_logger import log
+except ImportError:
+    from Memory import config
+    from Memory.vault_logger import log
+
+try:
+    from .data_extractor import (
+        extract_pixels_and_grayscale,
+        extract_structured_ocr,
+        extract_text_from_image,
+        is_browser_application,
+    )
+    from .image_comparison import (
+        compare_app_images,
+        store_image_data,
+        get_recent_images,
+        calculate_image_difference,
+    )
+    from .region_comparator import compare_ui_regions, is_somewhat_similar
+    from .uia_extractor import extract_native_uia, get_application_window_title
+except ImportError:
+    # Fallback for standalone script execution
+    _submodule_dir = Path(__file__).resolve().parent
+    if str(_submodule_dir) not in sys.path:
+        sys.path.insert(0, str(_submodule_dir))
+    from data_extractor import (
+        extract_pixels_and_grayscale,
+        extract_structured_ocr,
+        extract_text_from_image,
+        is_browser_application,
+    )
+    from image_comparison import (
+        compare_app_images,
+        store_image_data,
+        get_recent_images,
+        calculate_image_difference,
+    )
+    from region_comparator import compare_ui_regions, is_somewhat_similar
+    from uia_extractor import extract_native_uia, get_application_window_title
 
 DEFAULT_IMAGE_DIFF_THRESHOLD: float = 0.008
 IMAGE_DIFF_THRESHOLD: float = float(os.getenv("IMAGE_DIFF_THRESHOLD", str(DEFAULT_IMAGE_DIFF_THRESHOLD)))
@@ -169,7 +200,6 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
             return True
 
         if not prev_record:
-
             recent = get_recent_images(limit=1)
             if recent:
                 candidate = recent[0]
@@ -262,7 +292,6 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
         )
 
         if prev_record:
-
             prev_ts = prev_record.get("timestamp")
             if prev_ts:
                 try:
@@ -343,7 +372,6 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
         return False
 
 class ScreenshotExtractionWorkerManager:
-
     def __init__(self) -> None:
         self.is_running: bool = False
         self._stop_event: asyncio.Event = asyncio.Event()
