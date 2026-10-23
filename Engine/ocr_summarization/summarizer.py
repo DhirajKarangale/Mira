@@ -29,12 +29,23 @@ def sanitize_job_input(job: Dict[str, Any]) -> Dict[str, str]:
         "extracted_text": extracted.strip(),
     }
 
+def clean_fallback_app_name(raw_app: str) -> str:
+    """Generic fallback cleaner for app name without hardcoded mappings."""
+    if not raw_app or not raw_app.strip():
+        return "Application"
+    cleaned = raw_app.strip()
+    if cleaned.lower().endswith(".exe"):
+        cleaned = cleaned[:-4]
+    # Replace separators with space if any
+    cleaned = cleaned.replace("_", " ").replace("-", " ")
+    return cleaned.strip()
+
 def build_batch_prompt(batch_items: List[Dict[str, str]]) -> str:
-    """Builds a structured prompt instructing the LLM to summarize each item independently."""
+    """Builds a structured prompt instructing the LLM to identify real app names and provide concise summaries."""
     indexed_items = [
         {
             "index": idx,
-            "app_name": item["app_name"],
+            "raw_app_name": item["app_name"],
             "os": item["os"],
             "extracted_text": item["extracted_text"][:4000],  # Bound text size per record
         }
@@ -46,14 +57,18 @@ def build_batch_prompt(batch_items: List[Dict[str, str]]) -> str:
     prompt = f"""You are the OCR Activity Summarization Engine for MIRA personal assistant.
 Analyze the following batch of {len(batch_items)} OCR text records captured from user screens.
 Each record represents a separate, independent user activity.
-You must summarize each record independently without merging information between records.
+You must process each record independently without merging information between records.
 
-Strict Rules for every summary:
-1. Briefly and accurately describe what the user is doing based ONLY on the provided text, application name, and OS.
-2. Avoid assumptions, hallucinations, suggestions, and unnecessary details.
-3. If the activity cannot be determined from the available text, explicitly state: "Activity cannot be determined from the available text."
-4. If only the application is identifiable, state: "User has <app_name> open, but the specific activity is unclear." (replace <app_name> with the actual application name).
-5. Keep each summary concise (1 to 2 clear sentences).
+For each record, provide:
+1. "app_name": The actual, real human-readable application name (e.g. "Microsoft Edge", "Visual Studio Code", "Google Chrome", "Spotify", "Terminal"). Determine the real name from the extracted text, window titles, or context. Do NOT use raw executable filenames like "msedge.exe" or "code.exe".
+2. "summary": A complete, accurate description of what the user is doing.
+
+Strict Rules for the summary:
+- Describe what the user is doing completely, clearly, and accurately. The summary can be comprehensive and detailed based on the available text, with no arbitrary length limit.
+- Focus on meaningful actions and context; avoid unnecessary fluff, meta-commentary, or repetitive filler phrases.
+- Must include the real application name in the summary (e.g., "... in Microsoft Edge").
+- Avoid assumptions and hallucinations.
+- If the activity cannot be determined from the text, state: "User has <app_name> open, but the specific activity is unclear."
 
 Input batch:
 {items_json}
@@ -63,15 +78,16 @@ You MUST return strictly a JSON array containing an object for each input item i
 [
   {{
     "index": 0,
-    "summary": "<concise summary for item 0>"
+    "app_name": "<Real Application Name>",
+    "summary": "<Comprehensive summary with app name>"
   }},
   ...
 ]
 """
     return prompt
 
-def parse_llm_batch_response(raw_response: str, expected_count: int, batch_items: List[Dict[str, str]]) -> Optional[List[str]]:
-    """Parses the LLM response into an ordered list of summaries matching the batch count.
+def parse_llm_batch_response(raw_response: str, expected_count: int, batch_items: List[Dict[str, str]]) -> Optional[List[Dict[str, str]]]:
+    """Parses the LLM response into an ordered list of dicts with 'app_name' and 'summary'.
     
     Returns None if the response indicates complete provider failure.
     """
@@ -91,7 +107,7 @@ def parse_llm_batch_response(raw_response: str, expected_count: int, batch_items
     match = re.search(r"\[\s*\{.*\}\s*\]|\[\s*\"[^\"]*\".*\]", cleaned, re.DOTALL)
     json_candidate = match.group(0) if match else cleaned
 
-    parsed_summaries: List[Optional[str]] = [None] * expected_count
+    parsed_items: List[Optional[Dict[str, str]]] = [None] * expected_count
 
     try:
         data = json.loads(json_candidate)
@@ -100,42 +116,68 @@ def parse_llm_batch_response(raw_response: str, expected_count: int, batch_items
                 if isinstance(item, dict):
                     idx = item.get("index", i)
                     summary = item.get("summary")
+                    app_name = item.get("app_name")
                     if isinstance(idx, int) and 0 <= idx < expected_count and summary:
-                        parsed_summaries[idx] = str(summary).strip()
+                        parsed_items[idx] = {
+                            "app_name": str(app_name).strip() if app_name else "",
+                            "summary": str(summary).strip(),
+                        }
                     elif 0 <= i < expected_count and summary:
-                        parsed_summaries[i] = str(summary).strip()
+                        parsed_items[i] = {
+                            "app_name": str(app_name).strip() if app_name else "",
+                            "summary": str(summary).strip(),
+                        }
                 elif isinstance(item, str) and 0 <= i < expected_count:
-                    parsed_summaries[i] = item.strip()
+                    parsed_items[i] = {
+                        "app_name": "",
+                        "summary": item.strip(),
+                    }
     except Exception as e:
-        log_error(f"Direct JSON parsing of LLM response failed ({e}), attempting fallback line extraction.")
+        log_error(f"Direct JSON parsing of LLM response failed ({e}), attempting fallback extraction.")
 
-    # Fallback line regex if some summaries are missing
-    if any(s is None for s in parsed_summaries):
-        # Look for regex matches of '"summary":\s*"([^"]+)"'
+    # Fallback line regex if some items are missing
+    if any(item is None for item in parsed_items):
         summary_matches = re.findall(r'"summary"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', cleaned)
+        app_matches = re.findall(r'"app_name"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', cleaned)
         if summary_matches:
             for idx, s in enumerate(summary_matches):
-                if idx < expected_count and parsed_summaries[idx] is None:
-                    parsed_summaries[idx] = s.strip()
+                if idx < expected_count and parsed_items[idx] is None:
+                    app_val = app_matches[idx].strip() if idx < len(app_matches) else ""
+                    parsed_items[idx] = {
+                        "app_name": app_val,
+                        "summary": s.strip(),
+                    }
 
-    # Ensure complete 1-to-1 mapping for all expected items
-    final_summaries: List[str] = []
+    # Ensure complete 1-to-1 mapping and quality constraints for all expected items
+    final_results: List[Dict[str, str]] = []
     for idx in range(expected_count):
-        existing = parsed_summaries[idx]
-        if existing and str(existing).strip():
-            final_summaries.append(str(existing).strip())
-        else:
-            # Deterministic rule-based fallback if summary was omitted or unparseable
-            item = batch_items[idx]
-            app_name = item.get("app_name", "the application")
-            text = item.get("extracted_text", "")
-            if not text or len(text.strip()) < 5:
-                fallback = f"User has {app_name} open, but the specific activity is unclear."
-            else:
-                fallback = "Activity cannot be determined from the available text."
-            final_summaries.append(fallback)
+        raw_in = batch_items[idx]
+        default_app = clean_fallback_app_name(raw_in.get("app_name", "Application"))
 
-    return final_summaries
+        existing = parsed_items[idx]
+        if existing and existing.get("summary"):
+            resolved_app = existing.get("app_name") or default_app
+            resolved_summary = existing["summary"]
+        else:
+            resolved_app = default_app
+            text = raw_in.get("extracted_text", "")
+            if not text or len(text.strip()) < 5:
+                resolved_summary = f"User has {resolved_app} open, but the specific activity is unclear."
+            else:
+                resolved_summary = f"Activity in {resolved_app} cannot be determined from the available text."
+
+        # Ensure the real app name is explicitly mentioned in the summary
+        if resolved_app.lower() not in resolved_summary.lower():
+            if not resolved_summary.endswith("."):
+                resolved_summary += "."
+            resolved_summary += f" (in {resolved_app})"
+
+        final_results.append({
+            "app_name": resolved_app,
+            "summary": resolved_summary,
+        })
+
+    return final_results
 
 def summarize_batch(batch_jobs: List[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
     """Executes OCR summarization for a batch of jobs in a single LLM call.
@@ -157,21 +199,22 @@ def summarize_batch(batch_jobs: List[Dict[str, Any]]) -> Optional[List[Dict[str,
     # 3. Call LLM in ONE call
     raw_response = call_llm(prompt=prompt, work="summarization")
 
-    # 4. Parse the summaries
-    summaries = parse_llm_batch_response(raw_response, len(batch_jobs), sanitized_items)
-    if summaries is None:
+    # 4. Parse the summaries and real application names
+    parsed_results = parse_llm_batch_response(raw_response, len(batch_jobs), sanitized_items)
+    if parsed_results is None:
         log_error("Batch summarization failed: LLM provider unavailable. Jobs will be retried.")
         return None
 
-    # 5. Create output jobs preserving exact 1-to-1 mapping
+    # 5. Create output jobs preserving exact 1-to-1 mapping with real app names
     output_jobs: List[Dict[str, Any]] = []
     for idx, input_job in enumerate(batch_jobs):
+        res = parsed_results[idx]
         out_job = {
             "job_id": str(uuid.uuid4()),
-            "app_name": str(input_job.get("app_name") or "Unknown").strip(),
+            "app_name": res["app_name"],
             "os": str(input_job.get("os") or "Unknown").strip(),
             "timestamp": input_job.get("timestamp") or int(time.time()),
-            "summarized_text": summaries[idx],
+            "summarized_text": res["summary"],
         }
         output_jobs.append(out_job)
 

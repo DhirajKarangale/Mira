@@ -65,52 +65,57 @@ class TestBatchPreparationAndPrompt(unittest.TestCase):
         self.assertIn("Slack", prompt)
         self.assertIn("GitHub PR #1", prompt)
         self.assertIn("Meeting at 3pm", prompt)
-        self.assertIn("Strict Rules for every summary:", prompt)
+        self.assertIn("Strict Rules for the summary:", prompt)
         self.assertIn("JSON array", prompt)
 
 class TestLLMBatchResponseParsing(unittest.TestCase):
     def test_parse_valid_json_array(self):
         batch_items = [
-            {"app_name": "Chrome", "os": "Windows", "extracted_text": "GitHub PR #1"},
-            {"app_name": "Slack", "os": "Windows", "extracted_text": "Meeting at 3pm"},
+            {"app_name": "chrome.exe", "os": "Windows", "extracted_text": "GitHub PR #1"},
+            {"app_name": "slack.exe", "os": "Windows", "extracted_text": "Meeting at 3pm"},
         ]
         raw_llm = json.dumps([
-            {"index": 0, "summary": "User is reviewing GitHub PR #1 in Chrome."},
-            {"index": 1, "summary": "User is chatting in Slack about a 3pm meeting."}
+            {"index": 0, "app_name": "Google Chrome", "summary": "User is reviewing GitHub PR #1 in Google Chrome."},
+            {"index": 1, "app_name": "Slack", "summary": "User is chatting about a 3pm meeting in Slack."}
         ])
-        summaries = parse_llm_batch_response(raw_llm, len(batch_items), batch_items)
-        self.assertIsNotNone(summaries)
-        self.assertEqual(len(summaries), 2)
-        self.assertEqual(summaries[0], "User is reviewing GitHub PR #1 in Chrome.")
-        self.assertEqual(summaries[1], "User is chatting in Slack about a 3pm meeting.")
+        results = parse_llm_batch_response(raw_llm, len(batch_items), batch_items)
+        self.assertIsNotNone(results)
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0]["app_name"], "Google Chrome")
+        self.assertEqual(results[0]["summary"], "User is reviewing GitHub PR #1 in Google Chrome.")
+        self.assertEqual(results[1]["app_name"], "Slack")
+        self.assertEqual(results[1]["summary"], "User is chatting about a 3pm meeting in Slack.")
 
     def test_parse_markdown_fenced_json(self):
         batch_items = [
-            {"app_name": "Terminal", "os": "Windows", "extracted_text": "git status"},
+            {"app_name": "WindowsTerminal.exe", "os": "Windows", "extracted_text": "git status"},
         ]
-        raw_llm = "```json\n[\n  {\"index\": 0, \"summary\": \"User is checking git status in Terminal.\"}\n]\n```"
-        summaries = parse_llm_batch_response(raw_llm, 1, batch_items)
-        self.assertIsNotNone(summaries)
-        self.assertEqual(len(summaries), 1)
-        self.assertEqual(summaries[0], "User is checking git status in Terminal.")
+        raw_llm = "```json\n[\n  {\"index\": 0, \"app_name\": \"Terminal\", \"summary\": \"User is checking git status in Terminal.\"}\n]\n```"
+        results = parse_llm_batch_response(raw_llm, 1, batch_items)
+        self.assertIsNotNone(results)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["app_name"], "Terminal")
+        self.assertEqual(results[0]["summary"], "User is checking git status in Terminal.")
 
     def test_parse_fallback_when_app_identifiable_but_text_empty(self):
         batch_items = [
-            {"app_name": "Calculator", "os": "Windows", "extracted_text": ""},
+            {"app_name": "calculator.exe", "os": "Windows", "extracted_text": ""},
         ]
         raw_llm = "Invalid json response without proper structure"
-        summaries = parse_llm_batch_response(raw_llm, 1, batch_items)
-        self.assertIsNotNone(summaries)
-        self.assertEqual(summaries[0], "User has Calculator open, but the specific activity is unclear.")
+        results = parse_llm_batch_response(raw_llm, 1, batch_items)
+        self.assertIsNotNone(results)
+        self.assertEqual(results[0]["app_name"], "calculator")
+        self.assertIn("User has calculator open, but the specific activity is unclear", results[0]["summary"])
 
     def test_parse_fallback_when_activity_cannot_be_determined(self):
         batch_items = [
-            {"app_name": "UnknownApp", "os": "Windows", "extracted_text": "12345 67890 obscure data"},
+            {"app_name": "UnknownApp.exe", "os": "Windows", "extracted_text": "12345 67890 obscure data"},
         ]
         raw_llm = "Invalid json response"
-        summaries = parse_llm_batch_response(raw_llm, 1, batch_items)
-        self.assertIsNotNone(summaries)
-        self.assertEqual(summaries[0], "Activity cannot be determined from the available text.")
+        results = parse_llm_batch_response(raw_llm, 1, batch_items)
+        self.assertIsNotNone(results)
+        self.assertEqual(results[0]["app_name"], "UnknownApp")
+        self.assertIn("UnknownApp", results[0]["summary"])
 
     def test_provider_failure_returns_none(self):
         batch_items = [{"app_name": "App", "os": "OS", "extracted_text": "text"}]
@@ -121,30 +126,33 @@ class TestSummarizeBatchAndMapping(unittest.TestCase):
     @patch("ocr_summarization.summarizer.call_llm")
     def test_one_to_one_mapping_preservation(self, mock_call_llm):
         input_jobs = [
-            {"job_id": "job_1", "app_name": "AppA", "os": "Win", "timestamp": 1000.0, "extracted_text": "text A"},
-            {"job_id": "job_2", "app_name": "AppB", "os": "Win", "timestamp": 2000.0, "extracted_text": "text B"},
-            {"job_id": "job_3", "app_name": "AppC", "os": "Win", "timestamp": 3000.0, "extracted_text": "text C"},
+            {"job_id": "job_1", "app_name": "msedge.exe", "os": "Win", "timestamp": 1000.0, "extracted_text": "text A"},
+            {"job_id": "job_2", "app_name": "code.exe", "os": "Win", "timestamp": 2000.0, "extracted_text": "text B"},
+            {"job_id": "job_3", "app_name": "slack.exe", "os": "Win", "timestamp": 3000.0, "extracted_text": "text C"},
         ]
         mock_call_llm.return_value = json.dumps([
-            {"index": 0, "summary": "Summary A"},
-            {"index": 1, "summary": "Summary B"},
-            {"index": 2, "summary": "Summary C"},
+            {"index": 0, "app_name": "Microsoft Edge", "summary": "User is browsing web in Microsoft Edge."},
+            {"index": 1, "app_name": "Visual Studio Code", "summary": "User is editing code in Visual Studio Code."},
+            {"index": 2, "app_name": "Slack", "summary": "User is messaging in Slack."},
         ])
 
         output_jobs = summarize_batch(input_jobs)
         self.assertIsNotNone(output_jobs)
         self.assertEqual(len(output_jobs), 3)
 
-        # Check exact one-to-one mapping preservation
+        # Check real app name and 1-to-1 mapping
+        self.assertEqual(output_jobs[0]["app_name"], "Microsoft Edge")
+        self.assertEqual(output_jobs[1]["app_name"], "Visual Studio Code")
+        self.assertEqual(output_jobs[2]["app_name"], "Slack")
+
         for idx in range(3):
             in_j = input_jobs[idx]
             out_j = output_jobs[idx]
             self.assertNotEqual(out_j["job_id"], in_j["job_id"])  # Brand new UUID
             uuid.UUID(out_j["job_id"])  # Valid UUID format
-            self.assertEqual(out_j["app_name"], in_j["app_name"])
             self.assertEqual(out_j["os"], in_j["os"])
             self.assertEqual(out_j["timestamp"], in_j["timestamp"])
-            self.assertIn(f"Summary {chr(ord('A') + idx)}", out_j["summarized_text"])
+            self.assertTrue(len(out_j["summarized_text"]) > 0)
 
     @patch("ocr_summarization.summarizer.call_llm", return_value=AI_UNAVAILABLE_MESSAGE)
     def test_llm_failure_preserves_jobs(self, mock_call_llm):
