@@ -22,16 +22,24 @@ def _load_consumer_groups() -> Dict[str, str]:
 
 def get_consumer_group(consumer_key: str) -> Optional[str]:
     groups = _load_consumer_groups()
-    return groups.get(consumer_key)
+    if consumer_key in groups:
+        return groups[consumer_key]
+    if consumer_key in groups.values():
+        return consumer_key
+    return None
 
 def get_all_consumer_groups() -> List[str]:
     groups = _load_consumer_groups()
     return list(groups.values())
 
 def get_stream_for_consumer_key(consumer_key: str) -> Optional[str]:
-    if consumer_key not in _load_consumer_groups():
-        return None
-    return f"mira:stream:{consumer_key}"
+    groups = _load_consumer_groups()
+    if consumer_key in groups:
+        return f"mira:stream:{consumer_key}"
+    for k, v in groups.items():
+        if v == consumer_key:
+            return f"mira:stream:{k}"
+    return None
 
 def get_stream_for_consumer_group(consumer_group: str) -> Optional[str]:
     mappings = _load_consumer_groups()

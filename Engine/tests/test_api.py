@@ -43,5 +43,25 @@ class TestEngineAPI(unittest.TestCase):
         self.assertEqual(data.get("response"), "Test summary answer")
         self.assertEqual(data.get("work"), "summarization")
 
+    def test_summarization_endpoints(self):
+        # Test status
+        status_resp = self.client.get("/summarization/status")
+        self.assertEqual(status_resp.status_code, 200)
+        status_data = status_resp.json()
+        self.assertIn("running", status_data)
+        self.assertIn("batch_size", status_data)
+
+        # Test start
+        start_resp = self.client.post("/summarization/start")
+        self.assertEqual(start_resp.status_code, 200)
+        start_data = start_resp.json()
+        self.assertIn("status", start_data)
+
+        # Test stop
+        stop_resp = self.client.post("/summarization/stop")
+        self.assertEqual(stop_resp.status_code, 200)
+        stop_data = stop_resp.json()
+        self.assertEqual(stop_data.get("status"), "stopped")
+
 if __name__ == "__main__":
     unittest.main()

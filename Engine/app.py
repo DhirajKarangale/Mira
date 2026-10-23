@@ -9,6 +9,11 @@ from pydantic import BaseModel, Field
 import config
 from vault_logger import log, log_error, mask_sensitive
 from llm import call_llm, get_work_config
+from ocr_summarization import (
+    start_ocr_summarization,
+    stop_ocr_summarization,
+    get_summarization_status,
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -18,8 +23,20 @@ async def lifespan(app: FastAPI):
         config.CONFIG.fetch_from_vault()
     except Exception as e:
         log_error(f"Startup configuration sync from Vault encountered an error: {e}")
+
+    try:
+        # Initialize and start the OCR Summarization module
+        await start_ocr_summarization()
+    except Exception as e:
+        log_error(f"Failed to start OCR Summarization module: {e}")
+
     yield
+
     log("Engine service shutting down cleanly...")
+    try:
+        await stop_ocr_summarization()
+    except Exception as e:
+        log_error(f"Error stopping OCR Summarization module: {e}")
 
 app = FastAPI(
     title="MIRA Engine Service",
@@ -49,13 +66,29 @@ async def get_status():
     priorities = config.CONFIG.get_ai_priorities()
     active_prov = config.CONFIG.get_active_provider()
     workers = config.CONFIG.get_workers_config()
+    summarization = get_summarization_status()
     return {
         "service": "Engine",
         "status": "online",
         "active_provider": active_prov,
         "ai_priorities": priorities,
         "workers": workers,
+        "ocr_summarization": summarization,
     }
+
+@app.get("/summarization/status", status_code=status.HTTP_200_OK)
+async def summarization_status_endpoint():
+    return get_summarization_status()
+
+@app.post("/summarization/start", status_code=status.HTTP_200_OK)
+async def summarization_start_endpoint():
+    started = await start_ocr_summarization()
+    return {"status": "started" if started else "already_running", "details": get_summarization_status()}
+
+@app.post("/summarization/stop", status_code=status.HTTP_200_OK)
+async def summarization_stop_endpoint():
+    await stop_ocr_summarization()
+    return {"status": "stopped", "details": get_summarization_status()}
 
 @app.post("/config/sync", status_code=status.HTTP_200_OK)
 async def sync_config():

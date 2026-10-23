@@ -16,16 +16,23 @@ The **Engine** module coordinates LLM orchestration, model executions, provider 
 
 ## 2. Directory Structure
 
-```text
 Engine/
 ├── __init__.py
-├── app.py                     # FastAPI service exposing /health, /status, /llm/call, /config/sync
+├── start.py                   # General startup script: initializes config, starts OCR Summarization & web server
+├── app.py                     # FastAPI service exposing /health, /status, /llm/call, /config/sync, /summarization/*
 ├── config.py                  # In-memory configuration store & Vault HTTP fetcher
 ├── requirements.txt           # Module dependencies
 ├── vault_logger.py            # Centralized logging to Vault with API key redaction
 ├── tests/
 │   ├── test_api.py            # FastAPI endpoint tests
-│   └── test_llm.py            # LLM caller, parser, error analysis, and fallback tests
+│   ├── test_llm.py            # LLM caller, parser, error analysis, and fallback tests
+│   └── test_ocr_summarization.py # OCR summarization batch, mapping, and worker tests
+├── ocr_summarization/
+│   ├── __init__.py            # Public startup function start_ocr_summarization()
+│   ├── broker_client.py       # Message Broker polling, publishing, and acknowledgement
+│   ├── config.py              # Consumer group mappings & batch size constants
+│   ├── summarizer.py          # Batch formatting, single LLM call, and 1-to-1 output mapping
+│   └── worker.py              # Parallel non-blocking summarization worker manager
 └── llm/
     ├── __init__.py            # Main public exports
     ├── caller.py              # Main LLM caller: call_llm(prompt, work)
@@ -187,3 +194,53 @@ Supported works, temperatures, and ordered model fallback lists:
     "ai_priorities": ["gemini", "groq"]
   }
   ```
+
+### 5.5 OCR Summarization Status
+`GET /summarization/status`
+- **Response (`200 OK`):**
+  ```json
+  {
+    "running": true,
+    "num_workers": 1,
+    "configured_workers": 1,
+    "batch_size": 10,
+    "poll_interval": 5.0,
+    "total_jobs_processed": 0
+  }
+  ```
+
+### 5.6 Control OCR Summarization Workers
+- `POST /summarization/start` — Starts the background worker pool.
+- `POST /summarization/stop` — Gracefully stops all active workers.
+
+---
+
+## 6. OCR Summarization Architecture
+
+```text
+Message Broker (CONSUMER_GROUP_OCR_TEXT_SUMMARIZATION)
+                         │
+                         ▼
+             Parallel Workers Polling
+             (screenshot_summarization_workers)
+                         │
+                         ▼
+             Batch Preparation (Up to 10 jobs)
+             [app_name, os, extracted_text]
+                         │
+                         ▼
+             Single LLM Call (call_llm)
+             work="summarization"
+                         │
+                         ▼
+             1-to-1 Mapping & Output Job Creation
+             [new UUID, original app, os, timestamp, summary]
+                         │
+                         ▼
+             Publish to Message Broker (CONSUMER_GROUP_SUMMARY_EMBEDDING)
+                         │
+                 (If successful)
+                         ▼
+             Acknowledge & Delete from CONSUMER_GROUP_OCR_TEXT_SUMMARIZATION
+```
+
