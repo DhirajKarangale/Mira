@@ -52,7 +52,8 @@ def call(prompt: str, work: str) -> str:
 
     models: List[str] = get_models_for_work(work, "groq")
     if not models:
-        models = ["llama-3.3-70b-versatile", "qwen/qwen3.8-27b", "openai/gpt-oss-120b"]
+        log_error(f"[Groq] No models configured for work='{work}' in config.json")
+        raise AllModelsExhaustedError("groq")
 
     temperature = get_temperature(work)
     log(f"[Groq] Starting request for work='{work}' (temperature={temperature}, models={models}, keys={len(keys)})")
@@ -69,7 +70,7 @@ def call(prompt: str, work: str) -> str:
 
             try:
                 log(f"[Groq] Invoking model '{model}' (attempt {key_attempts + 1} with active key index)")
-                client = groq.Groq(api_key=active_key, timeout=30.0)
+                client = groq.Groq(api_key=active_key, timeout=15.0)
 
                 response = client.chat.completions.create(
                     model=model,

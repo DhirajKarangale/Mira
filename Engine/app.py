@@ -93,6 +93,11 @@ async def summarization_stop_endpoint():
 @app.post("/config/sync", status_code=status.HTTP_200_OK)
 async def sync_config():
     success = await asyncio.to_thread(config.CONFIG.fetch_from_vault)
+    try:
+        from llm.config import load_work_configs
+        load_work_configs()
+    except Exception as e:
+        log_error(f"Failed to reload LLM work configs during sync: {e}")
     return {
         "status": "success" if success else "partial_or_failed",
         "active_provider": config.CONFIG.get_active_provider(),

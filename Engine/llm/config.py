@@ -27,21 +27,15 @@ def load_work_configs(config_path: Optional[Path] = None) -> Dict[str, Any]:
         except Exception as e:
             from vault_logger import log_error
             log_error(f"Failed to load LLM work config from {path}: {e}")
-    # Default fallback if file is missing or invalid
-    _WORK_CONFIGS = {
-        "summarization": {
-            "temperature": 0.1,
-            "gemini": ["gemini-2.5-flash", "gemini-3.8-flash", "gemini-2.5-flash-lite"],
-            "groq": ["llama-3.3-70b-versatile", "qwen/qwen3.8-27b", "openai/gpt-oss-120b"],
-        }
-    }
+    # Fallback to empty if file is missing or invalid
+    _WORK_CONFIGS = {}
     return _WORK_CONFIGS
 
 # Load at import time
 load_work_configs()
 
 def get_work_config(work: str) -> Dict[str, Any]:
-    """Returns configuration for the given work type with fallback."""
+    """Returns configuration for the given work type from config.json."""
     clean_work = work.strip().lower()
     if clean_work in _WORK_CONFIGS:
         return _WORK_CONFIGS[clean_work]
@@ -49,11 +43,7 @@ def get_work_config(work: str) -> Dict[str, Any]:
         return _WORK_CONFIGS["general"]
     if "summarization" in _WORK_CONFIGS:
         return _WORK_CONFIGS["summarization"]
-    return {
-        "temperature": 0.2,
-        "gemini": ["gemini-2.5-flash", "gemini-3.8-flash"],
-        "groq": ["llama-3.3-70b-versatile", "qwen/qwen3.8-27b"],
-    }
+    return {}
 
 def get_temperature(work: str) -> float:
     """Returns temperature for the given work type."""

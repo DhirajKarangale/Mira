@@ -53,7 +53,8 @@ def call(prompt: str, work: str) -> str:
 
     models: List[str] = get_models_for_work(work, "gemini")
     if not models:
-        models = ["gemini-2.5-flash", "gemini-3.8-flash", "gemini-2.5-flash-lite"]
+        log_error(f"[Gemini] No models configured for work='{work}' in config.json")
+        raise AllModelsExhaustedError("gemini")
 
     temperature = get_temperature(work)
     log(f"[Gemini] Starting request for work='{work}' (temperature={temperature}, models={models}, keys={len(keys)})")
@@ -70,7 +71,7 @@ def call(prompt: str, work: str) -> str:
 
             try:
                 log(f"[Gemini] Invoking model '{model}' (attempt {key_attempts + 1} with active key index)")
-                client = genai.Client(api_key=active_key, http_options={"timeout": 30})
+                client = genai.Client(api_key=active_key, http_options={"timeout": 8})
                 gen_config = types.GenerateContentConfig(temperature=temperature)
 
                 response = client.models.generate_content(
