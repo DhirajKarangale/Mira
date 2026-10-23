@@ -79,8 +79,10 @@ def clean_ocr_text(text: str) -> str:
     t = text.strip()
 
     # Domain specific dictionary corrections
-    t = re.sub(r"\bMIRA\s+LIEN\b", "MIRA CLIENT", t, flags=re.IGNORECASE)
-    t = re.sub(r"\bMIRAGGETENTS\b", "MIRA CLIENT", t, flags=re.IGNORECASE)
+    t = re.sub(r"\b(?:WiRYA|IVIIRA|oMIRA|MIRAGGETENTS|MIRA\s+LIEN)\s*(?:\||\/)?\s*(?:\(?Gian[!\)]?|\(?CELENTs?\)?)?\b", "MIRA CLIENT", t, flags=re.IGNORECASE)
+    t = re.sub(r"\bRecs\b", "Redis", t)
+    t = re.sub(r"\b4p\s+natty\b", "Activity", t, flags=re.IGNORECASE)
+    t = re.sub(r"\b4\s+Activity\b", "Activity", t, flags=re.IGNORECASE)
     t = re.sub(r"\bussrcesnoxen\b", "MESSAGE_BROKER", t, flags=re.IGNORECASE)
     t = re.sub(r"\bMIESONGS\s*HROKER\b", "MESSAGE_BROKER", t, flags=re.IGNORECASE)
     t = re.sub(r"\boMIRA\b", "MIRA", t)
@@ -590,7 +592,7 @@ def strip_icon_artifacts(s: str) -> str:
         s = re.sub(r"^[^\w\s]+", "", s).strip()
         s = re.sub(r"^[a-zA-Z0-9]{1,3}[\)\]\}][\s\!\|\/\\]*", "", s).strip()
         s = re.sub(r"^\([a-zA-Z0-9]{1,3}\)[\s\!\|\/\\]*", "", s).strip()
-        s = re.sub(r"\b(tit|sie)\b", "", s, flags=re.I).strip()
+        s = re.sub(r"\b(tit|sie|Gets|Ges|Gens)\b", "", s, flags=re.I).strip()
     s = re.sub(r"[^\w\s]+$", "", s).strip()
     return s
 
@@ -642,9 +644,18 @@ def synthesize_markdown_from_regions(
             consumed_indices.add(i)
             continue
 
-        url_match = re.search(r"((?:https?://|127\.0\.0\.1|localhost)[^\s\)\`]+)", txt)
+        # Enhanced URL extraction with local address normalization
+        url_match = re.search(
+            r"((?:https?://|127\.0\.0\.1|localhost|(?:\d{1,4}[.-]){2,4}:?900[1-6]|wronrsuny)[^\s\)\`]+)",
+            txt,
+            flags=re.IGNORECASE
+        )
         if url_match:
-            clean_url = url_match.group(1).rstrip(",;)")
+            raw_url = url_match.group(1).rstrip(",;)")
+            clean_url = re.sub(r"^(?:wronrsunyactinylegs|2720[.-]05\s*-9004|(?:\d{1,4}[.-]){2,4}:?9004)", "127.0.0.1:9004", raw_url, flags=re.I)
+            if not clean_url.startswith(("http://", "https://", "127.0.0.1", "localhost")):
+                if "9004" in clean_url:
+                    clean_url = "127.0.0.1:9004" + clean_url[clean_url.find("9004") + 4:]
             if clean_url not in url_locations:
                 url_locations.append(clean_url)
             consumed_indices.add(i)
@@ -657,11 +668,11 @@ def synthesize_markdown_from_regions(
 
         # Header zone
         if norm_y < 0.12 or reg.get("type") == "header":
-            if c_item not in nav_items and c_item not in ("Bl", "Lb", "CoE", "Gens"):
+            if c_item not in nav_items and c_item not in ("Bl", "Lb", "CoE", "Gens", "Gets", "Ges"):
                 nav_items.append(c_item)
             consumed_indices.add(i)
-        # Sidebar zone: Left rail below top bar
-        elif norm_x < 0.18 or reg.get("type") == "sidebar":
+        # Sidebar zone: Left rail below top bar (excluding timestamps and pagination)
+        elif (norm_x < 0.18 or reg.get("type") == "sidebar") and not re.search(r"\b(?:\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)|Showing\s+\d+-\d+)\b", txt, re.I):
             if c_item not in sidebar_items:
                 sidebar_items.append(c_item)
             consumed_indices.add(i)
@@ -733,10 +744,17 @@ def synthesize_markdown_from_regions(
         if not c_item:
             continue
 
-        if any(btn in txt for btn in ("Clean / Delete", "Clean All Pending", "Refresh", "Submit", "Save", "Cancel", "Confirm", "Auto Start", "Format Redis")):
+        txt_lower = txt.lower()
+        if "stop capturing" in txt_lower:
+            action_buttons.append("[Control: Stop Capturing]")
+            consumed_indices.add(i)
+        elif "start capturing" in txt_lower or "auto start" in txt_lower:
+            action_buttons.append("[Control: Auto Start]")
+            consumed_indices.add(i)
+        elif any(btn.lower() in txt_lower for btn in ("Clean / Delete", "Clean All Pending", "Refresh", "Submit", "Save", "Cancel", "Confirm", "Format Redis")):
             action_buttons.append(f"[Control: {c_item}]")
             consumed_indices.add(i)
-        elif "search" in txt.lower() and len(txt) < 40:
+        elif "search" in txt_lower and len(txt) < 40:
             action_buttons.append(f"[Search: {c_item}]")
             consumed_indices.add(i)
 
