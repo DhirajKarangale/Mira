@@ -17,6 +17,7 @@ from .broker_client import (
 )
 from .memory import (
     get_session_memory,
+    get_entire_session_history,
     store_session_memory,
     format_chat_history_for_llm,
 )
@@ -31,7 +32,7 @@ logger = logging.getLogger("mira.engine.chat.worker")
 async def process_chat_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
     """
     Process a single chat job from llm_chat stream:
-      1. Retrieve session's chat history using the short-term memory script.
+      1. Retrieve session's entire chat history.
       2. Call the existing LLM script with the user query and chat history.
       3. Send the response to the Client through WebSockets using existing job_id and session_id.
       4. Store the user query and AI response in the Vault chat table.
@@ -54,9 +55,9 @@ async def process_chat_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
 
     log(f"[ChatWorker-{worker_id}] Processing job {job_id} for session {session_id}...")
 
-    # Step 1: Retrieve session's chat history from short-term memory
-    history = await asyncio.to_thread(get_session_memory, session_id)
-    log(f"[ChatWorker-{worker_id}] Retrieved {len(history)} short-term memory turns for session {session_id}")
+    # Step 1: Retrieve entire chat history for complete LLM context
+    history = await asyncio.to_thread(get_entire_session_history, session_id)
+    log(f"[ChatWorker-{worker_id}] Retrieved {len(history)} messages of history for session {session_id}")
 
     # Step 2: Format history with user query and call existing LLM script
     prompt = format_chat_history_for_llm(history, user_query)

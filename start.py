@@ -370,7 +370,7 @@ class ProcessRunner:
         mod_type = module["type"]
 
         if mod_type == "fastapi":
-            return [sys.executable, "-m", "uvicorn", "app:app", "--host", host, "--port", str(port)]
+            return [sys.executable, "-m", "uvicorn", "app:app", "--host", host, "--port", str(port), "--reload"]
         elif mod_type == "rust":
             return ["cargo", "run", "--", "--host", host, "--port", str(port)]
         elif mod_type == "node":

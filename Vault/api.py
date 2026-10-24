@@ -696,6 +696,25 @@ async def rename_vault_chat_session(session_id: str, request: ChatSessionRenameR
             detail={'message': f'Failed to update session name: {str(e)}'}
         )
 
+@router.delete('/chats/all', status_code=status.HTTP_200_OK)
+@router.delete('/chats/sessions/all', status_code=status.HTTP_200_OK)
+@router.delete('/chats', status_code=status.HTTP_200_OK)
+@router.delete('/chats/sessions', status_code=status.HTTP_200_OK)
+async def delete_all_vault_chats():
+    try:
+        deleted_count = config_storage.delete_all_chats()
+        return {
+            'status': 'success',
+            'message': f"All chats deleted ({deleted_count} messages removed).",
+            'deleted_count': deleted_count,
+        }
+    except Exception as e:
+        logger.error(f"Failed to delete all chats: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={'message': f'Failed to delete all chats: {str(e)}'}
+        )
+
 @router.delete('/chats/sessions/{session_id}', status_code=status.HTTP_200_OK)
 @router.delete('/chats/{session_id}', status_code=status.HTTP_200_OK)
 async def delete_vault_chat_session(session_id: str):
@@ -721,5 +740,6 @@ async def cleanup_vault_chats():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={'message': f'Failed to cleanup duplicate chats: {str(e)}'}
         )
+
 
 

@@ -18,6 +18,9 @@ import {
   MoreVertical,
   Edit3,
   X,
+  Trash2,
+  ShieldCheck,
+  AlertTriangle,
 } from "lucide-react";
 import { Sidebar, type SidebarItem, type SidebarRenderItemState } from "@/components/Sidebar";
 import { toast } from "@/components";
@@ -79,6 +82,11 @@ export const ChatsPage: FC = () => {
   const [editingName, setEditingName] = useState<string>("");
   const [menuOpenSessionId, setMenuOpenSessionId] = useState<string | null>(null);
   const [isRenamingLoading, setIsRenamingLoading] = useState<boolean>(false);
+  const [sessionToDelete, setSessionToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [isDeletingSessionId, setIsDeletingSessionId] = useState<string | null>(null);
+  const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState<boolean>(false);
+  const [deleteAllConfirmText, setDeleteAllConfirmText] = useState<string>("");
+  const [isDeletingAll, setIsDeletingAll] = useState<boolean>(false);
 
   // ============================================================================
   // Messages State
@@ -677,6 +685,79 @@ export const ChatsPage: FC = () => {
   );
 
   // ============================================================================
+  // Delete Session Handlers
+  // ============================================================================
+  const handleConfirmDeleteSession = useCallback(async () => {
+    if (!sessionToDelete) return;
+    const { id, name } = sessionToDelete;
+    setIsDeletingSessionId(id);
+    try {
+      await engineService.deleteChatSession(id);
+
+      // Remove from sessions state
+      setSessions((prev) => prev.filter((s) => s.session_id !== id));
+      setSessionsTotalItems((prev) => Math.max(0, prev - 1));
+      delete sessionMessagesCacheRef.current[id];
+
+      // If the deleted session is currently selected, clear the chat window and switch to no-chat-selected state
+      if (selectedSessionIdRef.current === id) {
+        setSelectedSessionId(null);
+        setMessages([]);
+        setInputText("");
+      }
+
+      toast.success(`Chat "${name || id}" deleted successfully`, {
+        title: "Chat Deleted",
+      });
+      setSessionToDelete(null);
+    } catch (err: unknown) {
+      console.error("Failed to delete chat session:", err);
+      const msg = err instanceof Error ? err.message : "Failed to delete chat session";
+      toast.error(msg, { title: "Delete Failed" });
+    } finally {
+      setIsDeletingSessionId(null);
+    }
+  }, [sessionToDelete]);
+
+  const handleCancelDeleteSession = useCallback(() => {
+    if (isDeletingSessionId) return;
+    setSessionToDelete(null);
+  }, [isDeletingSessionId]);
+
+  const DELETE_ALL_CONFIRMATION_PHRASE = "DELETE ALL CHATS";
+
+  const handleConfirmDeleteAll = useCallback(async () => {
+    if (deleteAllConfirmText.trim().toUpperCase() !== DELETE_ALL_CONFIRMATION_PHRASE) return;
+    setIsDeletingAll(true);
+    try {
+      await engineService.deleteAllChats();
+
+      setSessions([]);
+      setSessionsTotalItems(0);
+      setSessionsHasMore(false);
+      setSessionsCursor(null);
+      setSelectedSessionId(null);
+      setMessages([]);
+      setInputText("");
+      sessionMessagesCacheRef.current = {};
+
+      toast.success("All chats have been permanently deleted from local encrypted storage", {
+        title: "All Chats Deleted",
+      });
+      setIsDeleteAllModalOpen(false);
+      setDeleteAllConfirmText("");
+      // Refresh sessions from server to confirm empty state
+      fetchSessions(1, null, false);
+    } catch (err: unknown) {
+      console.error("Failed to delete all chats:", err);
+      const msg = err instanceof Error ? err.message : "Failed to delete all chats";
+      toast.error(msg, { title: "Delete All Failed" });
+    } finally {
+      setIsDeletingAll(false);
+    }
+  }, [deleteAllConfirmText, fetchSessions]);
+
+  // ============================================================================
   // Sending Message
   // ============================================================================
   const handleSendMessage = async () => {
@@ -911,9 +992,14 @@ export const ChatsPage: FC = () => {
             role="menuitem"
             aria-current={isActive ? "page" : undefined}
             title={sessionName}
-            onClick={handleSelect}
+            onClick={() => {
+              if (isDeletingSessionId === item.key) return;
+              handleSelect();
+            }}
+            disabled={isDeletingSessionId === item.key}
             className={cn(
               "group relative flex items-center justify-center w-full rounded-md text-xs font-medium cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-cyan-400 h-9 px-2 overflow-hidden transition-colors duration-150",
+              isDeletingSessionId === item.key && "opacity-40 pointer-events-none",
               isActive
                 ? "bg-cyan-950/40 text-cyan-300 border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.12)] font-semibold"
                 : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5 border border-transparent"
@@ -925,7 +1011,9 @@ export const ChatsPage: FC = () => {
                 isActive ? "text-cyan-400" : "text-zinc-400 group-hover:text-zinc-200"
               )}
             >
-              {isSessionSending ? (
+              {isDeletingSessionId === item.key ? (
+                <RefreshCw className="h-4 w-4 animate-spin text-rose-400" />
+              ) : isSessionSending ? (
                 <RefreshCw className="h-4 w-4 animate-spin text-cyan-400" />
               ) : (
                 <MessageSquare className="h-4 w-4" />
@@ -994,6 +1082,7 @@ export const ChatsPage: FC = () => {
         <div
           className={cn(
             "group relative flex items-center w-full rounded-md text-xs font-medium cursor-pointer h-9 px-2 transition-colors duration-150 select-none",
+            isDeletingSessionId === item.key && "opacity-40 pointer-events-none",
             isActive
               ? "bg-cyan-950/40 text-cyan-300 border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.12)] font-semibold"
               : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5 border border-transparent"
@@ -1004,8 +1093,14 @@ export const ChatsPage: FC = () => {
           )}
 
           <div
-            onClick={handleSelect}
-            className="flex items-center flex-1 min-w-0 h-full overflow-hidden"
+            onClick={() => {
+              if (isDeletingSessionId === item.key) return;
+              handleSelect();
+            }}
+            className={cn(
+              "flex items-center flex-1 min-w-0 h-full overflow-hidden",
+              isDeletingSessionId === item.key && "pointer-events-none opacity-40"
+            )}
           >
             <span
               className={cn(
@@ -1013,7 +1108,9 @@ export const ChatsPage: FC = () => {
                 isActive ? "text-cyan-400" : "text-zinc-400 group-hover:text-zinc-200"
               )}
             >
-              {isSessionSending ? (
+              {isDeletingSessionId === item.key ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin text-rose-400" />
+              ) : isSessionSending ? (
                 <RefreshCw className="h-3.5 w-3.5 animate-spin text-cyan-400" />
               ) : (
                 <MessageSquare className="h-4 w-4" />
@@ -1062,12 +1159,26 @@ export const ChatsPage: FC = () => {
                     id={`btn-rename-session-${item.key}`}
                     onClick={(e) => {
                       e.stopPropagation();
+                      setMenuOpenSessionId(null);
                       handleStartRename(item.key, sessionName);
                     }}
                     className="w-full flex items-center gap-2 px-3 py-1.5 text-zinc-300 hover:text-cyan-300 hover:bg-cyan-500/10 transition-colors text-left cursor-pointer"
                   >
                     <Edit3 className="h-3.5 w-3.5 text-cyan-400" />
                     <span>Rename</span>
+                  </button>
+                  <button
+                    type="button"
+                    id={`btn-delete-session-${item.key}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuOpenSessionId(null);
+                      setSessionToDelete({ id: item.key, name: sessionName });
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-rose-400 hover:text-rose-200 hover:bg-rose-500/15 transition-colors text-left cursor-pointer"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-rose-400" />
+                    <span>Delete</span>
                   </button>
                 </div>
               )}
@@ -1081,6 +1192,7 @@ export const ChatsPage: FC = () => {
       editingName,
       menuOpenSessionId,
       isRenamingLoading,
+      isDeletingSessionId,
       sendingSessions,
       handleSaveRename,
       handleCancelRename,
@@ -1203,6 +1315,18 @@ export const ChatsPage: FC = () => {
                 </div>
 
                 <div className="flex items-center gap-1 shrink-0">
+                  {sessions.length > 0 && (
+                    <button
+                      type="button"
+                      id="btn-sidebar-delete-all"
+                      onClick={() => setIsDeleteAllModalOpen(true)}
+                      title="Delete All Chats"
+                      aria-label="Delete All Chats"
+                      className="p-1 rounded-md text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   <button
                     type="button"
                     id="btn-sidebar-close"
@@ -1233,9 +1357,23 @@ export const ChatsPage: FC = () => {
         }
         // Issue 5: In sidebar bottoms show total number of chats of users (visible both expanded and collapsed)
         footer={
-          <div className="h-8 flex items-center justify-center text-xs text-zinc-400 font-mono select-none overflow-hidden whitespace-nowrap w-full">
+          <div className="h-8 flex items-center justify-between px-3 text-xs text-zinc-400 font-mono select-none overflow-hidden whitespace-nowrap w-full">
             {!isSidebarCollapsed ? (
-              <span className="truncate">Total Chats: {sessionsTotalItems || sessions.length}</span>
+              <>
+                <span className="truncate">Total Chats: {sessionsTotalItems || sessions.length}</span>
+                {sessions.length > 0 && (
+                  <button
+                    type="button"
+                    id="btn-footer-delete-all"
+                    onClick={() => setIsDeleteAllModalOpen(true)}
+                    className="text-[11px] font-sans text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 px-1.5 py-0.5 rounded transition-colors cursor-pointer flex items-center gap-1"
+                    title="Delete All Chats"
+                  >
+                    <Trash2 className="w-3 h-3 text-rose-400" />
+                    <span>Delete All</span>
+                  </button>
+                )}
+              </>
             ) : (
               <span
                 className="flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded-full bg-zinc-900 border border-white/10 text-cyan-400 font-semibold text-[11px] shadow-sm"
@@ -1404,8 +1542,16 @@ export const ChatsPage: FC = () => {
                 </p>
               </div>
 
+              {/* Requirement 3: Privacy Notice */}
+              <div className="flex items-start gap-3 p-3.5 rounded-xl bg-cyan-950/25 border border-cyan-500/25 text-left w-full shadow-[0_0_20px_rgba(6,182,212,0.06)] select-none">
+                <ShieldCheck className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
+                <p className="text-xs text-zinc-300 leading-relaxed font-sans">
+                  All chats are stored locally in secure, encrypted storage. Nobody else can read or alter them. Chats are not stored in the cloud or used for any other purposes.
+                </p>
+              </div>
+
               {/* Quick Prompts */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full text-left pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full text-left pt-1">
                 {[
                   "What modules are online in MIRA?",
                   "Summarize my recent work activities",
@@ -1570,15 +1716,189 @@ export const ChatsPage: FC = () => {
               </button>
             </div>
 
-            {/* Issue 4: Removed 'mira engine online' text */}
-            <div className="flex items-center justify-between px-2 text-[10px] text-zinc-500 font-mono">
+            {/* Privacy message & system status */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-2 pt-1 text-[11px] text-zinc-400">
+              <div className="flex items-center gap-1.5 text-zinc-400 text-[11px] text-center sm:text-left select-none">
+                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400/80 shrink-0" />
+                <span>
+                  All chats are stored locally in secure, encrypted storage. Nobody else can read or alter them. Chats are not stored in the cloud or used for any other purposes.
+                </span>
+              </div>
               {sessionsError && (
-                <span className="text-red-400">Offline fallback active</span>
+                <span className="text-red-400 shrink-0 font-mono text-[10px]">Offline fallback active</span>
               )}
             </div>
           </div>
         </footer>
       </section>
+
+      {/* ==================================================================== */}
+      {/* MODAL: Confirmation Dialog for Single Session Deletion */}
+      {/* ==================================================================== */}
+      {sessionToDelete && (
+        <div
+          id="modal-delete-session-confirmation"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={handleCancelDeleteSession}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-zinc-900 border border-white/10 shadow-2xl p-6 space-y-5 animate-in zoom-in-95 duration-150 select-none"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="space-y-1 min-w-0 flex-1">
+                <h3 className="text-base font-semibold text-zinc-100">Delete Chat Session?</h3>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Are you sure you want to delete this chat session? All messages will be permanently removed from local encrypted storage and Redis memory.
+                </p>
+                <div className="mt-2 p-2 rounded-lg bg-zinc-950/60 border border-white/5 font-mono text-xs text-zinc-300 truncate">
+                  {sessionToDelete.name || sessionToDelete.id}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                id="btn-cancel-delete-session"
+                onClick={handleCancelDeleteSession}
+                disabled={Boolean(isDeletingSessionId)}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-zinc-300 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                No
+              </button>
+              <button
+                type="button"
+                id="btn-confirm-delete-session"
+                onClick={handleConfirmDeleteSession}
+                disabled={Boolean(isDeletingSessionId)}
+                className="px-4 py-2 rounded-xl text-xs font-medium bg-rose-600 hover:bg-rose-500 active:scale-95 text-white transition-all shadow-md shadow-rose-600/20 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+              >
+                {isDeletingSessionId ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <span>Yes, Delete</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* MODAL: Confirmation Dialog for Delete All Chats */}
+      {/* ==================================================================== */}
+      {isDeleteAllModalOpen && (
+        <div
+          id="modal-delete-all-chats-confirmation"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => {
+            if (!isDeletingAll) {
+              setIsDeleteAllModalOpen(false);
+              setDeleteAllConfirmText("");
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-lg rounded-2xl bg-zinc-900 border border-rose-500/30 shadow-2xl p-6 space-y-5 animate-in zoom-in-95 duration-150 select-none"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-4">
+              <div className="w-11 h-11 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-6 h-6 text-rose-400" />
+              </div>
+              <div className="space-y-1.5 min-w-0 flex-1">
+                <h3 className="text-base font-semibold text-zinc-100">Delete All Chat Sessions?</h3>
+                <p className="text-xs text-zinc-300 leading-relaxed">
+                  This action is <span className="font-semibold text-rose-400">permanent and irreversible</span>. All chat sessions and messages will be wiped from local encrypted storage, and all short-term conversation state will be cleared from Redis.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center justify-between text-xs text-zinc-400">
+                <span>To confirm, type the phrase below:</span>
+                <button
+                  type="button"
+                  onClick={() => setDeleteAllConfirmText(DELETE_ALL_CONFIRMATION_PHRASE)}
+                  className="font-mono font-bold text-xs text-rose-300 hover:text-rose-200 bg-rose-500/10 hover:bg-rose-500/20 px-2 py-0.5 rounded cursor-pointer transition-colors"
+                  title="Click to fill confirmation phrase"
+                >
+                  {DELETE_ALL_CONFIRMATION_PHRASE}
+                </button>
+              </div>
+              <input
+                id="input-delete-all-confirm"
+                type="text"
+                autoFocus
+                disabled={isDeletingAll}
+                value={deleteAllConfirmText}
+                onChange={(e) => setDeleteAllConfirmText(e.target.value)}
+                placeholder={DELETE_ALL_CONFIRMATION_PHRASE}
+                className="w-full px-3 py-2 bg-zinc-950/80 border border-white/10 rounded-xl text-xs font-mono text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500/40 transition-colors"
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    deleteAllConfirmText.trim().toUpperCase() === DELETE_ALL_CONFIRMATION_PHRASE &&
+                    !isDeletingAll
+                  ) {
+                    handleConfirmDeleteAll();
+                  }
+                }}
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                id="btn-cancel-delete-all"
+                onClick={() => {
+                  setIsDeleteAllModalOpen(false);
+                  setDeleteAllConfirmText("");
+                }}
+                disabled={isDeletingAll}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-zinc-300 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="btn-confirm-delete-all"
+                onClick={handleConfirmDeleteAll}
+                disabled={
+                  deleteAllConfirmText.trim().toUpperCase() !== DELETE_ALL_CONFIRMATION_PHRASE ||
+                  isDeletingAll
+                }
+                className={cn(
+                  "px-4 py-2 rounded-xl text-xs font-medium transition-all shadow-md flex items-center gap-2 cursor-pointer",
+                  deleteAllConfirmText.trim().toUpperCase() === DELETE_ALL_CONFIRMATION_PHRASE &&
+                    !isDeletingAll
+                    ? "bg-rose-600 hover:bg-rose-500 active:scale-95 text-white shadow-rose-600/30"
+                    : "bg-zinc-800 text-zinc-500 opacity-60 cursor-not-allowed"
+                )}
+              >
+                {isDeletingAll ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting All Chats...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete All Chats</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

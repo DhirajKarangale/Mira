@@ -191,3 +191,108 @@ def save_chat_to_vault(
     except Exception as e:
         log_error(f"Failed to save message to Vault: {e}")
         return None
+
+
+def fetch_session_messages_from_vault(
+    session_id: str,
+    limit: int = 100,
+) -> List[Dict[str, Any]]:
+    """
+    Retrieve entire chat history for a session from Vault's SQLite storage.
+    Paginates if total_pages > 1 to retrieve the full chat history in chronological order.
+    """
+    vault_base = get_vault_base_url()
+    clean_sid = str(session_id).strip()
+    if not clean_sid:
+        return []
+
+    all_messages: List[Dict[str, Any]] = []
+    page = 1
+    max_pages = 20
+
+    while page <= max_pages:
+        endpoint = f"{vault_base}/chats/sessions/{clean_sid}"
+        params = {"limit": limit, "page": page}
+        try:
+            resp = requests.get(endpoint, params=params, timeout=5.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                msgs = data.get("messages", [])
+                if not msgs:
+                    break
+                all_messages.extend(msgs)
+                total_pages = data.get("total_pages", 1)
+                if page >= total_pages:
+                    break
+                page += 1
+            else:
+                log_error(f"Failed to fetch session {clean_sid} messages from Vault: HTTP {resp.status_code}")
+                break
+        except Exception as e:
+            log_error(f"Error fetching session {clean_sid} messages from Vault: {e}")
+            break
+
+    return all_messages
+
+
+def delete_session_from_vault(session_id: str) -> bool:
+    """
+    Delete all messages for a session from Vault chats table.
+    """
+    clean_sid = str(session_id).strip()
+    if not clean_sid:
+        return False
+    vault_base = get_vault_base_url()
+    endpoint = f"{vault_base}/chats/sessions/{clean_sid}"
+    try:
+        resp = requests.delete(endpoint, timeout=5.0)
+        return resp.status_code in (200, 204)
+    except Exception as e:
+        log_error(f"Failed to delete session {clean_sid} from Vault: {e}")
+        return False
+
+
+def delete_all_sessions_from_vault() -> bool:
+    """
+    Delete all chats from Vault chats table.
+    """
+    vault_base = get_vault_base_url()
+    endpoint = f"{vault_base}/chats/all"
+    try:
+        resp = requests.delete(endpoint, timeout=5.0)
+        return resp.status_code in (200, 204)
+    except Exception as e:
+        log_error(f"Failed to delete all chats from Vault: {e}")
+        return False
+
+
+def delete_chat_memory_broker(session_id: str) -> bool:
+    """
+    Delete short-term memory for a session from Redis via Message Broker.
+    """
+    clean_sid = str(session_id).strip()
+    if not clean_sid:
+        return False
+    broker_base = get_broker_base_url()
+    endpoint = f"{broker_base}/chat/memory/{clean_sid}"
+    try:
+        resp = requests.delete(endpoint, timeout=5.0)
+        return resp.status_code in (200, 204)
+    except Exception as e:
+        log_error(f"Failed to delete chat memory for session {clean_sid}: {e}")
+        return False
+
+
+def delete_all_chat_memory_broker() -> bool:
+    """
+    Delete all chat short-term memories from Redis via Message Broker.
+    """
+    broker_base = get_broker_base_url()
+    endpoint = f"{broker_base}/chat/memory"
+    try:
+        resp = requests.delete(endpoint, timeout=5.0)
+        return resp.status_code in (200, 204)
+    except Exception as e:
+        log_error(f"Failed to delete all chat memory from Message Broker: {e}")
+        return False
+

@@ -1096,4 +1096,15 @@ def delete_chat_session(session_id: str) -> bool:
     save_config_storage()
     return True
 
+def delete_all_chats() -> int:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+    cursor = _DB_CONN.execute("DELETE FROM chats")
+    deleted_count = cursor.rowcount
+    _DB_CONN.commit()
+    save_config_storage()
+    return deleted_count
+
+
 

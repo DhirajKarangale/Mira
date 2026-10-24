@@ -13,7 +13,13 @@ from .config import (
     CONSUMER_GROUP_LLM_CHAT,
     get_vault_base_url,
 )
-from .broker_client import publish_chat_job, save_chat_to_vault
+from .broker_client import (
+    publish_chat_job,
+    save_chat_to_vault,
+    delete_session_from_vault,
+    delete_all_sessions_from_vault,
+)
+from .memory import clear_session_memory, clear_all_sessions_memory
 from .websocket import ws_manager
 from .worker import get_chat_status, start_chat_workers, stop_chat_workers
 from vault_logger import log, log_error
@@ -434,4 +440,72 @@ async def rename_chat_session_endpoint(session_id: str, request: RenameChatSessi
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update session name: {str(e)}",
         )
+
+
+@router.delete(
+    "/chats/all",
+    status_code=status.HTTP_200_OK,
+    summary="Delete All Chat Sessions",
+)
+@router.delete("/chats/sessions/all", include_in_schema=False)
+@router.delete("/chats/sessions", include_in_schema=False)
+@router.delete("/chats", include_in_schema=False)
+async def delete_all_chats_endpoint():
+    """
+    Deletes all chat records from the Vault chat table and clears all chat sessions from Redis.
+    """
+    try:
+        # 1. Delete from Vault
+        vault_deleted = await asyncio.to_thread(delete_all_sessions_from_vault)
+        # 2. Clear all Redis chat memories
+        await asyncio.to_thread(clear_all_sessions_memory)
+
+        log(f"All chat sessions deleted (vault_ok={vault_deleted}).")
+        return {
+            "status": "success",
+            "message": "All chat sessions and memories deleted successfully.",
+        }
+    except Exception as e:
+        logger.error(f"Failed to delete all chats: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete all chats: {str(e)}",
+        )
+
+
+@router.delete(
+    "/chats/sessions/{session_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Delete Individual Chat Session",
+)
+@router.delete("/chats/{session_id}", include_in_schema=False)
+async def delete_chat_session_endpoint(session_id: str):
+    """
+    Deletes an individual chat session:
+    1. Removes all messages for session_id from Vault's SQLite chat table.
+    2. Clears session short-term memory from Redis.
+    """
+    clean_sid = (session_id or "").strip()
+    if not clean_sid:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="session_id cannot be empty")
+
+    try:
+        # 1. Delete from Vault
+        vault_deleted = await asyncio.to_thread(delete_session_from_vault, clean_sid)
+        # 2. Clear from Redis short-term memory
+        await asyncio.to_thread(clear_session_memory, clean_sid)
+
+        log(f"Chat session '{clean_sid}' deleted (vault_ok={vault_deleted}).")
+        return {
+            "status": "success",
+            "session_id": clean_sid,
+            "message": f"Chat session '{clean_sid}' deleted successfully.",
+        }
+    except Exception as e:
+        logger.error(f"Failed to delete session '{clean_sid}': {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete session '{clean_sid}': {str(e)}",
+        )
+
 

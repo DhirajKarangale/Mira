@@ -507,3 +507,14 @@ async def clear_chat_memory(session_id: str) -> Dict[str, Any]:
     deleted = await client.delete(key)
     return {"status": "success", "session_id": clean_sid, "deleted": bool(deleted)}
 
+async def clear_all_chat_memory() -> Dict[str, Any]:
+    client = get_redis_client()
+    keys = []
+    async for k in client.scan_iter(match=f"{CHAT_MEMORY_PREFIX}*"):
+        keys.append(k)
+    deleted_count = 0
+    if keys:
+        deleted_count = await client.delete(*keys)
+    return {"status": "success", "deleted_count": deleted_count}
+
+

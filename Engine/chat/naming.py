@@ -17,15 +17,17 @@ logger = logging.getLogger("mira.engine.chat.naming")
 def format_naming_prompt(messages: List[Dict[str, Any]]) -> str:
     """
     Format an expert few-shot prompt for the LLM to generate a short, high-signal chat title (2 to 4 words).
+    Provides the complete conversation dialogue so the LLM has full context.
     """
     conversation_lines: List[str] = []
-    for msg in messages[:6]:
+    for msg in messages:
         role = "User" if msg.get("role") == "user" else "Mira"
         content = (msg.get("content") or "").strip()
-        # Truncate overly long content to maintain a fast, focused prompt
-        if len(content) > 280:
-            content = content[:280] + "..."
-        conversation_lines.append(f"{role}: {content}")
+        # Truncate overly long single content blocks to maintain a fast, focused prompt
+        if len(content) > 300:
+            content = content[:300] + "..."
+        if content:
+            conversation_lines.append(f"{role}: {content}")
 
     dialogue = "\n".join(conversation_lines)
     prompt = (
@@ -211,7 +213,7 @@ class ChatNamingQueue:
             try:
                 resp = requests.get(
                     f"{vault_base}/chats/sessions/{session_id}",
-                    params={"limit": 6},
+                    params={"limit": 100},
                     timeout=5.0,
                 )
                 if resp.status_code == 200:
@@ -242,7 +244,7 @@ class ChatNamingQueue:
             log(f"[ChatNaming] Session '{session_id}' already has chat_name '{existing_chat_name}', skipping naming.")
             return False
 
-        # Step 2: Fetch the session's messages, using a minimum of 2 messages (one user and one AI) and a max of 6
+        # Step 2: Fetch the session's messages, using a minimum of 2 messages (one user and one AI)
         if len(messages) < 2:
             log(f"[ChatNaming] Session '{session_id}' has fewer than 2 messages ({len(messages)}), skipping naming.")
             return False
@@ -253,7 +255,7 @@ class ChatNamingQueue:
             log(f"[ChatNaming] Session '{session_id}' missing user or AI message, skipping naming.")
             return False
 
-        target_messages = messages[:6]
+        target_messages = messages
         first_user_content = next((m.get("content", "") for m in target_messages if m.get("role") == "user"), "")
 
         # Step 3: Call existing LLM script to generate a short, relevant chat name

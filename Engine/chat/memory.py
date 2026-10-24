@@ -4,7 +4,13 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from .config import MAX_SHORT_TERM_MEMORY
-from .broker_client import store_chat_memory_broker, get_chat_memory_broker
+from .broker_client import (
+    store_chat_memory_broker,
+    get_chat_memory_broker,
+    fetch_session_messages_from_vault,
+    delete_chat_memory_broker,
+    delete_all_chat_memory_broker,
+)
 from vault_logger import log, log_error
 
 logger = logging.getLogger("mira.engine.chat.memory")
@@ -78,25 +84,105 @@ def get_session_memory(session_id: str) -> List[Dict[str, str]]:
     return _LOCAL_MEMORY_CACHE.get(clean_sid, [])[-MAX_SHORT_TERM_MEMORY:]
 
 
-def format_chat_history_for_llm(history: List[Dict[str, str]], current_query: str) -> str:
+def get_entire_session_history(session_id: str) -> List[Dict[str, str]]:
     """
-    Formats the session chat history in a compact, token-efficient format
-    for calling the LLM.
+    Retrieves the entire conversation history for a session from Vault (SQLite store).
+    Returns list of {'role': 'user'|'ai', 'content': '...'} in chronological order.
+    Falls back to Redis short-term memory if Vault returns no records.
+    """
+    clean_sid = str(session_id).strip()
+    if not clean_sid:
+        return []
+
+    try:
+        vault_msgs = fetch_session_messages_from_vault(clean_sid, limit=100)
+        if vault_msgs:
+            history: List[Dict[str, str]] = []
+            for m in vault_msgs:
+                r = (m.get("role") or "").lower().strip()
+                c = (m.get("content") or "").strip()
+                if r in ("user", "ai") and c:
+                    history.append({"role": r, "content": c})
+            if history:
+                return history
+    except Exception as e:
+        log_error(f"[ChatMemory] Error fetching full history from Vault for {clean_sid}: {e}")
+
+    st_memory = get_session_memory(clean_sid)
+    fallback: List[Dict[str, str]] = []
+    for turn in st_memory:
+        u = str(turn.get("user") or "").strip()
+        a = str(turn.get("ai") or "").strip()
+        if u:
+            fallback.append({"role": "user", "content": u})
+        if a:
+            fallback.append({"role": "ai", "content": a})
+    return fallback
+
+
+def clear_session_memory(session_id: str) -> bool:
+    """
+    Removes session's short-term memory from Redis via Message Broker and clears local cache.
+    """
+    clean_sid = str(session_id).strip()
+    if not clean_sid:
+        return False
+    _LOCAL_MEMORY_CACHE.pop(clean_sid, None)
+    return delete_chat_memory_broker(clean_sid)
+
+
+def clear_all_sessions_memory() -> bool:
+    """
+    Removes all sessions' short-term memory from Redis via Message Broker and clears local cache.
+    """
+    _LOCAL_MEMORY_CACHE.clear()
+    return delete_all_chat_memory_broker()
+
+
+def format_chat_history_for_llm(history: List[Dict[str, Any]], current_query: str) -> str:
+    """
+    Formats the session chat history in a clean, token-efficient format
+    for calling the LLM. Ensures the entire conversation history is provided
+    so the LLM has complete context, avoiding duplicate inclusion of the current query.
     """
     trimmed_query = current_query.strip()
-    if not history:
-        return trimmed_query
 
-    lines: List[str] = ["Here is the recent dialogue history:"]
-    for turn in history:
-        u = turn.get("user", "").strip()
-        a = turn.get("ai", "").strip()
-        if u:
-            lines.append(f"User: {u}")
-        if a:
-            lines.append(f"MIRA: {a}")
+    normalized: List[tuple[str, str]] = []
+    for item in history:
+        if "role" in item and "content" in item:
+            r = str(item["role"]).lower().strip()
+            c = str(item["content"]).strip()
+            if r and c:
+                normalized.append((r, c))
+        elif "user" in item or "ai" in item:
+            u = str(item.get("user", "")).strip()
+            a = str(item.get("ai", "")).strip()
+            if u:
+                normalized.append(("user", u))
+            if a:
+                normalized.append(("ai", a))
+
+    # If the last message in history is the pre-saved user query, exclude it from previous turns
+    if normalized and normalized[-1][0] == "user" and normalized[-1][1] == trimmed_query:
+        normalized.pop()
+
+    if not normalized:
+        return (
+            "You are MIRA, an intelligent, helpful, and friendly AI assistant.\n\n"
+            f"User: {trimmed_query}\n"
+            "MIRA:"
+        )
+
+    lines: List[str] = [
+        "You are MIRA, an intelligent, helpful, and friendly AI assistant.",
+        "Here is the complete conversation history so far with the user:\n",
+    ]
+    for role, content in normalized:
+        prefix = "User:" if role == "user" else "MIRA:"
+        lines.append(f"{prefix} {content}")
 
     lines.append("")
     lines.append(f"User: {trimmed_query}")
     lines.append("MIRA:")
     return "\n".join(lines)
+

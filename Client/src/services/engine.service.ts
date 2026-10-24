@@ -226,6 +226,40 @@ export const engineService = {
     }
   },
 
+  async deleteChatSession(
+    sessionId: string
+  ): Promise<{ status: string; session_id: string; message?: string }> {
+    try {
+      const response = await engineApi.delete<{ status: string; session_id: string; message?: string }>(
+        `/chats/sessions/${encodeURIComponent(sessionId)}`
+      );
+      return response.data;
+    } catch (err) {
+      try {
+        const fallback = await vaultApi.delete<{ status: string; session_id: string; message?: string }>(
+          `/chats/sessions/${encodeURIComponent(sessionId)}`
+        );
+        return fallback.data;
+      } catch {
+        throw err;
+      }
+    }
+  },
+
+  async deleteAllChats(): Promise<{ status: string; message?: string }> {
+    try {
+      const response = await engineApi.delete<{ status: string; message?: string }>("/chats/all");
+      return response.data;
+    } catch (err) {
+      try {
+        const fallback = await vaultApi.delete<{ status: string; message?: string }>("/chats/all");
+        return fallback.data;
+      } catch {
+        throw err;
+      }
+    }
+  },
+
   async seedDemoChats(count: number = 12): Promise<{ status: string; seeded_count: number }> {
     try {
       const response = await engineApi.post<{ status: string; seeded_count: number }>("/chats/seed", null, {
