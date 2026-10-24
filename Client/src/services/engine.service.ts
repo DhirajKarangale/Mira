@@ -1,4 +1,4 @@
-import { engineApi, vaultApi } from "@/lib/api";
+import { engineApi, vaultApi, SERVICE_ENDPOINTS } from "@/lib/api";
 
 export interface EngineHealth {
   service: string;
@@ -92,10 +92,18 @@ export interface WebSocketChatResponse {
 }
 
 export function getEngineWebSocketUrl(): string {
-  // Use resolved engine URL from service endpoints or fallback to port 9007
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const engineBase = SERVICE_ENDPOINTS.engine;
+  if (engineBase) {
+    try {
+      const url = new URL(engineBase);
+      return `${protocol}//${url.hostname || "127.0.0.1"}:${url.port || "9009"}/ws/chat`;
+    } catch {
+      // Fallback
+    }
+  }
   const host = window.location.hostname || "127.0.0.1";
-  return `${protocol}//${host}:9007/ws/chat`;
+  return `${protocol}//${host}:9009/ws/chat`;
 }
 
 export const engineService = {
