@@ -25,6 +25,7 @@ from .config import (
     to_unix_timestamp,
 )
 from .storage import KnowledgeBaseStorage, kb_storage
+from .encryption import vault_crypto, IntegrityVerificationError, ENCRYPTION_PREFIX
 
 logger = logging.getLogger("mira.memory.knowledge_base.qdrant")
 
@@ -135,9 +136,10 @@ class QdrantVectorStore:
         jobs: List[Dict[str, Any]],
         return_job_ids: bool = False
     ) -> Union[bool, Tuple[int, List[str]]]:
-        """Ingests a batch of jobs into Qdrant.
+        """Ingests a batch of jobs into Qdrant with data encrypted at rest.
 
-        - Stores app_name, os, timestamp, summarized_text, and embedding.
+        - Stores app_name, os, timestamp, summarized_text (encrypted at rest), and embedding.
+        - Uses XChaCha20-Poly1305 authenticated encryption via Vault key management.
         - Ignores job_id when storing point records (never stored in payload or point ID).
         - Uses the provided embedding directly.
         - Inserts jobs in batches for storage efficiency.
@@ -149,7 +151,7 @@ class QdrantVectorStore:
         with self._lock:
             client = self.get_client()
 
-            points: List[models.PointStruct] = []
+            valid_records: List[Dict[str, Any]] = []
             successful_job_ids: List[str] = []
             vector_dim: Optional[int] = None
 
@@ -191,44 +193,59 @@ class QdrantVectorStore:
                 if vector_dim is None:
                     vector_dim = len(embedding_vector)
 
-                # Store app_name, os, timestamp, and summarized_text
                 app_name = str(inner_job.get("app_name") or "Unknown").strip()
                 os_name = str(inner_job.get("os") or "Unknown").strip()
                 summarized_text = str(inner_job.get("summarized_text") or "").strip()
                 raw_ts = inner_job.get("timestamp")
                 unix_ts = to_unix_timestamp(raw_ts)
 
-                # Note: job_id is deliberately ignored for record storage
-                payload = {
+                orig_job_id = str(job.get("job_id") or job.get("_stream_id") or "").strip()
+
+                valid_records.append({
+                    "vector": embedding_vector,
                     "app_name": app_name,
                     "os": os_name,
                     "timestamp": unix_ts,
                     "summarized_text": summarized_text,
-                }
+                    "orig_job_id": orig_job_id,
+                })
 
-                # Independent unique ID for Qdrant point
+            if not valid_records:
+                log_error("[QdrantVectorStore] No valid points to insert in batch.")
+                return (0, []) if return_job_ids else False
+
+            # Batch encrypt summarized_text for storage at rest
+            raw_texts = [r["summarized_text"] for r in valid_records]
+            try:
+                encrypted_texts = vault_crypto.encrypt_batch(raw_texts)
+            except Exception as e:
+                log_error(f"[QdrantVectorStore] Knowledge Base encryption failed: {e}")
+                raise RuntimeError(f"Failed to encrypt Knowledge Base data at rest: {e}")
+
+            points: List[models.PointStruct] = []
+            for r, enc_text in zip(valid_records, encrypted_texts):
+                payload = {
+                    "app_name": r["app_name"],
+                    "os": r["os"],
+                    "timestamp": r["timestamp"],
+                    "summarized_text": enc_text,
+                    "_encrypted": True,
+                }
                 point_id = str(uuid.uuid4())
                 points.append(
                     models.PointStruct(
                         id=point_id,
-                        vector=embedding_vector,
+                        vector=r["vector"],
                         payload=payload,
                     )
                 )
-
-                # Track original job_id for Message Broker Redis acknowledgment
-                orig_job_id = str(job.get("job_id") or job.get("_stream_id") or "").strip()
-                if orig_job_id:
-                    successful_job_ids.append(orig_job_id)
-
-            if not points:
-                log_error("[QdrantVectorStore] No valid points to insert in batch.")
-                return (0, []) if return_job_ids else False
+                if r["orig_job_id"]:
+                    successful_job_ids.append(r["orig_job_id"])
 
             try:
                 self._ensure_collection(client, vector_dim or len(points[0].vector))
                 client.upsert(collection_name=COLLECTION_NAME, points=points)
-                log(f"[QdrantVectorStore] Successfully ingested {len(points)} points into '{COLLECTION_NAME}'")
+                log(f"[QdrantVectorStore] Successfully ingested {len(points)} encrypted points into '{COLLECTION_NAME}'")
 
                 # Update the Knowledge Base end date to the current date only when new data is successfully ingested
                 self.storage.update_end_date_on_ingestion(
@@ -261,7 +278,9 @@ class QdrantVectorStore:
         timestamp_between: Optional[Tuple[Any, Any]] = None,
         **kwargs: Any,
     ) -> List[Dict[str, Any]]:
-        """Searches the Knowledge Base with vector similarity, app filtering, and timestamp comparisons."""
+        """Searches the Knowledge Base with vector similarity, app filtering, timestamp comparisons,
+        and transparent on-read decryption with cryptographic integrity verification.
+        """
         with self._lock:
             client = self.get_client()
 
@@ -291,16 +310,7 @@ class QdrantVectorStore:
                     models.FieldCondition(key="os", match=models.MatchValue(value=str(os_name).strip()))
                 )
 
-            # 3. Text query on summarized_text
-            if text_query is not None and str(text_query).strip():
-                filter_conditions.append(
-                    models.FieldCondition(
-                        key="summarized_text",
-                        match=models.MatchText(text=str(text_query).strip())
-                    )
-                )
-
-            # 4. Exclusive Unix timestamp comparisons: greater than, less than, and between conditions
+            # 3. Exclusive Unix timestamp comparisons: greater than, less than, and between conditions
             range_params: Dict[str, int] = {}
 
             # Greater than conditions
@@ -333,7 +343,10 @@ class QdrantVectorStore:
 
             # Execute search
             limit_val = max(1, min(int(limit), 100))
-            results: List[Dict[str, Any]] = []
+            has_text_query = bool(text_query and str(text_query).strip())
+            query_text_clean = str(text_query).strip().lower() if has_text_query else None
+            # Retrieve slightly larger window when post-filtering on decrypted text
+            fetch_limit = min(max(limit_val * 4, 25), 100) if has_text_query else limit_val
 
             try:
                 if query_vector is not None and len(query_vector) > 0:
@@ -342,7 +355,7 @@ class QdrantVectorStore:
                         collection_name=COLLECTION_NAME,
                         query=clean_vec,
                         query_filter=query_filter,
-                        limit=limit_val,
+                        limit=fetch_limit,
                     )
                     points = search_res.points
                 else:
@@ -350,29 +363,129 @@ class QdrantVectorStore:
                     scroll_res, _ = client.scroll(
                         collection_name=COLLECTION_NAME,
                         scroll_filter=query_filter,
-                        limit=limit_val,
+                        limit=fetch_limit,
                         with_payload=True,
                         with_vectors=False,
                     )
                     points = scroll_res
 
+                results: List[Dict[str, Any]] = []
+
                 for pt in points:
                     payload = pt.payload or {}
+                    raw_text = payload.get("summarized_text", "")
+                    decrypted_text = ""
+
+                    # Transparent decryption with Poly1305 MAC tag integrity verification
+                    try:
+                        if raw_text:
+                            decrypted_text = vault_crypto.decrypt(raw_text)
+                    except IntegrityVerificationError as e:
+                        log_error(
+                            f"[QdrantVectorStore] Cryptographic integrity verification failed for point {pt.id}. "
+                            f"Unauthorized modification detected: {e}. Skipping compromised record."
+                        )
+                        continue
+                    except Exception as e:
+                        log_error(f"[QdrantVectorStore] Decryption error for point {pt.id}: {e}")
+                        if vault_crypto.is_encrypted(raw_text):
+                            continue
+                        decrypted_text = str(raw_text)
+
+                    # Post-search text matching on decrypted plaintext
+                    if query_text_clean is not None:
+                        if query_text_clean not in decrypted_text.lower():
+                            continue
+
                     score_val = float(getattr(pt, "score", 1.0))
+                    decrypted_payload = dict(payload)
+                    decrypted_payload["summarized_text"] = decrypted_text
+
                     results.append({
                         "id": str(pt.id),
                         "score": score_val,
                         "app_name": payload.get("app_name", "Unknown"),
                         "os": payload.get("os", "Unknown"),
                         "timestamp": payload.get("timestamp"),
-                        "summarized_text": payload.get("summarized_text", ""),
-                        "payload": payload,
+                        "summarized_text": decrypted_text,
+                        "payload": decrypted_payload,
                     })
+
+                    if len(results) >= limit_val:
+                        break
 
                 return results
             except Exception as e:
                 log_error(f"[QdrantVectorStore] Search query failed: {e}")
                 raise
+
+    def get_point(self, point_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieves and decrypts a single point by ID with cryptographic integrity verification."""
+        with self._lock:
+            client = self.get_client()
+            try:
+                res = client.retrieve(
+                    collection_name=COLLECTION_NAME,
+                    ids=[point_id],
+                    with_payload=True,
+                    with_vectors=True,
+                )
+                if not res:
+                    return None
+                pt = res[0]
+                payload = pt.payload or {}
+                raw_text = payload.get("summarized_text", "")
+                decrypted_text = ""
+                try:
+                    if raw_text:
+                        decrypted_text = vault_crypto.decrypt(raw_text)
+                except IntegrityVerificationError as e:
+                    log_error(f"[QdrantVectorStore] Cryptographic integrity verification failed for point {point_id}: {e}")
+                    raise
+
+                decrypted_payload = dict(payload)
+                decrypted_payload["summarized_text"] = decrypted_text
+                return {
+                    "id": str(pt.id),
+                    "vector": pt.vector,
+                    "app_name": payload.get("app_name", "Unknown"),
+                    "os": payload.get("os", "Unknown"),
+                    "timestamp": payload.get("timestamp"),
+                    "summarized_text": decrypted_text,
+                    "payload": decrypted_payload,
+                }
+            except IntegrityVerificationError:
+                raise
+            except Exception as e:
+                log_error(f"[QdrantVectorStore] Error retrieving point {point_id}: {e}")
+                return None
+
+    def update_point_payload(
+        self,
+        point_id: str,
+        payload_updates: Dict[str, Any]
+    ) -> bool:
+        """Updates the payload of an existing point in the active Knowledge Base, encrypting summarized_text if present."""
+        with self._lock:
+            client = self.get_client()
+            clean_updates = dict(payload_updates)
+            if "summarized_text" in clean_updates:
+                raw_text = str(clean_updates["summarized_text"] or "")
+                if not vault_crypto.is_encrypted(raw_text):
+                    clean_updates["summarized_text"] = vault_crypto.encrypt(raw_text)
+                    clean_updates["_encrypted"] = True
+
+            try:
+                client.set_payload(
+                    collection_name=COLLECTION_NAME,
+                    payload=clean_updates,
+                    points=[point_id],
+                )
+                log(f"[QdrantVectorStore] Successfully updated payload for point {point_id}")
+                return True
+            except Exception as e:
+                log_error(f"[QdrantVectorStore] Failed to update payload for point {point_id}: {e}")
+                return False
 
     def count_points(self) -> int:
         """Returns the number of points in the active Knowledge Base collection."""

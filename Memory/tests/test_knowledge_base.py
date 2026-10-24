@@ -28,6 +28,11 @@ from knowledge_base.storage import KnowledgeBaseStorage
 from knowledge_base.qdrant_store import QdrantVectorStore
 from knowledge_base.broker_client import poll_jobs, remove_job, acknowledge_batch
 from knowledge_base.worker import KnowledgeBaseWorkerManager
+from knowledge_base.encryption import (
+    vault_crypto,
+    IntegrityVerificationError,
+    ENCRYPTION_PREFIX,
+)
 
 @pytest.fixture
 def temp_kb_dir():
@@ -397,4 +402,284 @@ class TestKnowledgeBaseRetention:
         assert "kb-01_05_2026-15_05_2026" in deleted_3m
         assert not med_kb.exists()
         assert active_kb.exists()
+
+
+class TestKnowledgeBaseEncryption:
+    """Tests for Knowledge Base encryption at rest, decryption on read, MAC verification, and updates."""
+
+    def test_data_encrypted_at_rest_with_prefix(self, temp_kb_dir):
+        """Verifies that Knowledge Base summarized_text is encrypted at rest in Qdrant storage."""
+        storage = KnowledgeBaseStorage(base_dir=temp_kb_dir)
+        vector_store = QdrantVectorStore(storage=storage)
+
+        secret_text = "Private user screen reading secret medical document"
+        dummy_vector = [0.1 * i for i in range(8)]
+        jobs = [
+            {
+                "job_id": "crypto-test-1",
+                "app_name": "Medical Records App",
+                "os": "Windows 11",
+                "timestamp": 1729765000,
+                "summarized_text": secret_text,
+                "embedding": dummy_vector,
+            }
+        ]
+
+        success = vector_store.ingest_batch(jobs)
+        assert success is True
+
+        # Inspect raw data directly from local Qdrant collection without using vector_store decryption
+        client = vector_store.get_client()
+        scroll_res, _ = client.scroll(
+            collection_name=COLLECTION_NAME,
+            with_payload=True,
+            with_vectors=False,
+            limit=10,
+        )
+        assert len(scroll_res) == 1
+        raw_payload = scroll_res[0].payload
+
+        # Verify plaintext is NEVER present in the raw payload stored on disk
+        stored_text = raw_payload.get("summarized_text")
+        assert stored_text != secret_text
+        assert secret_text not in stored_text
+
+        # Verify stored ciphertext has the encryption prefix and is valid ciphertext
+        assert stored_text.startswith(ENCRYPTION_PREFIX)
+        assert raw_payload.get("_encrypted") is True
+
+        # Metadata fields remain unencrypted for fast native Qdrant filtering
+        assert raw_payload.get("app_name") == "Medical Records App"
+        assert raw_payload.get("os") == "Windows 11"
+        assert raw_payload.get("timestamp") == 1729765000
+
+        vector_store.close()
+
+    def test_transparent_decryption_on_search(self, temp_kb_dir):
+        """Verifies that vector search transparently decrypts summarized_text before returning to caller."""
+        storage = KnowledgeBaseStorage(base_dir=temp_kb_dir)
+        vector_store = QdrantVectorStore(storage=storage)
+
+        secret_text = "Confidential financial ledger and payroll information"
+        dummy_vector = [0.2 * i for i in range(8)]
+        jobs = [
+            {
+                "job_id": "crypto-test-2",
+                "app_name": "Accounting",
+                "os": "Windows 11",
+                "timestamp": 1729766000,
+                "summarized_text": secret_text,
+                "embedding": dummy_vector,
+            }
+        ]
+
+        vector_store.ingest_batch(jobs)
+
+        # Search should transparently return the decrypted plaintext
+        results = vector_store.search(query_vector=dummy_vector, limit=1)
+        assert len(results) == 1
+        assert results[0]["summarized_text"] == secret_text
+        assert results[0]["payload"]["summarized_text"] == secret_text
+        assert results[0]["app_name"] == "Accounting"
+
+        vector_store.close()
+
+    def test_get_point_and_update_point_payload(self, temp_kb_dir):
+        """Verifies get_point and update_point_payload decrypt and re-encrypt data transparently."""
+        storage = KnowledgeBaseStorage(base_dir=temp_kb_dir)
+        vector_store = QdrantVectorStore(storage=storage)
+
+        dummy_vector = [0.3 * i for i in range(8)]
+        jobs = [
+            {
+                "job_id": "crypto-test-3",
+                "app_name": "Notes App",
+                "os": "Windows 11",
+                "timestamp": 1729767000,
+                "summarized_text": "Original secret note",
+                "embedding": dummy_vector,
+            }
+        ]
+
+        vector_store.ingest_batch(jobs)
+
+        # Get point ID
+        results = vector_store.search(query_vector=dummy_vector, limit=1)
+        point_id = results[0]["id"]
+
+        # Test get_point
+        pt = vector_store.get_point(point_id)
+        assert pt is not None
+        assert pt["summarized_text"] == "Original secret note"
+
+        # Test update_point_payload with new secret text
+        updated = vector_store.update_point_payload(point_id, {"summarized_text": "Updated secret note content"})
+        assert updated is True
+
+        # Verify on-disk storage is re-encrypted
+        client = vector_store.get_client()
+        raw_res = client.retrieve(collection_name=COLLECTION_NAME, ids=[point_id], with_payload=True)
+        raw_ct = raw_res[0].payload["summarized_text"]
+        assert raw_ct.startswith(ENCRYPTION_PREFIX)
+        assert "Updated secret note content" not in raw_ct
+
+        # Verify get_point retrieves updated decrypted text
+        pt_after = vector_store.get_point(point_id)
+        assert pt_after["summarized_text"] == "Updated secret note content"
+
+        vector_store.close()
+
+    def test_tamper_detection_and_integrity_verification(self, temp_kb_dir):
+        """Verifies that altering ciphertext bytes triggers Poly1305 MAC failure and rejects tampered data."""
+        storage = KnowledgeBaseStorage(base_dir=temp_kb_dir)
+        vector_store = QdrantVectorStore(storage=storage)
+
+        dummy_vector = [0.4 * i for i in range(8)]
+        jobs = [
+            {
+                "job_id": "crypto-test-4",
+                "app_name": "Bank Portal",
+                "os": "Windows 11",
+                "timestamp": 1729768000,
+                "summarized_text": "Account balance: $500,000",
+                "embedding": dummy_vector,
+            }
+        ]
+
+        vector_store.ingest_batch(jobs)
+        results = vector_store.search(query_vector=dummy_vector, limit=1)
+        point_id = results[0]["id"]
+
+        # Tamper with the raw ciphertext in Qdrant storage
+        client = vector_store.get_client()
+        raw_res = client.retrieve(collection_name=COLLECTION_NAME, ids=[point_id], with_payload=True)
+        orig_ct = raw_res[0].payload["summarized_text"]
+
+        # Flip last characters of ciphertext
+        tampered_ct = orig_ct[:-4] + ("AAAA" if not orig_ct.endswith("AAAA") else "BBBB")
+        client.set_payload(
+            collection_name=COLLECTION_NAME,
+            payload={"summarized_text": tampered_ct},
+            points=[point_id]
+        )
+
+        # 1. get_point must raise IntegrityVerificationError
+        with pytest.raises(IntegrityVerificationError):
+            vector_store.get_point(point_id)
+
+        # 2. search must discard/exclude the tampered record to protect against unauthorized modification
+        search_res = vector_store.search(query_vector=dummy_vector, limit=5)
+        assert len(search_res) == 0
+
+        vector_store.close()
+
+    def test_backward_compatibility_with_legacy_plaintext(self, temp_kb_dir):
+        """Verifies that pre-existing unencrypted Knowledge Base points are read cleanly without error."""
+        storage = KnowledgeBaseStorage(base_dir=temp_kb_dir)
+        vector_store = QdrantVectorStore(storage=storage)
+
+        client = vector_store.get_client()
+        dummy_vector = [0.5 * i for i in range(8)]
+        vector_store._ensure_collection(client, len(dummy_vector))
+
+        # Directly insert an unencrypted legacy record into Qdrant
+        import uuid
+        legacy_id = str(uuid.uuid4())
+        from qdrant_client import models
+        client.upsert(
+            collection_name=COLLECTION_NAME,
+            points=[
+                models.PointStruct(
+                    id=legacy_id,
+                    vector=dummy_vector,
+                    payload={
+                        "app_name": "Legacy App",
+                        "os": "Windows 10",
+                        "timestamp": 1700000000,
+                        "summarized_text": "Legacy unencrypted OCR notes from previous version",
+                    }
+                )
+            ]
+        )
+
+        # Search should read the legacy unencrypted plaintext cleanly
+        results = vector_store.search(query_vector=dummy_vector, limit=1)
+        assert len(results) == 1
+        assert results[0]["summarized_text"] == "Legacy unencrypted OCR notes from previous version"
+        assert results[0]["app_name"] == "Legacy App"
+
+        vector_store.close()
+
+    def test_text_query_filtering_with_encrypted_data(self, temp_kb_dir):
+        """Verifies text query filtering operates correctly on decrypted plaintext."""
+        storage = KnowledgeBaseStorage(base_dir=temp_kb_dir)
+        vector_store = QdrantVectorStore(storage=storage)
+
+        v1 = [1.0, 0.0, 0.0, 0.0]
+        v2 = [0.0, 1.0, 0.0, 0.0]
+        jobs = [
+            {
+                "job_id": "text-test-1",
+                "app_name": "Editor",
+                "os": "Windows 11",
+                "timestamp": 1729769000,
+                "summarized_text": "Building high throughput Python FastAPI microservices",
+                "embedding": v1,
+            },
+            {
+                "job_id": "text-test-2",
+                "app_name": "Browser",
+                "os": "Windows 11",
+                "timestamp": 1729770000,
+                "summarized_text": "Designing responsive React and Tailwind CSS user interfaces",
+                "embedding": v2,
+            },
+        ]
+
+        vector_store.ingest_batch(jobs)
+
+        # Filter for FastAPI
+        res_fastapi = vector_store.search(text_query="FastAPI")
+        assert len(res_fastapi) == 1
+        assert "FastAPI" in res_fastapi[0]["summarized_text"]
+        assert res_fastapi[0]["app_name"] == "Editor"
+
+        # Filter for React
+        res_react = vector_store.search(text_query="React")
+        assert len(res_react) == 1
+        assert "React" in res_react[0]["summarized_text"]
+        assert res_react[0]["app_name"] == "Browser"
+
+        # Filter for nonexistent term
+        res_none = vector_store.search(text_query="KubernetesCluster")
+        assert len(res_none) == 0
+
+        vector_store.close()
+
+    def test_deletion_safely_removes_encrypted_data(self, temp_kb_dir):
+        """Verifies deletion cleanly removes Knowledge Base directory and all encrypted files."""
+        storage = KnowledgeBaseStorage(base_dir=temp_kb_dir)
+        vector_store = QdrantVectorStore(storage=storage)
+
+        dummy_vector = [0.6 * i for i in range(8)]
+        vector_store.ingest_batch([
+            {
+                "job_id": "del-1",
+                "app_name": "App",
+                "os": "Win",
+                "timestamp": 1729771000,
+                "summarized_text": "Data to be deleted",
+                "embedding": dummy_vector,
+            }
+        ])
+
+        active_kb_name = storage.get_active_kb_name()
+        kb_path = temp_kb_dir / active_kb_name
+        assert kb_path.exists()
+
+        # Delete knowledge base
+        deleted = vector_store.delete_knowledge_base(active_kb_name)
+        assert deleted is True
+        assert not kb_path.exists()
+
 

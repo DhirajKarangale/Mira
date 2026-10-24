@@ -13,8 +13,7 @@ _memory_dir = Path(__file__).resolve().parent.parent
 if str(_memory_dir) not in sys.path:
     sys.path.insert(0, str(_memory_dir))
 
-from app import app
-from knowledge_base import kb_storage, kb_worker_manager
+from Memory.app import app, kb_storage, kb_worker_manager
 
 @pytest.fixture(autouse=True)
 def isolated_test_kb_dir():

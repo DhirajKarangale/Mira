@@ -42,6 +42,8 @@ from .encryption import (
     vault_crypto,
     encrypt_text,
     decrypt_text,
+    IntegrityVerificationError,
+    ENCRYPTION_PREFIX,
 )
 
 __all__ = [
@@ -58,6 +60,8 @@ __all__ = [
     "vault_crypto",
     "encrypt_text",
     "decrypt_text",
+    "IntegrityVerificationError",
+    "ENCRYPTION_PREFIX",
     "DEFAULT_KB_BATCH_SIZE",
     "MAX_KB_BATCH_SIZE",
     "CONSUMER_KEY_EMBEDDING_MEMORY",
