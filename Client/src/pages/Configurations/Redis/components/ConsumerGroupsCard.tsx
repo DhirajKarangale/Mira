@@ -350,9 +350,9 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
               <tr className="border-b border-white/[0.08] bg-white/[0.02] text-zinc-400 font-semibold tracking-wider uppercase text-[11px]">
                 <th className="py-3 px-4">Consumer Group</th>
                 <th className="py-3 px-4">Stream Name</th>
-                <th className="py-3 px-3 text-center">Active in Stream</th>
-                <th className="py-3 px-3 text-center">PEL Messages</th>
-                <th className="py-3 px-3 text-center">Total in Stream</th>
+                <th className="py-3 px-3 text-center">Active</th>
+                <th className="py-3 px-3 text-center">PEL</th>
+                <th className="py-3 px-3 text-center">Total</th>
                 <th className="py-3 px-4">Last Delivered ID</th>
                 <th className="py-3 px-4 text-right whitespace-nowrap">Actions</th>
               </tr>
@@ -464,18 +464,16 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
 
                       <td className="py-3 px-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
-                          {hasPending && (
-                            <button
-                              type="button"
-                              onClick={() => setCleanPelTarget(group)}
-                              disabled={actionLoading}
-                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0 text-amber-300 hover:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/25 transition-colors cursor-pointer disabled:cursor-not-allowed shadow-[0_0_8px_rgba(245,158,11,0.1)]"
-                              title={`Clean ${group.pending_messages_count} pending message(s) (PEL) for ${group.group_name}`}
-                            >
-                              <Flame className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                              <span>Clean PEL</span>
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => setCleanPelTarget(group)}
+                            disabled={actionLoading}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0 text-amber-300 hover:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/25 transition-colors cursor-pointer disabled:cursor-not-allowed shadow-[0_0_8px_rgba(245,158,11,0.1)]"
+                            title={`Clean ${group.pending_messages_count || 0} pending message(s) (PEL) for ${group.group_name}`}
+                          >
+                            <Flame className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span>Clean PEL</span>
+                          </button>
 
                           <button
                             type="button"
