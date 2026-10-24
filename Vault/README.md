@@ -320,8 +320,10 @@ The **Vault** is the centralized security, secret management, encrypted configur
     "llm_workers": 1,
     "screenshot_extraction_workers": 1,
     "screenshot_summarization_workers": 1,
+    "embedding_vector_store_workers": 1,
     "screenshot_extraction_poll_time": 5.0,
-    "screenshot_summarization_poll_time": 5.0
+    "screenshot_summarization_poll_time": 5.0,
+    "embedding_vector_store_workers_poll_time": 1.0
   }
   ```
 
@@ -332,7 +334,7 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 - **Request Body (JSON):**
   ```json
-  { "screenshot_extraction_workers": 2, "screenshot_extraction_poll_time": 3.0 }
+  { "screenshot_extraction_workers": 2, "screenshot_extraction_poll_time": 3.0, "embedding_vector_store_workers": 2, "embedding_vector_store_workers_poll_time": 1.5 }
   ```
 - **Response (`200 OK`):**
   ```json
@@ -340,8 +342,10 @@ The **Vault** is the centralized security, secret management, encrypted configur
     "llm_workers": 1,
     "screenshot_extraction_workers": 2,
     "screenshot_summarization_workers": 1,
+    "embedding_vector_store_workers": 2,
     "screenshot_extraction_poll_time": 3.0,
-    "screenshot_summarization_poll_time": 5.0
+    "screenshot_summarization_poll_time": 5.0,
+    "embedding_vector_store_workers_poll_time": 1.5
   }
   ```
 

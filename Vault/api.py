@@ -627,15 +627,19 @@ class EngineWorkersConfig(BaseModel):
     llm_workers: int = Field(default=1, ge=1, le=50, description="LLM workers (1-50)")
     screenshot_extraction_workers: int = Field(default=1, ge=1, le=50, description="Screenshot extraction workers in memory (1-50)")
     screenshot_summarization_workers: int = Field(default=1, ge=1, le=50, description="Screenshot summarization workers in engine (1-50)")
+    embedding_vector_store_workers: int = Field(default=1, ge=1, description="Embedding vector store workers in engine (>=1)")
     screenshot_extraction_poll_time: float = Field(default=5.0, ge=1.0, le=1800.0, description="Poll time of screenshot extraction worker (1-1800 sec)")
     screenshot_summarization_poll_time: float = Field(default=5.0, ge=1.0, le=1800.0, description="Poll time of screenshot summarization (1-1800 sec)")
+    embedding_vector_store_workers_poll_time: float = Field(default=1.0, gt=0.0, description="Poll time of embedding vector store workers in engine (>0 sec)")
 
 class EngineWorkersUpdateRequest(BaseModel):
     llm_workers: Optional[int] = Field(default=None, ge=1, le=50)
     screenshot_extraction_workers: Optional[int] = Field(default=None, ge=1, le=50)
     screenshot_summarization_workers: Optional[int] = Field(default=None, ge=1, le=50)
+    embedding_vector_store_workers: Optional[int] = Field(default=None, ge=1)
     screenshot_extraction_poll_time: Optional[float] = Field(default=None, ge=1.0, le=1800.0)
     screenshot_summarization_poll_time: Optional[float] = Field(default=None, ge=1.0, le=1800.0)
+    embedding_vector_store_workers_poll_time: Optional[float] = Field(default=None, gt=0.0)
 
 @router.get(
     "/engine/workers",

@@ -129,6 +129,10 @@ def init_config_storage(
                     _DB_CONN.execute("UPDATE logs SET show_logs_vault = 1 WHERE show_logs_vault IS NULL")
                     _DB_CONN.execute("UPDATE logs SET store_logs_vault = 1 WHERE store_logs_vault IS NULL")
                     _DB_CONN.commit()
+                elif table_name == "engine_workers":
+                    _DB_CONN.execute("UPDATE engine_workers SET embedding_vector_store_workers = 1 WHERE embedding_vector_store_workers IS NULL")
+                    _DB_CONN.execute("UPDATE engine_workers SET embedding_vector_store_workers_poll_time = 1.0 WHERE embedding_vector_store_workers_poll_time IS NULL")
+                    _DB_CONN.commit()
             elif table_name == "app_permissions":
                 _DB_CONN.execute("DELETE FROM app_permissions WHERE app_id IS NULL OR app_id = ''")
                 _DB_CONN.commit()
@@ -203,6 +207,8 @@ def get_configuration(key: str) -> Dict[str, Any]:
                 result[col_name] = bool(val) if val is not None else False
             elif "INT" in col_type.upper():
                 result[col_name] = int(val) if val is not None else None
+            elif "REAL" in col_type.upper() or "FLOAT" in col_type.upper():
+                result[col_name] = float(val) if val is not None else None
             else:
                 result[col_name] = val
 
@@ -221,6 +227,8 @@ def get_configuration(key: str) -> Dict[str, Any]:
                 val = bool(val) if val is not None else None
             elif "INT" in col_type:
                 val = int(val) if val is not None else None
+            elif "REAL" in col_type or "FLOAT" in col_type:
+                val = float(val) if val is not None else None
 
             return {actual_col_name: val}
 
@@ -738,8 +746,10 @@ def get_engine_workers() -> Dict[str, Any]:
             "llm_workers": 1,
             "screenshot_extraction_workers": 1,
             "screenshot_summarization_workers": 1,
+            "embedding_vector_store_workers": 1,
             "screenshot_extraction_poll_time": 5.0,
             "screenshot_summarization_poll_time": 5.0,
+            "embedding_vector_store_workers_poll_time": 1.0,
         }
 
     cursor = _DB_CONN.execute("SELECT * FROM engine_workers LIMIT 1")
@@ -750,9 +760,11 @@ def get_engine_workers() -> Dict[str, Any]:
                 llm_workers,
                 screenshot_extraction_workers,
                 screenshot_summarization_workers,
+                embedding_vector_store_workers,
                 screenshot_extraction_poll_time,
-                screenshot_summarization_poll_time
-            ) VALUES (1, 1, 1, 5.0, 5.0)"""
+                screenshot_summarization_poll_time,
+                embedding_vector_store_workers_poll_time
+            ) VALUES (1, 1, 1, 1, 5.0, 5.0, 1.0)"""
         )
         _DB_CONN.commit()
         save_config_storage()
@@ -760,8 +772,10 @@ def get_engine_workers() -> Dict[str, Any]:
             "llm_workers": 1,
             "screenshot_extraction_workers": 1,
             "screenshot_summarization_workers": 1,
+            "embedding_vector_store_workers": 1,
             "screenshot_extraction_poll_time": 5.0,
             "screenshot_summarization_poll_time": 5.0,
+            "embedding_vector_store_workers_poll_time": 1.0,
         }
 
     col_names = [d[0].lower() for d in cursor.description]
@@ -771,8 +785,10 @@ def get_engine_workers() -> Dict[str, Any]:
         "llm_workers": int(row_dict.get("llm_workers") or 1),
         "screenshot_extraction_workers": int(row_dict.get("screenshot_extraction_workers") or 1),
         "screenshot_summarization_workers": int(row_dict.get("screenshot_summarization_workers") or 1),
+        "embedding_vector_store_workers": int(row_dict.get("embedding_vector_store_workers") or 1),
         "screenshot_extraction_poll_time": float(row_dict.get("screenshot_extraction_poll_time") if row_dict.get("screenshot_extraction_poll_time") is not None else 5.0),
         "screenshot_summarization_poll_time": float(row_dict.get("screenshot_summarization_poll_time") if row_dict.get("screenshot_summarization_poll_time") is not None else 5.0),
+        "embedding_vector_store_workers_poll_time": float(row_dict.get("embedding_vector_store_workers_poll_time") if row_dict.get("embedding_vector_store_workers_poll_time") is not None else 1.0),
     }
 
 def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
@@ -790,8 +806,15 @@ def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
         "memory_extraction_workers": "screenshot_extraction_workers",
         "summarization_workers": "screenshot_summarization_workers",
         "engine_summarization_workers": "screenshot_summarization_workers",
+        "vector_store_workers": "embedding_vector_store_workers",
+        "embedding_workers": "embedding_vector_store_workers",
+        "vector_workers": "embedding_vector_store_workers",
         "extraction_poll_time": "screenshot_extraction_poll_time",
         "summarization_poll_time": "screenshot_summarization_poll_time",
+        "vector_store_poll_time": "embedding_vector_store_workers_poll_time",
+        "embedding_poll_time": "embedding_vector_store_workers_poll_time",
+        "vector_poll_time": "embedding_vector_store_workers_poll_time",
+        "embedding_vector_store_poll_time": "embedding_vector_store_workers_poll_time",
     }
     normalized_updates = {}
     for k, v in updates.items():
@@ -814,6 +837,14 @@ def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
                 raise ValueError(f"{field} must be an integer between 1 and 50 inclusive.")
             new_config[field] = val
 
+    if "embedding_vector_store_workers" in normalized_updates and normalized_updates["embedding_vector_store_workers"] is not None:
+        val = normalized_updates["embedding_vector_store_workers"]
+        if isinstance(val, bool) or not isinstance(val, int):
+            raise ValueError("embedding_vector_store_workers must be an integer of at least 1.")
+        if val < 1:
+            raise ValueError("embedding_vector_store_workers must be an integer of at least 1.")
+        new_config["embedding_vector_store_workers"] = val
+
     float_fields = [
         "screenshot_extraction_poll_time",
         "screenshot_summarization_poll_time",
@@ -828,6 +859,15 @@ def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
                 raise ValueError(f"{field} must be between 1 and 1800 seconds inclusive.")
             new_config[field] = val_f
 
+    if "embedding_vector_store_workers_poll_time" in normalized_updates and normalized_updates["embedding_vector_store_workers_poll_time"] is not None:
+        val = normalized_updates["embedding_vector_store_workers_poll_time"]
+        if isinstance(val, bool) or not isinstance(val, (int, float)):
+            raise ValueError("embedding_vector_store_workers_poll_time must be a positive number.")
+        val_f = float(val)
+        if val_f <= 0.0:
+            raise ValueError("embedding_vector_store_workers_poll_time must be a positive number.")
+        new_config["embedding_vector_store_workers_poll_time"] = val_f
+
     cursor = _DB_CONN.execute("SELECT id FROM engine_workers LIMIT 1")
     row = cursor.fetchone()
     if row:
@@ -836,15 +876,19 @@ def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
                 llm_workers = ?,
                 screenshot_extraction_workers = ?,
                 screenshot_summarization_workers = ?,
+                embedding_vector_store_workers = ?,
                 screenshot_extraction_poll_time = ?,
-                screenshot_summarization_poll_time = ?
+                screenshot_summarization_poll_time = ?,
+                embedding_vector_store_workers_poll_time = ?
             WHERE id = ?""",
             (
                 new_config["llm_workers"],
                 new_config["screenshot_extraction_workers"],
                 new_config["screenshot_summarization_workers"],
+                new_config["embedding_vector_store_workers"],
                 new_config["screenshot_extraction_poll_time"],
                 new_config["screenshot_summarization_poll_time"],
+                new_config["embedding_vector_store_workers_poll_time"],
                 row[0],
             ),
         )
@@ -854,15 +898,19 @@ def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
                 llm_workers,
                 screenshot_extraction_workers,
                 screenshot_summarization_workers,
+                embedding_vector_store_workers,
                 screenshot_extraction_poll_time,
-                screenshot_summarization_poll_time
-            ) VALUES (?, ?, ?, ?, ?)""",
+                screenshot_summarization_poll_time,
+                embedding_vector_store_workers_poll_time
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
                 new_config["llm_workers"],
                 new_config["screenshot_extraction_workers"],
                 new_config["screenshot_summarization_workers"],
+                new_config["embedding_vector_store_workers"],
                 new_config["screenshot_extraction_poll_time"],
                 new_config["screenshot_summarization_poll_time"],
+                new_config["embedding_vector_store_workers_poll_time"],
             ),
         )
     _DB_CONN.commit()

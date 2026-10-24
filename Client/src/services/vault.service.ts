@@ -32,16 +32,20 @@ export interface EngineWorkersConfig {
   llm_workers: number;
   screenshot_extraction_workers: number;
   screenshot_summarization_workers: number;
+  embedding_vector_store_workers: number;
   screenshot_extraction_poll_time: number;
   screenshot_summarization_poll_time: number;
+  embedding_vector_store_workers_poll_time: number;
 }
 
 export interface EngineWorkersUpdateRequest {
   llm_workers?: number;
   screenshot_extraction_workers?: number;
   screenshot_summarization_workers?: number;
+  embedding_vector_store_workers?: number;
   screenshot_extraction_poll_time?: number;
   screenshot_summarization_poll_time?: number;
+  embedding_vector_store_workers_poll_time?: number;
 }
 
 export const vaultService = {

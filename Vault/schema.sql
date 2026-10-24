@@ -68,7 +68,9 @@ CREATE TABLE IF NOT EXISTS engine_workers (
     llm_workers INTEGER DEFAULT 1,
     screenshot_extraction_workers INTEGER DEFAULT 1,
     screenshot_summarization_workers INTEGER DEFAULT 1,
+    embedding_vector_store_workers INTEGER DEFAULT 1,
     screenshot_extraction_poll_time REAL DEFAULT 5.0,
-    screenshot_summarization_poll_time REAL DEFAULT 5.0
+    screenshot_summarization_poll_time REAL DEFAULT 60.0,
+    embedding_vector_store_workers_poll_time REAL DEFAULT 180.0
 );
 
