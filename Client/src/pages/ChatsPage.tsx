@@ -15,8 +15,11 @@ import {
   ArrowDown,
   PanelLeftClose,
   PanelLeftOpen,
+  MoreVertical,
+  Edit3,
+  X,
 } from "lucide-react";
-import { Sidebar, type SidebarItem } from "@/components/Sidebar";
+import { Sidebar, type SidebarItem, type SidebarRenderItemState } from "@/components/Sidebar";
 import { toast } from "@/components";
 import {
   engineService,
@@ -45,6 +48,18 @@ const CHAT_LOADING_MESSAGES: readonly string[] = [
   "Polishing the details...",
 ] as const;
 
+// Helper for fast, collision-free UUID generation across environments
+function generateUUID(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 export const ChatsPage: FC = () => {
   // ============================================================================
   // Sessions State
@@ -59,6 +74,10 @@ export const ChatsPage: FC = () => {
   const [sessionsHasMore, setSessionsHasMore] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState<string>("");
+  const [menuOpenSessionId, setMenuOpenSessionId] = useState<string | null>(null);
+  const [isRenamingLoading, setIsRenamingLoading] = useState<boolean>(false);
 
   // ============================================================================
   // Messages State
@@ -73,13 +92,26 @@ export const ChatsPage: FC = () => {
   const [loadingMoreMessages, setLoadingMoreMessages] = useState<boolean>(false);
 
   // ============================================================================
-  // Input & WebSocket State
+  // Input & Multi-Session Sending State
   // ============================================================================
   const [inputText, setInputText] = useState<string>("");
-  const [isSending, setIsSending] = useState<boolean>(false);
+  // Keyed by sessionId -> jobId for strict per-session loading isolation
+  const [sendingSessions, setSendingSessions] = useState<Record<string, string>>({});
   const [copiedSessionId, setCopiedSessionId] = useState<string | null>(null);
   const [loadingMessageIndex, setLoadingMessageIndex] = useState<number>(0);
-  const pendingJobIdRef = useRef<string | null>(null);
+
+  // Session refs for fresh access inside async effects / WS callbacks
+  const selectedSessionIdRef = useRef<string | null>(selectedSessionId);
+  selectedSessionIdRef.current = selectedSessionId;
+
+  const sendingSessionsRef = useRef<Record<string, string>>(sendingSessions);
+  sendingSessionsRef.current = sendingSessions;
+
+  // Local cache of messages per session: sessionId -> ChatMessage[]
+  const sessionMessagesCacheRef = useRef<Record<string, ChatMessage[]>>({});
+  // Ref to skip initial fetch on newly generated sessions so optimistic message is preserved
+  const skipInitialFetchSessionIdRef = useRef<string | null>(null);
+
   const wsRef = useRef<WebSocket | null>(null);
 
   // Scroll reference
@@ -87,6 +119,11 @@ export const ChatsPage: FC = () => {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isInitialSessionLoadRef = useRef<boolean>(false);
+
+  // Active session sending status
+  const isCurrentSessionSending = Boolean(
+    selectedSessionId && sendingSessions[selectedSessionId]
+  );
 
   // Issue 9: Auto-resize input textarea height-wise up to 180px
   const adjustTextareaHeight = useCallback(() => {
@@ -101,9 +138,9 @@ export const ChatsPage: FC = () => {
     adjustTextareaHeight();
   }, [inputText, adjustTextareaHeight]);
 
-  // Cycle through 15 loading messages every 2.5s while waiting for response
+  // Cycle through 15 loading messages every 2.5s while waiting for response in current session
   useEffect(() => {
-    if (!isSending) {
+    if (!isCurrentSessionSending) {
       setLoadingMessageIndex(0);
       return;
     }
@@ -111,7 +148,7 @@ export const ChatsPage: FC = () => {
       setLoadingMessageIndex((prev) => (prev + 1) % CHAT_LOADING_MESSAGES.length);
     }, 2500);
     return () => clearInterval(timer);
-  }, [isSending]);
+  }, [isCurrentSessionSending]);
 
   // Guarantee clean message stream: filter out any repeating user query that appears right after an AI reply
   const cleanMessages = useMemo(() => {
@@ -206,37 +243,23 @@ export const ChatsPage: FC = () => {
           limit: 10,
         });
 
-        const rawSessions = data.sessions || [];
-        // Resolve clean message counts for each session to eliminate any DB duplicate inflation
-        const cleanSessions = await Promise.all(
-          rawSessions.map(async (s) => {
-            try {
-              const msgData = await engineService.getChatsBySession(s.session_id, { limit: 30 });
-              const deduped: ChatMessage[] = [];
-              for (const m of msgData.messages || []) {
-                const isDup = deduped.some(
-                  (p) => p.id === m.id || (p.role === "user" && m.role === "user" && p.content === m.content)
-                );
-                if (!isDup) {
-                  deduped.push(m);
-                }
-              }
-              return { ...s, message_count: deduped.length };
-            } catch {
-              return s;
-            }
-          })
-        );
+        const fetchedSessions = data.sessions || [];
 
-        if (append) {
-          setSessions((prev) => {
+        setSessions((prev) => {
+          // Keep any optimistic sessions that are currently sending and not yet in backend response
+          const fetchedIds = new Set(fetchedSessions.map((s) => s.session_id));
+          const sendingLocalSessions = prev.filter(
+            (s) => sendingSessionsRef.current[s.session_id] && !fetchedIds.has(s.session_id)
+          );
+
+          if (append) {
             const existingIds = new Set(prev.map((s) => s.session_id));
-            const newItems = cleanSessions.filter((s) => !existingIds.has(s.session_id));
+            const newItems = fetchedSessions.filter((s) => !existingIds.has(s.session_id));
             return [...prev, ...newItems];
-          });
-        } else {
-          setSessions(cleanSessions);
-        }
+          } else {
+            return [...sendingLocalSessions, ...fetchedSessions];
+          }
+        });
 
         setSessionsPage(data.current_page || pageToLoad);
         setSessionsTotalItems(data.total_items ?? data.sessions?.length ?? 0);
@@ -252,7 +275,7 @@ export const ChatsPage: FC = () => {
         setSessionsLoading(false);
       }
     },
-    [selectedSessionId]
+    []
   );
 
   useEffect(() => {
@@ -292,7 +315,14 @@ export const ChatsPage: FC = () => {
           limit: 30,
         });
 
+        // Strict Session Isolation Check: User might have switched sessions while request was in-flight!
+        if (selectedSessionIdRef.current !== sessionId) {
+          return;
+        }
+
         let currentMessagesCount = 0;
+        let newMessagesList: ChatMessage[] = [];
+
         if (append) {
           setMessages((prev) => {
             const existingIds = new Set(prev.map((m) => m.id));
@@ -303,10 +333,11 @@ export const ChatsPage: FC = () => {
             );
             const combined = [...prev, ...newItems];
             currentMessagesCount = combined.length;
+            newMessagesList = combined;
             return combined;
           });
         } else {
-          // Clean up any historical duplicate user messages from DB
+          // Clean up any historical duplicate messages from DB
           const deduped: ChatMessage[] = [];
           for (const m of data.messages || []) {
             const isDup = deduped.some(
@@ -316,9 +347,26 @@ export const ChatsPage: FC = () => {
               deduped.push(m);
             }
           }
+
+          // If this session is currently sending, retain any optimistic temporary message in-flight
+          const currentSendingJob = sendingSessionsRef.current[sessionId];
+          const cached = sessionMessagesCacheRef.current[sessionId] || [];
+          const optimisticTemps = cached.filter((m) => m.id.startsWith("temp-"));
+          for (const opt of optimisticTemps) {
+            const alreadyInDeduped = deduped.some(
+              (m) => m.role === "user" && m.content === opt.content
+            );
+            if (!alreadyInDeduped && currentSendingJob) {
+              deduped.push(opt);
+            }
+          }
+
           currentMessagesCount = deduped.length;
+          newMessagesList = deduped;
           setMessages(deduped);
         }
+
+        sessionMessagesCacheRef.current[sessionId] = newMessagesList;
 
         setMessagesPage(data.current_page || pageToLoad);
         setMessagesTotalPages(data.total_pages || 1);
@@ -341,22 +389,38 @@ export const ChatsPage: FC = () => {
           });
         }
       } catch (err: unknown) {
+        if (selectedSessionIdRef.current !== sessionId) return;
         const message = err instanceof Error ? err.message : "Failed to load messages";
         setMessagesError(message);
         if (!append) {
           setMessages([]);
         }
       } finally {
-        setMessagesLoading(false);
-        setLoadingMoreMessages(false);
+        if (selectedSessionIdRef.current === sessionId) {
+          setMessagesLoading(false);
+          setLoadingMoreMessages(false);
+        }
       }
     },
     []
   );
 
   useEffect(() => {
+    selectedSessionIdRef.current = selectedSessionId;
     if (selectedSessionId) {
+      // If this session was just created by handleSendMessage, do not fetch immediately
+      // because that would wipe out the optimistic user message!
+      if (skipInitialFetchSessionIdRef.current === selectedSessionId) {
+        skipInitialFetchSessionIdRef.current = null;
+        return;
+      }
       isInitialSessionLoadRef.current = true;
+      // Instant display from cache if available
+      if (sessionMessagesCacheRef.current[selectedSessionId]) {
+        setMessages(sessionMessagesCacheRef.current[selectedSessionId]);
+      } else {
+        setMessages([]);
+      }
       fetchMessages(selectedSessionId, 1, null, false);
     } else {
       setMessages([]);
@@ -377,17 +441,33 @@ export const ChatsPage: FC = () => {
     }
   }, [messages]);
 
-  // Keep active session message count in sidebar and top header synchronized in real-time
+  // Close three-dot menu and inline rename on click outside or Escape
   useEffect(() => {
-    if (!selectedSessionId || cleanMessages.length === 0) return;
-    setSessions((prev) =>
-      prev.map((s) =>
-        s.session_id === selectedSessionId
-          ? { ...s, message_count: cleanMessages.length }
-          : s
-      )
-    );
-  }, [cleanMessages.length, selectedSessionId]);
+    if (!editingSessionId && !menuOpenSessionId) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("[data-session-item-actions]")) {
+        return;
+      }
+      setMenuOpenSessionId(null);
+      setEditingSessionId(null);
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setMenuOpenSessionId(null);
+        setEditingSessionId(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [editingSessionId, menuOpenSessionId]);
 
   // Connect to Engine WebSocket for real-time response delivery
   useEffect(() => {
@@ -404,47 +484,83 @@ export const ChatsPage: FC = () => {
 
         socket.onmessage = (event) => {
           try {
-            const data: WebSocketChatResponse = JSON.parse(event.data);
-            if (data.type === "chat_response") {
-              const { job_id, session_id, user_message, ai_message } = data;
+            const data: any = JSON.parse(event.data);
+            if (data.type === "chat_rename") {
+              const { session_id, chat_name } = data;
+              if (session_id && chat_name) {
+                setSessions((prev) =>
+                  prev.map((s) =>
+                    s.session_id === session_id
+                      ? { ...s, chat_name }
+                      : s
+                  )
+                );
+              }
+            } else if (data.type === "chat_response") {
+              const { job_id, session_id, user_message, ai_message } = data as WebSocketChatResponse;
 
-              const isMatch =
-                (selectedSessionId && session_id === selectedSessionId) ||
-                (pendingJobIdRef.current && pendingJobIdRef.current === job_id);
+              // Find target session ID either from session_id or matching job_id
+              const targetSid =
+                session_id ||
+                Object.keys(sendingSessionsRef.current).find(
+                  (sid) => sendingSessionsRef.current[sid] === job_id
+                );
 
-              if (isMatch) {
-                if (ai_message) {
-                  setMessages((prev) => {
-                    const hasAi = prev.some((m) => m.id === ai_message.id);
-                    if (hasAi) return prev;
+              if (targetSid) {
+                // Clear sending state for this specific session only
+                setSendingSessions((prev) => {
+                  if (!prev[targetSid]) return prev;
+                  const next = { ...prev };
+                  delete next[targetSid];
+                  return next;
+                });
 
-                    // 1. Replace any optimistic temp- user message in-place at its original position
-                    const updated = prev.map((m) => {
-                      if (m.id.startsWith("temp-") && user_message && m.content === user_message.content) {
-                        return user_message;
-                      }
-                      return m;
+                // Update session messages cache for this session
+                const cached = sessionMessagesCacheRef.current[targetSid] || [];
+                const updatedCache = cached
+                  .map((m) => {
+                    if (m.id.startsWith("temp-") && user_message && m.content === user_message.content) {
+                      return user_message;
+                    }
+                    return m;
+                  })
+                  .filter((m) => !m.id.startsWith("temp-"));
+
+                if (ai_message && !updatedCache.some((m) => m.id === ai_message.id)) {
+                  updatedCache.push(ai_message);
+                }
+                sessionMessagesCacheRef.current[targetSid] = updatedCache;
+
+                // STRICT ISOLATION: Only update visible messages if the user is currently viewing this session!
+                if (selectedSessionIdRef.current === targetSid) {
+                  if (ai_message) {
+                    setMessages((prev) => {
+                      const hasAi = prev.some((m) => m.id === ai_message.id);
+                      if (hasAi) return prev;
+
+                      // 1. Replace optimistic temp- user message in-place at its original position
+                      const updated = prev.map((m) => {
+                        if (m.id.startsWith("temp-") && user_message && m.content === user_message.content) {
+                          return user_message;
+                        }
+                        return m;
+                      });
+
+                      // 2. Remove any remaining temp- items for this query
+                      const filtered = updated.filter((m) => !m.id.startsWith("temp-"));
+
+                      // 3. Append ONLY the AI message at the end
+                      return [...filtered, ai_message];
                     });
+                  }
 
-                    // 2. Remove any remaining temp- items for this query
-                    const filtered = updated.filter((m) => !m.id.startsWith("temp-"));
-
-                    // 3. Append ONLY the AI message at the end
-                    return [...filtered, ai_message];
-                  });
+                  setTimeout(() => {
+                    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+                  }, 100);
                 }
 
-                if (!selectedSessionId && session_id) {
-                  setSelectedSessionId(session_id);
-                }
-
-                setIsSending(false);
-                pendingJobIdRef.current = null;
+                // Refresh sessions list in background to update timestamps and chat names
                 fetchSessions(1, null, false);
-
-                setTimeout(() => {
-                  messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-                }, 100);
               }
             }
           } catch (e) {
@@ -486,28 +602,127 @@ export const ChatsPage: FC = () => {
   };
 
   // ============================================================================
+  // Session Renaming Handlers
+  // ============================================================================
+  const handleStartRename = useCallback((sessionId: string, currentName: string) => {
+    setEditingSessionId(sessionId);
+    setEditingName(currentName);
+    setMenuOpenSessionId(null);
+  }, []);
+
+  const handleCancelRename = useCallback(() => {
+    setEditingSessionId(null);
+    setEditingName("");
+  }, []);
+
+  const handleSaveRename = useCallback(
+    async (sessionId: string) => {
+      const cleanName = editingName.trim();
+      if (!cleanName) return;
+
+      try {
+        setIsRenamingLoading(true);
+        await engineService.renameChatSession(sessionId, cleanName);
+
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.session_id === sessionId ? { ...s, chat_name: cleanName } : s
+          )
+        );
+
+        toast.success(`Chat has been renamed to "${cleanName}".`, {
+          title: "Chat Renamed",
+        });
+
+        setEditingSessionId(null);
+        setEditingName("");
+        fetchSessions(1, null, false);
+      } catch (err) {
+        console.error("Failed to rename session:", err);
+        toast.error("Failed to update chat session name. Please try again.", {
+          title: "Rename Failed",
+        });
+      } finally {
+        setIsRenamingLoading(false);
+      }
+    },
+    [editingName, fetchSessions]
+  );
+
+  // ============================================================================
   // Sending Message
   // ============================================================================
   const handleSendMessage = async () => {
     const trimmed = inputText.trim();
-    if (!trimmed || isSending) return;
+    if (!trimmed) return;
+
+    // Upfront session determination: reuse existing or generate new UUID immediately
+    const targetSessionId = selectedSessionId || generateUUID();
+
+    // Guard: Prevent double-send if THIS session is already awaiting a reply
+    if (sendingSessionsRef.current[targetSessionId]) return;
 
     const jobId = `job-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-    pendingJobIdRef.current = jobId;
 
-    setIsSending(true);
+    // Set sending state strictly for this target session
+    setSendingSessions((prev) => ({ ...prev, [targetSessionId]: jobId }));
     setInputText("");
+
+    const isNewSession = !selectedSessionId;
+
+    // Issue 1: INSTANTLY add to chat area in sidebar on send
+    const nowIso = new Date().toISOString();
+    if (isNewSession) {
+      const initialTitle = trimmed.length > 32 ? `${trimmed.substring(0, 32)}...` : trimmed;
+      const newSession: ChatSession = {
+        session_id: targetSessionId,
+        chat_name: initialTitle,
+        latest_created_at: nowIso,
+        created_at: nowIso,
+        message_count: 1,
+      };
+
+      // Instantly prepend to sidebar list (0ms delay)
+      setSessions((prev) => [newSession, ...prev.filter((s) => s.session_id !== targetSessionId)]);
+      setSessionsTotalItems((prev) => prev + 1);
+
+      // Skip the initial wipeout fetch in useEffect([selectedSessionId])
+      skipInitialFetchSessionIdRef.current = targetSessionId;
+      setSelectedSessionId(targetSessionId);
+    } else {
+      // For existing session, bump it to the top of the sidebar list
+      setSessions((prev) => {
+        const existing = prev.find((s) => s.session_id === targetSessionId);
+        if (existing) {
+          const updated = {
+            ...existing,
+            latest_created_at: nowIso,
+            created_at: nowIso,
+          };
+          return [updated, ...prev.filter((s) => s.session_id !== targetSessionId)];
+        }
+        return prev;
+      });
+    }
 
     const tempId = `temp-${Date.now()}`;
     const optimisticUserMsg: ChatMessage = {
       id: tempId,
-      session_id: selectedSessionId || "new-session",
+      session_id: targetSessionId,
       role: "user",
       content: trimmed,
       created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
     };
 
+    // Update message state if this is currently viewed
     setMessages((prev) => [...prev, optimisticUserMsg]);
+
+    // Cache message for this session
+    sessionMessagesCacheRef.current[targetSessionId] = [
+      ...(sessionMessagesCacheRef.current[targetSessionId] || []).filter((m) => m.id !== tempId),
+      optimisticUserMsg,
+    ];
+
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, 50);
@@ -515,56 +730,76 @@ export const ChatsPage: FC = () => {
     try {
       const response = await engineService.sendChatMessage({
         job_id: jobId,
-        session_id: selectedSessionId || undefined,
+        session_id: targetSessionId,
         content: trimmed,
       });
 
-      const actualSessionId = response.session_id;
-      if (!selectedSessionId || selectedSessionId !== actualSessionId) {
-        setSelectedSessionId(actualSessionId);
-      }
-
-      // If response returned synchronous ai_message (e.g. fallback)
+      // If response returned synchronous ai_message (e.g. fallback or mock)
       if (response.ai_message) {
-        setMessages((prev) => {
-          const hasAi = prev.some((m) => m.id === response.ai_message!.id);
-          const hasUser = prev.some((m) => m.id === response.user_message.id || (m.role === "user" && m.content === trimmed));
-          if (hasAi && hasUser) {
-            return prev.filter((m) => m.id !== tempId);
-          }
-          const filtered = prev.filter((m) => m.id !== tempId && m.id !== response.user_message.id);
-          return [...filtered, response.user_message, response.ai_message!];
+        setSendingSessions((prev) => {
+          const next = { ...prev };
+          delete next[targetSessionId];
+          return next;
         });
-        setIsSending(false);
-        pendingJobIdRef.current = null;
+
+        if (selectedSessionIdRef.current === targetSessionId) {
+          setMessages((prev) => {
+            const hasAi = prev.some((m) => m.id === response.ai_message!.id);
+            const hasUser = prev.some(
+              (m) => m.id === response.user_message.id || (m.role === "user" && m.content === trimmed)
+            );
+            if (hasAi && hasUser) {
+              return prev.filter((m) => m.id !== tempId);
+            }
+            const filtered = prev.filter((m) => m.id !== tempId && m.id !== response.user_message.id);
+            return [...filtered, response.user_message, response.ai_message!];
+          });
+        }
+
+        sessionMessagesCacheRef.current[targetSessionId] = [
+          ...(sessionMessagesCacheRef.current[targetSessionId] || []).filter(
+            (m) => m.id !== tempId && m.id !== response.user_message.id
+          ),
+          response.user_message,
+          response.ai_message,
+        ];
+
         fetchSessions(1, null, false);
       } else {
-        // Job is queued into llm_chat stream; replace tempId in-place with saved user msg
-        setMessages((prev) => {
-          const hasTemp = prev.some((m) => m.id === tempId);
-          if (hasTemp) {
-            // Replace tempId in-place at its original position
-            return prev.map((m) => (m.id === tempId ? response.user_message : m));
-          }
-          // If temp was already removed or replaced (e.g. WebSocket arrived first)
-          const alreadyHasUser = prev.some(
-            (m) => m.id === response.user_message.id || (m.role === "user" && m.content === trimmed)
-          );
-          if (alreadyHasUser) {
-            return prev; // Do not append duplicate user query after AI response!
-          }
-          return [...prev, response.user_message];
-        });
-        // 35-second safety fallback timeout in case WebSocket misses the event
+        // Job queued into llm_chat stream; replace tempId in-place with saved user msg
+        if (selectedSessionIdRef.current === targetSessionId) {
+          setMessages((prev) => {
+            const hasTemp = prev.some((m) => m.id === tempId);
+            if (hasTemp) {
+              return prev.map((m) => (m.id === tempId ? response.user_message : m));
+            }
+            const alreadyHasUser = prev.some(
+              (m) => m.id === response.user_message.id || (m.role === "user" && m.content === trimmed)
+            );
+            if (alreadyHasUser) {
+              return prev;
+            }
+            return [...prev, response.user_message];
+          });
+        }
+
+        sessionMessagesCacheRef.current[targetSessionId] = (
+          sessionMessagesCacheRef.current[targetSessionId] || []
+        ).map((m) => (m.id === tempId ? response.user_message : m));
+
+        // 40-second safety fallback timeout in case WebSocket connection misses the event
         setTimeout(() => {
-          if (pendingJobIdRef.current === jobId) {
-            setIsSending(false);
-            pendingJobIdRef.current = null;
-            if (actualSessionId) {
-              fetchMessages(actualSessionId, 1, null, false);
+          if (sendingSessionsRef.current[targetSessionId] === jobId) {
+            setSendingSessions((prev) => {
+              const next = { ...prev };
+              delete next[targetSessionId];
+              return next;
+            });
+            if (selectedSessionIdRef.current === targetSessionId) {
+              fetchMessages(targetSessionId, 1, null, false);
             }
           }
-        }, 35000);
+        }, 40000);
       }
 
       setTimeout(() => {
@@ -573,8 +808,11 @@ export const ChatsPage: FC = () => {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to send message";
       toast.error(message, { title: "Chat Error" });
-      setIsSending(false);
-      pendingJobIdRef.current = null;
+      setSendingSessions((prev) => {
+        const next = { ...prev };
+        delete next[targetSessionId];
+        return next;
+      });
     }
   };
 
@@ -586,6 +824,9 @@ export const ChatsPage: FC = () => {
   };
 
   const handleStartNewChat = () => {
+    if (selectedSessionId) {
+      sessionMessagesCacheRef.current[selectedSessionId] = messages;
+    }
     setSelectedSessionId(null);
     setMessages([]);
     setInputText("");
@@ -615,19 +856,210 @@ export const ChatsPage: FC = () => {
     return sessions.find((s) => s.session_id === selectedSessionId) || null;
   }, [sessions, selectedSessionId]);
 
-  // Issue 1 & 2: Map chats to SidebarItem with real-time active message count
+  // Map chats to SidebarItem
   const sidebarItems: SidebarItem[] = useMemo(() => {
     return filteredSessions.map((s) => {
-      const isCurrent = s.session_id === selectedSessionId;
-      const count = isCurrent ? cleanMessages.length : (s.message_count || 0);
       return {
         key: s.session_id,
         name: s.chat_name || s.session_id,
         icon: MessageSquare,
-        badge: count && count > 0 ? count : undefined,
       };
     });
-  }, [filteredSessions, selectedSessionId, cleanMessages.length]);
+  }, [filteredSessions]);
+
+  // Render item in sidebar with 3-dot dropdown menu, inline editing, and loading spinner
+  const renderSidebarItem = useCallback(
+    (item: SidebarItem, state: SidebarRenderItemState) => {
+      const { isActive, isCollapsed, handleSelect } = state;
+      const isEditing = editingSessionId === item.key;
+      const isMenuOpen = menuOpenSessionId === item.key;
+      const sessionName = typeof item.name === "string" ? item.name : "";
+      const isSessionSending = Boolean(sendingSessions[item.key]);
+
+      if (isCollapsed) {
+        return (
+          <button
+            type="button"
+            id={`sidebar-item-${item.key}`}
+            role="menuitem"
+            aria-current={isActive ? "page" : undefined}
+            title={sessionName}
+            onClick={handleSelect}
+            className={cn(
+              "group relative flex items-center justify-center w-full rounded-md text-xs font-medium cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-cyan-400 h-9 px-2 overflow-hidden transition-colors duration-150",
+              isActive
+                ? "bg-cyan-950/40 text-cyan-300 border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.12)] font-semibold"
+                : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5 border border-transparent"
+            )}
+          >
+            <span
+              className={cn(
+                "shrink-0 flex items-center justify-center w-8 h-8 rounded transition-colors",
+                isActive ? "text-cyan-400" : "text-zinc-400 group-hover:text-zinc-200"
+              )}
+            >
+              {isSessionSending ? (
+                <RefreshCw className="h-4 w-4 animate-spin text-cyan-400" />
+              ) : (
+                <MessageSquare className="h-4 w-4" />
+              )}
+            </span>
+            {isActive && (
+              <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-cyan-400 rounded-full" />
+            )}
+          </button>
+        );
+      }
+
+      if (isEditing) {
+        return (
+          <div
+            data-session-item-actions
+            className="flex items-center w-full h-9 px-2 gap-1 rounded-md bg-zinc-900 border border-cyan-500/50 shadow-[0_0_12px_rgba(6,182,212,0.15)] select-none"
+          >
+            <MessageSquare className="h-4 w-4 text-cyan-400 shrink-0" />
+            <input
+              type="text"
+              id={`input-rename-session-${item.key}`}
+              value={editingName}
+              onChange={(e) => setEditingName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleSaveRename(item.key);
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  handleCancelRename();
+                }
+              }}
+              autoFocus
+              disabled={isRenamingLoading}
+              className="flex-1 min-w-0 bg-transparent text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none font-medium selection:bg-cyan-500/30 selection:text-cyan-100 py-0.5"
+              placeholder="Chat name..."
+            />
+            <button
+              type="button"
+              id={`btn-save-rename-${item.key}`}
+              onClick={() => handleSaveRename(item.key)}
+              disabled={isRenamingLoading || !editingName.trim()}
+              title="Save"
+              aria-label="Save"
+              className="p-1 rounded text-cyan-400 hover:text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer shrink-0"
+            >
+              <Check className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              id={`btn-cancel-rename-${item.key}`}
+              onClick={handleCancelRename}
+              disabled={isRenamingLoading}
+              title="Cancel"
+              aria-label="Cancel"
+              className="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        );
+      }
+
+      return (
+        <div
+          className={cn(
+            "group relative flex items-center w-full rounded-md text-xs font-medium cursor-pointer h-9 px-2 transition-colors duration-150 select-none",
+            isActive
+              ? "bg-cyan-950/40 text-cyan-300 border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.12)] font-semibold"
+              : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5 border border-transparent"
+          )}
+        >
+          {isActive && (
+            <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-cyan-400 rounded-full" />
+          )}
+
+          <div
+            onClick={handleSelect}
+            className="flex items-center flex-1 min-w-0 h-full overflow-hidden"
+          >
+            <span
+              className={cn(
+                "shrink-0 flex items-center justify-center w-7 h-7 rounded transition-colors mr-1.5",
+                isActive ? "text-cyan-400" : "text-zinc-400 group-hover:text-zinc-200"
+              )}
+            >
+              {isSessionSending ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin text-cyan-400" />
+              ) : (
+                <MessageSquare className="h-4 w-4" />
+              )}
+            </span>
+
+            <span
+              title={sessionName}
+              className="truncate tracking-wide text-left flex-1 whitespace-nowrap"
+            >
+              {sessionName}
+            </span>
+          </div>
+
+          <div
+            data-session-item-actions
+            className="flex items-center gap-1 shrink-0 ml-1.5"
+          >
+            <div className="relative">
+              <button
+                type="button"
+                id={`btn-session-menu-${item.key}`}
+                title="Session menu"
+                aria-label="Session menu"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpenSessionId((prev) => (prev === item.key ? null : item.key));
+                }}
+                className={cn(
+                  "p-1 rounded text-zinc-400 hover:text-zinc-100 hover:bg-white/10 transition-all cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-cyan-400",
+                  isMenuOpen
+                    ? "opacity-100 text-zinc-100 bg-white/15"
+                    : "opacity-0 group-hover:opacity-100"
+                )}
+              >
+                <MoreVertical className="h-3.5 w-3.5" />
+              </button>
+
+              {isMenuOpen && (
+                <div
+                  id={`dropdown-session-menu-${item.key}`}
+                  className="absolute right-0 top-7 z-50 w-28 py-1 bg-zinc-900 border border-white/10 rounded-md shadow-2xl backdrop-blur-md text-xs animate-in fade-in zoom-in-95 duration-100"
+                >
+                  <button
+                    type="button"
+                    id={`btn-rename-session-${item.key}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleStartRename(item.key, sessionName);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-zinc-300 hover:text-cyan-300 hover:bg-cyan-500/10 transition-colors text-left cursor-pointer"
+                  >
+                    <Edit3 className="h-3.5 w-3.5 text-cyan-400" />
+                    <span>Rename</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    },
+    [
+      editingSessionId,
+      editingName,
+      menuOpenSessionId,
+      isRenamingLoading,
+      sendingSessions,
+      handleSaveRename,
+      handleCancelRename,
+      handleStartRename,
+    ]
+  );
 
   return (
     <div
@@ -644,10 +1076,17 @@ export const ChatsPage: FC = () => {
       <Sidebar
         items={sidebarItems}
         activeKey={selectedSessionId || undefined}
-        onSelect={(key) => setSelectedSessionId(key)}
+        onSelect={(key) => {
+          if (selectedSessionId === key) return;
+          if (selectedSessionId) {
+            sessionMessagesCacheRef.current[selectedSessionId] = messages;
+          }
+          setSelectedSessionId(key);
+        }}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={setIsSidebarCollapsed}
         onScroll={handleSessionsScroll}
+        renderItem={renderSidebarItem}
         className="border-r border-white/[0.08] bg-zinc-950/80 shadow-lg"
         header={
           <div className="relative w-full h-full flex items-center">
@@ -986,7 +1425,7 @@ export const ChatsPage: FC = () => {
               })}
 
               {/* Sending / Thinking Indicator with 15 Rotating Messages */}
-              {isSending && (
+              {isCurrentSessionSending && (
                 <div className="flex items-start gap-3 w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
                   <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shrink-0 shadow-[0_0_15px_rgba(6,182,212,0.15)]">
                     <Bot className="w-4 h-4 animate-pulse" />
@@ -1028,29 +1467,30 @@ export const ChatsPage: FC = () => {
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyDown={handleKeyDown}
+                disabled={isCurrentSessionSending}
                 placeholder={
                   selectedSessionId
                     ? "Type your message... (Enter to send, Shift+Enter for new line)"
                     : "Type a prompt to start a new chat session..."
                 }
-                className="flex-1 max-h-44 min-h-[38px] bg-transparent resize-none text-xs sm:text-[13px] text-zinc-100 placeholder-zinc-500 focus:outline-none px-2 py-1.5 leading-relaxed overflow-y-auto"
+                className="flex-1 max-h-44 min-h-[38px] bg-transparent resize-none text-xs sm:text-[13px] text-zinc-100 placeholder-zinc-500 focus:outline-none px-2 py-1.5 leading-relaxed overflow-y-auto disabled:opacity-50"
               />
 
               <button
                 type="button"
                 id="btn-send-message"
                 onClick={handleSendMessage}
-                disabled={!inputText.trim() || isSending}
+                disabled={!inputText.trim() || isCurrentSessionSending}
                 title="Send message (Enter)"
                 aria-label="Send message"
                 className={cn(
                   "p-2 rounded-xl text-white font-medium transition-all duration-150 flex items-center justify-center shrink-0 cursor-pointer shadow-md",
-                  inputText.trim() && !isSending
+                  inputText.trim() && !isCurrentSessionSending
                     ? "bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 active:scale-95 shadow-cyan-500/20"
                     : "bg-zinc-800 text-zinc-500 opacity-60 cursor-not-allowed"
                 )}
               >
-                {isSending ? (
+                {isCurrentSessionSending ? (
                   <RefreshCw className="w-4 h-4 animate-spin text-cyan-300" />
                 ) : (
                   <Send className="w-4 h-4" />

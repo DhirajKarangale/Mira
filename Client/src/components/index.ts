@@ -1,4 +1,4 @@
-export { Sidebar, type SidebarItem, type SidebarProps } from "./Sidebar";
+export { Sidebar, type SidebarItem, type SidebarProps, type SidebarRenderItemState } from "./Sidebar";
 export {
   MessageBar,
   MessageBarColor,

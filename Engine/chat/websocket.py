@@ -76,6 +76,39 @@ class ChatWebSocketManager:
         log(f"[ChatWebSocket] Broadcasted response for job={job_id} to {sent_count} client(s).")
         return sent_count
 
+    async def broadcast_chat_rename(
+        self,
+        session_id: str,
+        chat_name: str,
+    ) -> int:
+        """
+        Broadcast chat session renaming event to all connected WebSocket clients.
+        """
+        payload: Dict[str, Any] = {
+            "type": "chat_rename",
+            "session_id": str(session_id),
+            "chat_name": str(chat_name),
+        }
+        message_str = json.dumps(payload)
+        sent_count = 0
+        dead_connections: List[WebSocket] = []
+
+        async with self._lock:
+            for connection in self._active_connections:
+                try:
+                    await connection.send_text(message_str)
+                    sent_count += 1
+                except Exception as e:
+                    logger.debug(f"Failed to send rename event to client: {e}")
+                    dead_connections.append(connection)
+
+            for dead in dead_connections:
+                if dead in self._active_connections:
+                    self._active_connections.remove(dead)
+
+        log(f"[ChatWebSocket] Broadcasted rename for session={session_id} to '{chat_name}' ({sent_count} client(s)).")
+        return sent_count
+
     def get_connections_count(self) -> int:
         return len(self._active_connections)
 

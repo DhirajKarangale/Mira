@@ -81,6 +81,11 @@ class SendChatMessageResponse(BaseModel):
     status: str = "queued"
 
 
+class RenameChatSessionRequest(BaseModel):
+    chat_name: str = Field(..., min_length=1, max_length=100, description="New chat session title")
+
+
+
 # ==============================================================================
 # WebSocket Endpoint
 # ==============================================================================
@@ -248,9 +253,6 @@ async def send_chat_message_endpoint(request: SendChatMessageRequest):
     role = (request.role or "user").lower().strip()
     chat_name = request.chat_name.strip() if request.chat_name and request.chat_name.strip() else None
 
-    if not chat_name:
-        chat_name = content[:40].strip() if len(content) > 40 else content
-
     # 1. Store user message in Vault immediately
     saved_user_msg = await asyncio.to_thread(
         save_chat_to_vault,
@@ -383,3 +385,53 @@ async def seed_demo_chats_endpoint(count: int = Query(12, ge=1, le=30)):
         "seeded_count": len(seeded_sessions),
         "sessions": seeded_sessions,
     }
+
+
+@router.patch(
+    "/chats/sessions/{session_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Rename Chat Session",
+)
+@router.patch("/chats/{session_id}", include_in_schema=False)
+async def rename_chat_session_endpoint(session_id: str, request: RenameChatSessionRequest):
+    """
+    Rename a chat session:
+    1. Persist updated chat_name in Vault database.
+    2. Broadcast chat_rename event to all connected WebSocket clients.
+    """
+    clean_sid = (session_id or "").strip()
+    clean_name = (request.chat_name or "").strip()
+    if not clean_sid:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="session_id cannot be empty")
+    if not clean_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="chat_name cannot be empty")
+
+    vault_base = get_vault_base_url()
+
+    def _update():
+        resp = requests.patch(
+            f"{vault_base}/chats/sessions/{clean_sid}",
+            json={"chat_name": clean_name},
+            timeout=5.0,
+        )
+        return resp.status_code in (200, 201)
+
+    try:
+        success = await asyncio.to_thread(_update)
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Failed to update chat session '{clean_sid}' in Vault",
+            )
+        # Broadcast rename event to all clients over WebSocket
+        await ws_manager.broadcast_chat_rename(session_id=clean_sid, chat_name=clean_name)
+        return {"status": "success", "session_id": clean_sid, "chat_name": clean_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to rename session '{clean_sid}': {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update session name: {str(e)}",
+        )
+

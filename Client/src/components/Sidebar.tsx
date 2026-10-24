@@ -19,6 +19,13 @@ export interface SidebarItem {
 }
 
 
+export interface SidebarRenderItemState {
+  isActive: boolean;
+  isCollapsed: boolean;
+  handleSelect: () => void;
+  renderIcon: (icon: ComponentType<{ className?: string }> | ReactNode) => ReactNode;
+}
+
 export interface SidebarProps {
   items: readonly SidebarItem[] | SidebarItem[];
   activeKey?: string;
@@ -37,6 +44,7 @@ export interface SidebarProps {
   footer?: ReactNode;
   className?: string;
   onScroll?: (e: React.UIEvent<HTMLElement>) => void;
+  renderItem?: (item: SidebarItem, state: SidebarRenderItemState) => ReactNode;
 }
 
 export const Sidebar: FC<SidebarProps> = ({
@@ -57,6 +65,7 @@ export const Sidebar: FC<SidebarProps> = ({
   footer,
   className,
   onScroll,
+  renderItem,
 }) => {
   const isSmallScreenAuto = useMediaQuery(overlayBreakpoint);
   const isOverlayMode =
@@ -201,6 +210,18 @@ export const Sidebar: FC<SidebarProps> = ({
           >
             {items.map((item) => {
               const isActive = activeKey === item.key;
+              if (renderItem) {
+                return (
+                  <div key={item.key} className="w-full">
+                    {renderItem(item, {
+                      isActive,
+                      isCollapsed: false,
+                      handleSelect: () => handleItemClick(item.key, item.disabled),
+                      renderIcon,
+                    })}
+                  </div>
+                );
+              }
               return (
                 <button
                   key={item.key}
@@ -342,6 +363,18 @@ export const Sidebar: FC<SidebarProps> = ({
       >
         {items.map((item) => {
           const isActive = activeKey === item.key;
+          if (renderItem) {
+            return (
+              <div key={item.key} className="w-full">
+                {renderItem(item, {
+                  isActive,
+                  isCollapsed,
+                  handleSelect: () => handleItemClick(item.key, item.disabled),
+                  renderIcon,
+                })}
+              </div>
+            );
+          }
           return (
             <button
               key={item.key}

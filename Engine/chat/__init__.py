@@ -21,6 +21,7 @@ from .config import (
     get_chat_poll_time,
 )
 from .websocket import ws_manager
+from .naming import chat_naming_queue
 
 __all__ = [
     "router",
@@ -29,6 +30,7 @@ __all__ = [
     "get_chat_status",
     "worker_manager",
     "process_chat_job",
+    "chat_naming_queue",
     "get_session_memory",
     "store_session_memory",
     "format_chat_history_for_llm",

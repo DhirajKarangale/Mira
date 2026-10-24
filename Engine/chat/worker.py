@@ -21,6 +21,7 @@ from .memory import (
     format_chat_history_for_llm,
 )
 from .websocket import ws_manager
+from .naming import chat_naming_queue
 from llm import call_llm
 from vault_logger import log, log_error, mask_sensitive
 
@@ -124,7 +125,11 @@ async def process_chat_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
         status="completed",
     )
 
-    # Step 6: Acknowledge and remove job from Message Broker
+    # Step 6: Automatic Chat Naming - If chat_name is null or empty, enqueue for naming
+    if not chat_name or not str(chat_name).strip():
+        chat_naming_queue.enqueue(session_id)
+
+    # Step 7: Acknowledge and remove job from Message Broker
     removed = await asyncio.to_thread(acknowledge_chat_job, job_id)
     if not removed:
         log_error(f"[ChatWorker-{worker_id}] Warning: Failed to acknowledge job {job_id}")
@@ -151,6 +156,9 @@ class ChatWorkerManager:
             return True
         self._running = True
 
+        # Start the in-memory chat naming queue processor
+        await chat_naming_queue.start()
+
         # Fetch chat_workers and chat_workers_poll_time from Vault configuration
         num_workers = get_chat_workers_count()
         poll_interval = get_chat_poll_time()
@@ -167,6 +175,7 @@ class ChatWorkerManager:
             return
         log("Stopping Chat workers...")
         self._running = False
+        await chat_naming_queue.stop()
         for task in self._tasks:
             try:
                 task.cancel()

@@ -580,6 +580,7 @@ class ChatMessageItem(BaseModel):
 
 class ChatMessagesListResponse(BaseModel):
     session_id: str
+    chat_name: Optional[str] = None
     messages: List[ChatMessageItem]
     total_pages: int
     current_page: int
@@ -587,6 +588,10 @@ class ChatMessagesListResponse(BaseModel):
     limit: int
     next_cursor: Optional[str] = None
     has_more: bool
+
+class ChatSessionRenameRequest(BaseModel):
+    chat_name: str = Field(..., min_length=1, max_length=100)
+
 
 @router.get('/chats/sessions', response_model=ChatSessionsListResponse, status_code=status.HTTP_200_OK)
 async def get_vault_chat_sessions(
@@ -662,6 +667,33 @@ async def create_vault_chat_message(request: ChatMessageCreateRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={'message': f'Failed to store chat message: {str(e)}'}
+        )
+
+@router.patch('/chats/sessions/{session_id}', status_code=status.HTTP_200_OK)
+@router.patch('/chats/{session_id}', status_code=status.HTTP_200_OK)
+async def rename_vault_chat_session(session_id: str, request: ChatSessionRenameRequest):
+    try:
+        clean_sid = (session_id or "").strip()
+        clean_name = (request.chat_name or "").strip()
+        if not clean_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={'message': 'chat_name cannot be empty'}
+            )
+        updated = config_storage.update_chat_session_name(clean_sid, clean_name)
+        if not updated:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={'message': f"Chat session '{clean_sid}' not found."}
+            )
+        return {'status': 'success', 'session_id': clean_sid, 'chat_name': clean_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to rename session '{session_id}': {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={'message': f'Failed to update session name: {str(e)}'}
         )
 
 @router.delete('/chats/sessions/{session_id}', status_code=status.HTTP_200_OK)

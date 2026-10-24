@@ -195,6 +195,29 @@ export const engineService = {
     return response.data;
   },
 
+  async renameChatSession(
+    sessionId: string,
+    chatName: string
+  ): Promise<{ status: string; session_id: string; chat_name: string }> {
+    try {
+      const response = await engineApi.patch<{ status: string; session_id: string; chat_name: string }>(
+        `/chats/sessions/${encodeURIComponent(sessionId)}`,
+        { chat_name: chatName }
+      );
+      return response.data;
+    } catch (err) {
+      try {
+        const fallback = await vaultApi.patch<{ status: string; session_id: string; chat_name: string }>(
+          `/chats/sessions/${encodeURIComponent(sessionId)}`,
+          { chat_name: chatName }
+        );
+        return fallback.data;
+      } catch {
+        throw err;
+      }
+    }
+  },
+
   async seedDemoChats(count: number = 12): Promise<{ status: string; seeded_count: number }> {
     try {
       const response = await engineApi.post<{ status: string; seeded_count: number }>("/chats/seed", null, {
@@ -207,5 +230,6 @@ export const engineService = {
     }
   },
 };
+
 
 

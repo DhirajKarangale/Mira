@@ -771,6 +771,14 @@ def save_chat_message(
             "UPDATE chats SET chat_name = ? WHERE session_id = ? AND (chat_name IS NULL OR chat_name = '')",
             (clean_chat_name, session_id)
         )
+    else:
+        # Inherit session's existing chat_name if previously named
+        existing_name_row = _DB_CONN.execute(
+            "SELECT chat_name FROM chats WHERE session_id = ? AND chat_name IS NOT NULL AND trim(chat_name) != '' LIMIT 1",
+            (session_id,)
+        ).fetchone()
+        if existing_name_row:
+            clean_chat_name = existing_name_row[0]
 
     # Strict deduplication check: never store duplicate message in the same session
     existing_row = _DB_CONN.execute(
@@ -1033,8 +1041,15 @@ def get_chats_by_session(
             "id": last["id"],
         })
 
+    session_name_row = _DB_CONN.execute(
+        "SELECT chat_name FROM chats WHERE session_id = ? AND chat_name IS NOT NULL AND trim(chat_name) != '' LIMIT 1",
+        (clean_sid,)
+    ).fetchone()
+    current_chat_name = session_name_row[0] if session_name_row else None
+
     return {
         "session_id": clean_sid,
+        "chat_name": current_chat_name,
         "messages": messages,
         "total_pages": total_pages,
         "current_page": current_page,
@@ -1043,6 +1058,33 @@ def get_chats_by_session(
         "next_cursor": next_cursor,
         "has_more": has_more,
     }
+
+def update_chat_session_name(session_id: str, chat_name: str) -> bool:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+    clean_sid = (session_id or "").strip()
+    clean_name = (chat_name or "").strip()
+    if not clean_sid:
+        return False
+    cursor = _DB_CONN.execute(
+        "UPDATE chats SET chat_name = ? WHERE session_id = ?",
+        (clean_name, clean_sid)
+    )
+    _DB_CONN.commit()
+    save_config_storage()
+    return cursor.rowcount > 0
+
+def get_chat_session_name(session_id: str) -> Optional[str]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+    clean_sid = (session_id or "").strip()
+    row = _DB_CONN.execute(
+        "SELECT chat_name FROM chats WHERE session_id = ? AND chat_name IS NOT NULL AND trim(chat_name) != '' LIMIT 1",
+        (clean_sid,)
+    ).fetchone()
+    return row[0] if row else None
 
 def delete_chat_session(session_id: str) -> bool:
     global _DB_CONN
@@ -1053,4 +1095,5 @@ def delete_chat_session(session_id: str) -> bool:
     _DB_CONN.commit()
     save_config_storage()
     return True
+
 
