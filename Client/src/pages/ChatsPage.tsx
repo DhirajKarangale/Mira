@@ -20,10 +20,30 @@ import { Sidebar, type SidebarItem } from "@/components/Sidebar";
 import { toast } from "@/components";
 import {
   engineService,
+  getEngineWebSocketUrl,
   type ChatSession,
   type ChatMessage,
+  type WebSocketChatResponse,
 } from "@/services/engine.service";
 import { cn } from "@/lib/utils";
+
+const CHAT_LOADING_MESSAGES: readonly string[] = [
+  "Reflecting on your query...",
+  "Consulting short-term memory...",
+  "Analyzing dialogue context...",
+  "Formulating response...",
+  "Synthesizing thoughts...",
+  "Connecting the dots...",
+  "Scanning conversation history...",
+  "Crafting a personalized answer...",
+  "Retrieving knowledge...",
+  "Processing your request...",
+  "Drafting reply...",
+  "Calibrating response...",
+  "Reviewing recent activity...",
+  "Finalizing insights...",
+  "Polishing the details...",
+] as const;
 
 export const ChatsPage: FC = () => {
   // ============================================================================
@@ -55,15 +75,30 @@ export const ChatsPage: FC = () => {
   const [loadingMoreMessages, setLoadingMoreMessages] = useState<boolean>(false);
 
   // ============================================================================
-  // Input State
+  // Input & WebSocket State
   // ============================================================================
   const [inputText, setInputText] = useState<string>("");
   const [isSending, setIsSending] = useState<boolean>(false);
   const [copiedSessionId, setCopiedSessionId] = useState<string | null>(null);
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState<number>(0);
+  const pendingJobIdRef = useRef<string | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
   // Scroll reference
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+  // Cycle through 15 loading messages every 2.5s while waiting for response
+  useEffect(() => {
+    if (!isSending) {
+      setLoadingMessageIndex(0);
+      return;
+    }
+    const timer = setInterval(() => {
+      setLoadingMessageIndex((prev) => (prev + 1) % CHAT_LOADING_MESSAGES.length);
+    }, 2500);
+    return () => clearInterval(timer);
+  }, [isSending]);
 
   // ============================================================================
   // Format Date Helper
@@ -237,6 +272,95 @@ export const ChatsPage: FC = () => {
     }
   }, [selectedSessionId, fetchMessages]);
 
+  // Connect to Engine WebSocket for real-time response delivery
+  useEffect(() => {
+    let socket: WebSocket | null = null;
+    let reconnectTimer: any = null;
+    let isMounted = true;
+
+    const connectWs = () => {
+      if (!isMounted) return;
+      try {
+        const wsUrl = getEngineWebSocketUrl();
+        socket = new WebSocket(wsUrl);
+        wsRef.current = socket;
+
+        socket.onmessage = (event) => {
+          try {
+            const data: WebSocketChatResponse = JSON.parse(event.data);
+            if (data.type === "chat_response") {
+              const { job_id, session_id, user_message, ai_message } = data;
+
+              const isMatch =
+                (selectedSessionId && session_id === selectedSessionId) ||
+                (pendingJobIdRef.current && pendingJobIdRef.current === job_id);
+
+              if (isMatch) {
+                if (ai_message) {
+                  setMessages((prev) => {
+                    const withoutOptimistic = prev.filter(
+                      (m) => !m.id.startsWith("temp-") || m.content !== user_message?.content
+                    );
+                    const hasUser = withoutOptimistic.some((m) => m.id === user_message?.id);
+                    const hasAi = withoutOptimistic.some((m) => m.id === ai_message.id);
+
+                    const next = [...withoutOptimistic];
+                    if (!hasUser && user_message) {
+                      next.push(user_message);
+                    }
+                    if (!hasAi) {
+                      next.push(ai_message);
+                    }
+                    return next;
+                  });
+                }
+
+                if (!selectedSessionId && session_id) {
+                  setSelectedSessionId(session_id);
+                }
+
+                setIsSending(false);
+                pendingJobIdRef.current = null;
+                fetchSessions(1, null, false);
+
+                setTimeout(() => {
+                  messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+                }, 100);
+              }
+            }
+          } catch (e) {
+            console.error("[Chat WS] Error parsing message:", e);
+          }
+        };
+
+        socket.onclose = () => {
+          if (isMounted) {
+            reconnectTimer = setTimeout(connectWs, 3000);
+          }
+        };
+
+        socket.onerror = (e) => {
+          console.debug("[Chat WS] Connection error:", e);
+        };
+      } catch (err) {
+        if (isMounted) {
+          reconnectTimer = setTimeout(connectWs, 3000);
+        }
+      }
+    };
+
+    connectWs();
+
+    return () => {
+      isMounted = false;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (socket) {
+        socket.onclose = null;
+        socket.close();
+      }
+    };
+  }, [selectedSessionId, fetchSessions]);
+
   const handleLoadMoreMessages = () => {
     if (!selectedSessionId || loadingMoreMessages || !messagesHasMore) return;
     fetchMessages(selectedSessionId, messagesPage + 1, messagesCursor, true);
@@ -248,6 +372,9 @@ export const ChatsPage: FC = () => {
   const handleSendMessage = async () => {
     const trimmed = inputText.trim();
     if (!trimmed || isSending) return;
+
+    const jobId = `job-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    pendingJobIdRef.current = jobId;
 
     setIsSending(true);
     setInputText("");
@@ -268,26 +395,42 @@ export const ChatsPage: FC = () => {
 
     try {
       const response = await engineService.sendChatMessage({
+        job_id: jobId,
         session_id: selectedSessionId || undefined,
         content: trimmed,
       });
 
       const actualSessionId = response.session_id;
-
-      setMessages((prev) => {
-        const filtered = prev.filter((m) => m.id !== tempId);
-        const updated = [...filtered, response.user_message];
-        if (response.ai_message) {
-          updated.push(response.ai_message);
-        }
-        return updated;
-      });
-
       if (!selectedSessionId || selectedSessionId !== actualSessionId) {
         setSelectedSessionId(actualSessionId);
       }
 
-      fetchSessions(1, null, false);
+      // If response returned synchronous ai_message (e.g. fallback)
+      if (response.ai_message) {
+        setMessages((prev) => {
+          const filtered = prev.filter((m) => m.id !== tempId);
+          return [...filtered, response.user_message, response.ai_message!];
+        });
+        setIsSending(false);
+        pendingJobIdRef.current = null;
+        fetchSessions(1, null, false);
+      } else {
+        // Job is queued into llm_chat stream; replace temp with saved user msg
+        setMessages((prev) => {
+          const filtered = prev.filter((m) => m.id !== tempId);
+          return [...filtered, response.user_message];
+        });
+        // 35-second safety fallback timeout in case WebSocket misses the event
+        setTimeout(() => {
+          if (pendingJobIdRef.current === jobId) {
+            setIsSending(false);
+            pendingJobIdRef.current = null;
+            if (actualSessionId) {
+              fetchMessages(actualSessionId, 1, null, false);
+            }
+          }
+        }, 35000);
+      }
 
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -295,8 +438,8 @@ export const ChatsPage: FC = () => {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to send message";
       toast.error(message, { title: "Chat Error" });
-    } finally {
       setIsSending(false);
+      pendingJobIdRef.current = null;
     }
   };
 
@@ -725,15 +868,27 @@ export const ChatsPage: FC = () => {
                 );
               })}
 
-              {/* Sending / Thinking Indicator */}
+              {/* Sending / Thinking Indicator with 15 Rotating Messages */}
               {isSending && (
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-zinc-900 border border-cyan-500/30 text-cyan-400 flex items-center justify-center shrink-0 animate-pulse">
-                    <Bot className="w-4 h-4" />
+                <div className="flex items-start gap-3 max-w-3xl mx-auto w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shrink-0 shadow-[0_0_15px_rgba(6,182,212,0.15)]">
+                    <Bot className="w-4 h-4 animate-pulse" />
                   </div>
-                  <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-zinc-900/90 border border-white/[0.08] text-xs text-zinc-400 flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
-                    <span className="font-mono text-[11px]">MIRA is thinking...</span>
+                  <div className="flex flex-col space-y-1.5 max-w-[85%] sm:max-w-[78%]">
+                    <div className="flex items-center gap-2 px-1 text-[11px] text-zinc-500 font-mono">
+                      <span className="font-semibold text-cyan-400">MIRA AI</span>
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
+                    </div>
+                    <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-zinc-900/90 border border-cyan-500/30 text-xs sm:text-[13px] text-zinc-200 shadow-[0_0_25px_rgba(6,182,212,0.1)] flex items-center gap-3">
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-bounce [animation-delay:-0.3s]" />
+                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-bounce [animation-delay:-0.15s]" />
+                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-bounce" />
+                      </div>
+                      <span className="font-mono text-cyan-300 text-xs transition-all duration-300 animate-pulse truncate">
+                        {CHAT_LOADING_MESSAGES[loadingMessageIndex]}
+                      </span>
+                    </div>
                   </div>
                 </div>
               )}

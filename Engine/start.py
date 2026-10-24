@@ -13,6 +13,7 @@ import config
 from vault_logger import log, log_error
 from ocr_summarization import start_ocr_summarization, stop_ocr_summarization, get_summarization_status
 from embedding import initialize_embedding_model, get_embedding_status
+from chat import start_chat_workers, stop_chat_workers, get_chat_status
 
 async def run_standalone_workers():
     log('Initializing Engine configuration from Vault...')
@@ -28,6 +29,9 @@ async def run_standalone_workers():
     log('Starting OCR Summarization module...')
     await start_ocr_summarization()
     log(f'OCR Summarization module initialized. Status: {get_summarization_status()}')
+    log('Starting Chat module workers...')
+    await start_chat_workers()
+    log(f'Chat module workers initialized. Status: {get_chat_status()}')
     stop_event = asyncio.Event()
 
     def _signal_handler():
@@ -42,6 +46,11 @@ async def run_standalone_workers():
     except (KeyboardInterrupt, SystemExit):
         pass
     finally:
+        log('Shutting down Chat module workers...')
+        try:
+            await stop_chat_workers()
+        except Exception as e:
+            log_error(f'Error stopping chat workers: {e}')
         log('Shutting down OCR Summarization module...')
         try:
             await stop_ocr_summarization()

@@ -133,3 +133,36 @@ async def delete_image_comparisons(image_id: Optional[str]=Query(None), app_name
         return await rs.remove_image_comparison_data(image_id=image_id, app_name=app_name, remove_all=all)
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to remove image comparison data: {str(e)}'})
+
+class StoreChatMemoryRequest(BaseModel):
+    session_id: str = Field(..., min_length=1)
+    user_query: str = Field(..., min_length=1)
+    ai_response: str = Field(..., min_length=1)
+    max_limit: Optional[int] = 5
+
+@router.post('/chat/memory', status_code=status.HTTP_201_CREATED)
+async def store_chat_memory(req: StoreChatMemoryRequest):
+    try:
+        return await rs.store_chat_memory(
+            session_id=req.session_id,
+            user_query=req.user_query,
+            ai_response=req.ai_response,
+            max_limit=req.max_limit or 5
+        )
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': str(e)})
+
+@router.get('/chat/memory/{session_id}', status_code=status.HTTP_200_OK)
+async def get_chat_memory(session_id: str, limit: int = Query(5, ge=1, le=50)):
+    try:
+        return await rs.get_chat_memory(session_id=session_id, limit=limit)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': str(e)})
+
+@router.delete('/chat/memory/{session_id}', status_code=status.HTTP_200_OK)
+async def clear_chat_memory(session_id: str):
+    try:
+        return await rs.clear_chat_memory(session_id=session_id)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': str(e)})
+

@@ -9,7 +9,7 @@ from vault_logger import log, log_error, mask_sensitive
 from llm import call_llm, get_work_config
 from ocr_summarization import start_ocr_summarization, stop_ocr_summarization, get_summarization_status
 from embedding import initialize_embedding_model, get_embedding_status
-from chat import router as chat_router
+from chat import router as chat_router, start_chat_workers, stop_chat_workers, get_chat_status
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,8 +27,16 @@ async def lifespan(app: FastAPI):
         await start_ocr_summarization()
     except Exception as e:
         log_error(f'Failed to start OCR Summarization module: {e}')
+    try:
+        await start_chat_workers()
+    except Exception as e:
+        log_error(f'Failed to start Chat module workers: {e}')
     yield
     log('Engine service shutting down cleanly...')
+    try:
+        await stop_chat_workers()
+    except Exception as e:
+        log_error(f'Error stopping Chat module workers: {e}')
     try:
         await stop_ocr_summarization()
     except Exception as e:
@@ -67,7 +75,17 @@ async def get_status():
     workers = config.CONFIG.get_workers_config()
     summarization = get_summarization_status()
     embedding_status = get_embedding_status()
-    return {'service': 'Engine', 'status': 'online', 'active_provider': active_prov, 'ai_priorities': priorities, 'workers': workers, 'ocr_summarization': summarization, 'embedding_model': embedding_status}
+    chat_status = get_chat_status()
+    return {
+        'service': 'Engine',
+        'status': 'online',
+        'active_provider': active_prov,
+        'ai_priorities': priorities,
+        'workers': workers,
+        'ocr_summarization': summarization,
+        'embedding_model': embedding_status,
+        'chat_workers': chat_status,
+    }
 
 @app.get('/embedding/status', status_code=status.HTTP_200_OK)
 async def embedding_status_endpoint():

@@ -65,6 +65,7 @@ export interface ChatMessagesResponse {
 }
 
 export interface SendChatMessageRequest {
+  job_id?: string;
   session_id?: string;
   content: string;
   chat_name?: string;
@@ -73,9 +74,28 @@ export interface SendChatMessageRequest {
 }
 
 export interface SendChatMessageResponse {
+  job_id?: string;
   session_id: string;
   user_message: ChatMessage;
   ai_message?: ChatMessage | null;
+  status?: string;
+}
+
+export interface WebSocketChatResponse {
+  type: string;
+  job_id: string;
+  session_id: string;
+  user_message: ChatMessage;
+  ai_message?: ChatMessage | null;
+  status?: string;
+  error?: string;
+}
+
+export function getEngineWebSocketUrl(): string {
+  // Use resolved engine URL from service endpoints or fallback to port 9007
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const host = window.location.hostname || "127.0.0.1";
+  return `${protocol}//${host}:9007/ws/chat`;
 }
 
 export const engineService = {

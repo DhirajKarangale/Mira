@@ -5,21 +5,25 @@ import logging
 import uuid
 from typing import Any, Dict, List, Optional
 import requests
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel, Field
 
-import config
-from vault_logger import log, log_error, mask_sensitive
-from llm import call_llm
+from .config import (
+    CONSUMER_KEY_LLM_CHAT,
+    CONSUMER_GROUP_LLM_CHAT,
+    get_vault_base_url,
+)
+from .broker_client import publish_chat_job, save_chat_to_vault
+from .websocket import ws_manager
+from .worker import get_chat_status, start_chat_workers, stop_chat_workers
+from vault_logger import log, log_error
 
-logger = logging.getLogger("mira.engine.chat")
+logger = logging.getLogger("mira.engine.chat.router")
 router = APIRouter(prefix="", tags=["Chat"])
 
-CONSUMER_KEY_LLM_CHAT: str = "llm_chat"
-CONSUMER_GROUP_LLM_CHAT: str = "CONSUMER_GROUP_LLM_CHAT"
 
 # ==============================================================================
-# Models
+# Pydantic Models
 # ==============================================================================
 
 class ChatSessionItem(BaseModel):
@@ -28,6 +32,7 @@ class ChatSessionItem(BaseModel):
     latest_created_at: str
     created_at: Optional[str] = None
     message_count: Optional[int] = 0
+
 
 class ChatSessionsResponse(BaseModel):
     sessions: List[ChatSessionItem]
@@ -38,6 +43,7 @@ class ChatSessionsResponse(BaseModel):
     next_cursor: Optional[str] = None
     has_more: bool
 
+
 class ChatMessageItem(BaseModel):
     id: str
     session_id: str
@@ -45,6 +51,7 @@ class ChatMessageItem(BaseModel):
     role: str
     content: str
     created_at: str
+
 
 class ChatMessagesResponse(BaseModel):
     session_id: str
@@ -56,28 +63,72 @@ class ChatMessagesResponse(BaseModel):
     next_cursor: Optional[str] = None
     has_more: bool
 
+
 class SendChatMessageRequest(BaseModel):
+    job_id: Optional[str] = Field(None, description="Unique job identifier")
     session_id: Optional[str] = Field(None, description="Chat session UUID")
-    content: str = Field(..., min_length=1, description="Message text")
+    content: str = Field(..., min_length=1, description="Message / query text")
     chat_name: Optional[str] = Field(None, description="Session name / title")
     role: Optional[str] = Field("user", description="'user' or 'ai'")
     generate_ai_reply: Optional[bool] = Field(True, description="Whether Engine should trigger LLM completion")
 
+
 class SendChatMessageResponse(BaseModel):
+    job_id: str
     session_id: str
     user_message: ChatMessageItem
     ai_message: Optional[ChatMessageItem] = None
+    status: str = "queued"
+
 
 # ==============================================================================
-# Helper Functions
+# WebSocket Endpoint
 # ==============================================================================
 
-def get_vault_base_url() -> str:
-    url = config.VAULT_URL or config.get_service_url("vault", "http://127.0.0.1:9001")
-    return url.rstrip("/")
+@router.websocket("/ws/chat")
+async def chat_websocket_endpoint(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time bidirectional chat communication.
+    Clients connect here to receive LLM responses pushed by Chat workers.
+    """
+    await ws_manager.connect(websocket)
+    try:
+        while True:
+            raw_text = await websocket.receive_text()
+            if not raw_text:
+                continue
+            # Optionally handle client queries submitted over websocket
+            try:
+                import json
+                msg = json.loads(raw_text)
+                if isinstance(msg, dict) and msg.get("type") == "chat_query":
+                    job_id = msg.get("job_id") or str(uuid.uuid4())
+                    session_id = msg.get("session_id") or str(uuid.uuid4())
+                    user_query = msg.get("content") or msg.get("user_query") or ""
+                    chat_name = msg.get("chat_name")
+                    if user_query:
+                        publish_chat_job(
+                            job_id=job_id,
+                            session_id=session_id,
+                            user_query=user_query,
+                            extra_data={"chat_name": chat_name},
+                        )
+                        await websocket.send_json({
+                            "type": "job_queued",
+                            "job_id": job_id,
+                            "session_id": session_id,
+                        })
+            except Exception as e:
+                logger.debug(f"Error handling incoming websocket message: {e}")
+    except WebSocketDisconnect:
+        await ws_manager.disconnect(websocket)
+    except Exception as e:
+        logger.debug(f"WebSocket error: {e}")
+        await ws_manager.disconnect(websocket)
+
 
 # ==============================================================================
-# API 1: Get All Chat Sessions
+# Chat APIs
 # ==============================================================================
 
 @router.get(
@@ -86,23 +137,13 @@ def get_vault_base_url() -> str:
     status_code=status.HTTP_200_OK,
     summary="Get All Chat Sessions",
 )
-@router.get(
-    "/chat/sessions",
-    response_model=ChatSessionsResponse,
-    status_code=status.HTTP_200_OK,
-    include_in_schema=False,
-)
+@router.get("/chat/sessions", response_model=ChatSessionsResponse, include_in_schema=False)
 async def get_chat_sessions_endpoint(
-    limit: int = Query(10, ge=1, le=100, description="Items per page (default 10)"),
+    limit: int = Query(10, ge=1, le=100, description="Items per page"),
     cursor: Optional[str] = Query(None, description="Cursor for pagination"),
-    page: Optional[int] = Query(None, ge=1, description="Page number (default 1)"),
+    page: Optional[int] = Query(None, ge=1, description="Page number"),
     offset: Optional[int] = Query(0, ge=0, description="Offset for pagination"),
 ):
-    """
-    Return unique session_id values with their chat_name and latest created_at.
-    Sorted by latest created_at first.
-    Cursor-based pagination with 10 sessions per page.
-    """
     vault_base = get_vault_base_url()
     params: Dict[str, Any] = {"limit": limit}
     if cursor:
@@ -117,7 +158,6 @@ async def get_chat_sessions_endpoint(
             resp = requests.get(f"{vault_base}/chats/sessions", params=params, timeout=3.0)
             if resp.status_code == 200:
                 return resp.json()
-            logger.warning(f"Vault returned {resp.status_code} for /chats/sessions")
             return None
 
         result = await asyncio.to_thread(_fetch)
@@ -126,7 +166,6 @@ async def get_chat_sessions_endpoint(
     except Exception as e:
         logger.error(f"Error querying Vault for chat sessions: {e}")
 
-    # Fallback / empty result
     effective_page = page if (page and page >= 1) else 1
     return {
         "sessions": [],
@@ -138,9 +177,6 @@ async def get_chat_sessions_endpoint(
         "has_more": False,
     }
 
-# ==============================================================================
-# API 2: Get Chats by Session
-# ==============================================================================
 
 @router.get(
     "/chats/sessions/{session_id}",
@@ -148,30 +184,15 @@ async def get_chat_sessions_endpoint(
     status_code=status.HTTP_200_OK,
     summary="Get Chats by Session",
 )
-@router.get(
-    "/chats/{session_id}",
-    response_model=ChatMessagesResponse,
-    status_code=status.HTTP_200_OK,
-    include_in_schema=False,
-)
-@router.get(
-    "/chat/sessions/{session_id}",
-    response_model=ChatMessagesResponse,
-    status_code=status.HTTP_200_OK,
-    include_in_schema=False,
-)
+@router.get("/chats/{session_id}", response_model=ChatMessagesResponse, include_in_schema=False)
+@router.get("/chat/sessions/{session_id}", response_model=ChatMessagesResponse, include_in_schema=False)
 async def get_chats_by_session_endpoint(
     session_id: str,
-    limit: int = Query(30, ge=1, le=100, description="Items per page (default 30)"),
+    limit: int = Query(30, ge=1, le=100, description="Items per page"),
     cursor: Optional[str] = Query(None, description="Cursor for pagination"),
-    page: Optional[int] = Query(None, ge=1, description="Page number (default 1)"),
+    page: Optional[int] = Query(None, ge=1, description="Page number"),
     offset: Optional[int] = Query(0, ge=0, description="Offset for pagination"),
 ):
-    """
-    Accept a session_id.
-    Return its messages ordered by created_at ascending, 30 messages per page.
-    Cursor-based pagination with next 30 messages when frontend scrolls.
-    """
     clean_sid = session_id.strip()
     vault_base = get_vault_base_url()
     params: Dict[str, Any] = {"limit": limit}
@@ -187,7 +208,6 @@ async def get_chats_by_session_endpoint(
             resp = requests.get(f"{vault_base}/chats/sessions/{clean_sid}", params=params, timeout=3.0)
             if resp.status_code == 200:
                 return resp.json()
-            logger.warning(f"Vault returned {resp.status_code} for /chats/sessions/{clean_sid}")
             return None
 
         result = await asyncio.to_thread(_fetch)
@@ -196,7 +216,6 @@ async def get_chats_by_session_endpoint(
     except Exception as e:
         logger.error(f"Error querying Vault for messages of session '{clean_sid}': {e}")
 
-    # Fallback / empty result
     effective_page = page if (page and page >= 1) else 1
     return {
         "session_id": clean_sid,
@@ -209,133 +228,92 @@ async def get_chats_by_session_endpoint(
         "has_more": False,
     }
 
-# ==============================================================================
-# API 3: Send Message & Chat Workflow
-# ==============================================================================
 
 @router.post(
     "/chats/message",
     response_model=SendChatMessageResponse,
     status_code=status.HTTP_200_OK,
-    summary="Send Chat Message and Generate AI Reply",
+    summary="Submit Chat Message and Queue AI Job",
 )
-@router.post(
-    "/chats",
-    response_model=SendChatMessageResponse,
-    status_code=status.HTTP_200_OK,
-    include_in_schema=False,
-)
+@router.post("/chats", response_model=SendChatMessageResponse, include_in_schema=False)
 async def send_chat_message_endpoint(request: SendChatMessageRequest):
     """
-    Accept user chat input, persist in Vault, optionally run LLM completion,
-    persist AI reply in Vault, and return both.
+    Submits user query, stores it in Vault, queues a job into Message Broker's llm_chat stream,
+    and returns immediately with status 'queued'.
+    The background chat worker processes the job and broadcasts the AI reply over WebSocket.
     """
-    vault_base = get_vault_base_url()
+    job_id = (request.job_id or str(uuid.uuid4())).strip()
     session_id = request.session_id.strip() if request.session_id and request.session_id.strip() else str(uuid.uuid4())
     content = request.content.strip()
     role = (request.role or "user").lower().strip()
     chat_name = request.chat_name.strip() if request.chat_name and request.chat_name.strip() else None
 
-    # If chat_name is missing, generate title from content snippet
     if not chat_name:
         chat_name = content[:40].strip() if len(content) > 40 else content
 
-    # 1. Store user message in Vault
-    user_msg_payload = {
-        "session_id": session_id,
-        "role": role,
-        "content": content,
-        "chat_name": chat_name,
-    }
-
-    try:
-        def _post_user():
-            r = requests.post(f"{vault_base}/chats", json=user_msg_payload, timeout=3.0)
-            if r.status_code in (200, 201):
-                return r.json()
-            logger.error(f"Vault failed to store user message: {r.status_code} {r.text}")
-            return None
-
-        saved_user_msg = await asyncio.to_thread(_post_user)
-        if not saved_user_msg:
-            saved_user_msg = {
-                "id": str(uuid.uuid4()),
-                "session_id": session_id,
-                "role": role,
-                "content": content,
-                "chat_name": chat_name,
-                "created_at": "",
-            }
-    except Exception as e:
-        logger.error(f"Error connecting to Vault to save message: {e}")
+    # 1. Store user message in Vault immediately
+    saved_user_msg = await asyncio.to_thread(
+        save_chat_to_vault,
+        session_id=session_id,
+        role=role,
+        content=content,
+        chat_name=chat_name,
+    )
+    if not saved_user_msg:
+        import time
         saved_user_msg = {
             "id": str(uuid.uuid4()),
             "session_id": session_id,
             "role": role,
             "content": content,
             "chat_name": chat_name,
-            "created_at": "",
+            "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         }
 
-    # 2. Trigger LLM generation if role is user and generate_ai_reply is True
-    saved_ai_msg = None
+    # 2. Queue job into llm_chat stream
     if role == "user" and request.generate_ai_reply:
-        ai_reply_text = ""
-        try:
-            # Call Engine LLM with work="chat"
-            ai_reply_text = await asyncio.to_thread(call_llm, content, "chat")
-        except Exception as e:
-            err_msg = str(e)
-            logger.warning(f"LLM generation failed for chat session '{session_id}': {mask_sensitive(err_msg)}")
-            ai_reply_text = (
-                "I am MIRA, your personal AI assistant. Currently no AI model keys are available or responding. "
-                "Please check your AI Provider configuration under Configurations > AI Config to enable completions."
-            )
-
-        if ai_reply_text:
-            ai_msg_payload = {
-                "session_id": session_id,
-                "role": "ai",
-                "content": ai_reply_text,
-                "chat_name": chat_name,
-            }
-
-            try:
-                def _post_ai():
-                    r = requests.post(f"{vault_base}/chats", json=ai_msg_payload, timeout=3.0)
-                    if r.status_code in (200, 201):
-                        return r.json()
-                    return None
-
-                saved_ai_msg = await asyncio.to_thread(_post_ai)
-            except Exception as e:
-                logger.error(f"Failed to save AI reply to Vault: {e}")
-
-            if not saved_ai_msg:
-                saved_ai_msg = {
-                    "id": str(uuid.uuid4()),
-                    "session_id": session_id,
-                    "role": "ai",
-                    "content": ai_reply_text,
-                    "chat_name": chat_name,
-                    "created_at": "",
-                }
+        queued = await asyncio.to_thread(
+            publish_chat_job,
+            job_id=job_id,
+            session_id=session_id,
+            user_query=content,
+            extra_data={"chat_name": chat_name},
+        )
+        if not queued:
+            logger.warning(f"Failed to queue chat job {job_id} into Message Broker stream.")
 
     return {
+        "job_id": job_id,
         "session_id": session_id,
         "user_message": saved_user_msg,
-        "ai_message": saved_ai_msg,
+        "ai_message": None,
+        "status": "queued",
     }
 
+
+@router.get("/chats/workers/status", status_code=status.HTTP_200_OK, summary="Get Chat Workers Status")
+async def chat_workers_status_endpoint():
+    return get_chat_status()
+
+
+@router.post("/chats/workers/start", status_code=status.HTTP_200_OK, summary="Start Chat Workers")
+async def start_chat_workers_endpoint():
+    started = await start_chat_workers()
+    return {"status": "started" if started else "already_running", "details": get_chat_status()}
+
+
+@router.post("/chats/workers/stop", status_code=status.HTTP_200_OK, summary="Stop Chat Workers")
+async def stop_chat_workers_endpoint():
+    await stop_chat_workers()
+    return {"status": "stopped", "details": get_chat_status()}
+
+
 # ==============================================================================
-# Helper API: Seed Sample Chat Sessions (For testing & initial preview)
+# Helper API: Seed Sample Chat Sessions
 # ==============================================================================
 
 @router.post("/chats/seed", status_code=status.HTTP_200_OK, summary="Seed Initial Demo Chats")
 async def seed_demo_chats_endpoint(count: int = Query(12, ge=1, le=30)):
-    """
-    Seeds demo conversation sessions in Vault to test pagination and infinite scrolling.
-    """
     vault_base = get_vault_base_url()
     sample_dialogues = [
         ("Project Architecture Planning", [
@@ -365,30 +343,6 @@ async def seed_demo_chats_endpoint(count: int = Query(12, ge=1, le=30)):
         ("AI Provider Failover Strategy", [
             ("user", "How does provider fallback work if Gemini hits rate limits?"),
             ("ai", "Engine reads the priority list from Vault. If Priority #1 encounters 429 or quota limits, Engine automatically fails over to Priority #2 (e.g. Groq) without dropping the user request."),
-        ]),
-        ("UI Dark Theme Aesthetics", [
-            ("user", "What color palette is MIRA using for dark mode?"),
-            ("ai", "MIRA uses a deep space palette (`#080c14` background), subtle zinc borders (`border-white/[0.08]`), cyan accents (`cyan-400`), and smooth glassmorphism blurs."),
-        ]),
-        ("Meeting Notes Extraction", [
-            ("user", "Did you record any meeting action items from my afternoon Zoom call?"),
-            ("ai", "Yes: 1) Finalize chat module pagination, 2) Verify Vault SQLite encrypted serialization, 3) Test client scroll performance."),
-        ]),
-        ("Desktop Application Permissions", [
-            ("user", "Can I exclude password managers from screen capture?"),
-            ("ai", "Yes, under Configurations > Apps & Permissions, you can toggle capture permission per application. Operator will skip capturing any window belonging to disabled apps."),
-        ]),
-        ("Tauri Shell Integration", [
-            ("user", "What desktop shell is MIRA using?"),
-            ("ai", "MIRA runs on Tauri v2 with a lightweight Rust shell, custom frameless window controls, and native drag regions."),
-        ]),
-        ("Local Memory Retention Policy", [
-            ("user", "What retention period is recommended for screenshot data?"),
-            ("ai", "The default is 'Never auto delete', but you can set retention to 3 months, 6 months, 1 year, 3 years, or 5 years in Vault configuration."),
-        ]),
-        ("System Health & Diagnostic Check", [
-            ("user", "Run a diagnostic check on all services."),
-            ("ai", "All services report healthy: Vault (online), Message Broker (online), Operator (online), Memory (online), Engine (online), Client (online)."),
         ]),
     ]
 

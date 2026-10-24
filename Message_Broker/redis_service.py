@@ -454,3 +454,56 @@ async def remove_image_comparison_data(image_id: Optional[str]=None, app_name: O
         log(f"Removed {removed_count} image comparison record(s) for app '{app_name}'")
         return {'status': 'success', 'message': f"Image comparison data for app '{app_name}' removed", 'app_name': app_name, 'removed_count': removed_count}
     return {'status': 'ignored', 'message': 'No image_id, app_name, or remove_all parameter specified', 'removed_count': 0}
+
+CHAT_MEMORY_PREFIX = "mira:chat:memory:"
+DEFAULT_MAX_SHORT_TERM_MEMORY = 5
+
+async def store_chat_memory(
+    session_id: str,
+    user_query: str,
+    ai_response: str,
+    max_limit: int = DEFAULT_MAX_SHORT_TERM_MEMORY
+) -> Dict[str, Any]:
+    client = get_redis_client()
+    clean_sid = str(session_id).strip()
+    key = f"{CHAT_MEMORY_PREFIX}{clean_sid}"
+    record = {
+        "user": user_query.strip(),
+        "ai": ai_response.strip(),
+        "timestamp": int(datetime.now(timezone.utc).timestamp()),
+    }
+    serialized = json.dumps(record)
+    await client.rpush(key, serialized)
+    total = await client.llen(key)
+    if total > max_limit:
+        await client.ltrim(key, -max_limit, -1)
+    return {
+        "status": "success",
+        "session_id": clean_sid,
+        "count": min(total, max_limit),
+    }
+
+async def get_chat_memory(
+    session_id: str,
+    limit: int = DEFAULT_MAX_SHORT_TERM_MEMORY
+) -> List[Dict[str, Any]]:
+    client = get_redis_client()
+    clean_sid = str(session_id).strip()
+    key = f"{CHAT_MEMORY_PREFIX}{clean_sid}"
+    limit = max(1, min(int(limit), 50))
+    raw_items = await client.lrange(key, -limit, -1)
+    results: List[Dict[str, Any]] = []
+    for item in raw_items:
+        try:
+            results.append(json.loads(item))
+        except Exception:
+            pass
+    return results
+
+async def clear_chat_memory(session_id: str) -> Dict[str, Any]:
+    client = get_redis_client()
+    clean_sid = str(session_id).strip()
+    key = f"{CHAT_MEMORY_PREFIX}{clean_sid}"
+    deleted = await client.delete(key)
+    return {"status": "success", "session_id": clean_sid, "deleted": bool(deleted)}
+
