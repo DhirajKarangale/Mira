@@ -67,6 +67,7 @@ export const ChatsPage: FC = () => {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [sessionsLoading, setSessionsLoading] = useState<boolean>(true);
+  const [loadingMoreSessions, setLoadingMoreSessions] = useState<boolean>(false);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [sessionsPage, setSessionsPage] = useState<number>(1);
   const [sessionsTotalItems, setSessionsTotalItems] = useState<number>(0);
@@ -229,18 +230,22 @@ export const ChatsPage: FC = () => {
   // ============================================================================
   // Fetch Sessions
   // ============================================================================
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
+
   const fetchSessions = useCallback(
     async (pageToLoad: number = 1, cursorToUse?: string | null, append: boolean = false) => {
       try {
         if (!append) {
           setSessionsLoading(true);
+        } else {
+          setLoadingMoreSessions(true);
         }
         setSessionsError(null);
 
         const data = await engineService.getChatSessions({
           page: pageToLoad,
           cursor: cursorToUse || undefined,
-          limit: 10,
+          limit: 15,
         });
 
         const fetchedSessions = data.sessions || [];
@@ -273,6 +278,7 @@ export const ChatsPage: FC = () => {
         }
       } finally {
         setSessionsLoading(false);
+        setLoadingMoreSessions(false);
       }
     },
     []
@@ -282,10 +288,31 @@ export const ChatsPage: FC = () => {
     fetchSessions(1, null, false);
   }, []);
 
+  // Auto-pagination observer: when sentinel is visible and more items exist, automatically load next page
+  useEffect(() => {
+    if (!sessionsHasMore || sessionsLoading || loadingMoreSessions) return;
+    const sentinel = loadMoreSentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          if (!sessionsLoading && !loadingMoreSessions && sessionsHasMore) {
+            fetchSessions(sessionsPage + 1, sessionsCursor, true);
+          }
+        }
+      },
+      { threshold: 0.1, rootMargin: "80px" }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [sessionsHasMore, sessionsLoading, loadingMoreSessions, sessionsPage, sessionsCursor, fetchSessions]);
+
   const handleSessionsScroll = (e: React.UIEvent<HTMLElement>) => {
     const el = e.currentTarget;
-    if (sessionsLoading || !sessionsHasMore || !sessionsCursor) return;
-    if (el.scrollHeight - el.scrollTop - el.clientHeight < 40) {
+    if (sessionsLoading || loadingMoreSessions || !sessionsHasMore) return;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 60) {
       fetchSessions(sessionsPage + 1, sessionsCursor, true);
     }
   };
@@ -1061,6 +1088,48 @@ export const ChatsPage: FC = () => {
     ]
   );
 
+  const sidebarBottomContent = useMemo(() => {
+    if (!sessionsHasMore && !loadingMoreSessions) return null;
+    const remaining = sessionsTotalItems > sessions.length ? sessionsTotalItems - sessions.length : 0;
+    return (
+      <div className="pt-1.5 pb-2 w-full px-1 flex flex-col items-center select-none">
+        {/* Infinite scroll sentinel for IntersectionObserver */}
+        <div ref={loadMoreSentinelRef} className="h-1 w-full" />
+        {loadingMoreSessions ? (
+          <div className="flex items-center justify-center py-2 gap-2 text-xs text-zinc-400 font-mono">
+            <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+            {!isSidebarCollapsed && <span>Loading remaining chats...</span>}
+          </div>
+        ) : (
+          sessionsHasMore && (
+            <button
+              type="button"
+              id="btn-load-more-chats"
+              onClick={() => fetchSessions(sessionsPage + 1, sessionsCursor, true)}
+              className="w-full py-1.5 px-2 flex items-center justify-center gap-1.5 rounded-md bg-white/[0.04] hover:bg-cyan-500/10 border border-white/[0.08] hover:border-cyan-500/30 text-xs text-zinc-300 hover:text-cyan-300 transition-all cursor-pointer font-medium select-none shadow-sm"
+            >
+              <ArrowDown className="w-3.5 h-3.5 text-cyan-400" />
+              {!isSidebarCollapsed ? (
+                <span>Load More Chats {remaining > 0 ? `(${remaining} left)` : ""}</span>
+              ) : (
+                <span>+</span>
+              )}
+            </button>
+          )
+        )}
+      </div>
+    );
+  }, [
+    sessionsHasMore,
+    loadingMoreSessions,
+    sessionsTotalItems,
+    sessions.length,
+    isSidebarCollapsed,
+    sessionsPage,
+    sessionsCursor,
+    fetchSessions,
+  ]);
+
   return (
     <div
       id="page-content-chats"
@@ -1087,6 +1156,9 @@ export const ChatsPage: FC = () => {
         onToggleCollapse={setIsSidebarCollapsed}
         onScroll={handleSessionsScroll}
         renderItem={renderSidebarItem}
+        isLoading={sessionsLoading}
+        isLoadingMore={loadingMoreSessions}
+        bottomContent={sidebarBottomContent}
         className="border-r border-white/[0.08] bg-zinc-950/80 shadow-lg"
         header={
           <div className="relative w-full h-full flex items-center">

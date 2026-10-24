@@ -6,7 +6,7 @@ import {
   type ReactNode,
   isValidElement,
 } from "react";
-import { PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, X, RefreshCw } from "lucide-react";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
 
@@ -45,6 +45,10 @@ export interface SidebarProps {
   className?: string;
   onScroll?: (e: React.UIEvent<HTMLElement>) => void;
   renderItem?: (item: SidebarItem, state: SidebarRenderItemState) => ReactNode;
+  isLoading?: boolean;
+  isLoadingMore?: boolean;
+  bottomContent?: ReactNode;
+  emptyState?: ReactNode;
 }
 
 export const Sidebar: FC<SidebarProps> = ({
@@ -66,6 +70,10 @@ export const Sidebar: FC<SidebarProps> = ({
   className,
   onScroll,
   renderItem,
+  isLoading = false,
+  isLoadingMore = false,
+  bottomContent,
+  emptyState,
 }) => {
   const isSmallScreenAuto = useMediaQuery(overlayBreakpoint);
   const isOverlayMode =
@@ -138,6 +146,36 @@ export const Sidebar: FC<SidebarProps> = ({
     return null;
   };
 
+  const renderDefaultSkeleton = (collapsed: boolean) => (
+    <div className="space-y-1.5 py-1 px-1 w-full animate-pulse select-none">
+      {[...Array(7)].map((_, i) => (
+        <div
+          key={i}
+          className={cn(
+            "flex items-center rounded-md bg-white/[0.03] border border-white/[0.04] h-9 px-2.5 transition-all",
+            collapsed ? "justify-center px-0" : "gap-2.5"
+          )}
+        >
+          <div className="w-4 h-4 rounded bg-zinc-800/80 shrink-0" />
+          {!collapsed && (
+            <div className="flex-1 space-y-1 overflow-hidden">
+              <div
+                className="h-3 rounded bg-zinc-800/80"
+                style={{ width: `${55 + ((i * 17) % 38)}%` }}
+              />
+            </div>
+          )}
+        </div>
+      ))}
+      {!collapsed && (
+        <div className="flex items-center justify-center gap-2 pt-2.5 text-[11px] text-zinc-500 font-medium">
+          <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400/80" />
+          <span>Loading chats...</span>
+        </div>
+      )}
+    </div>
+  );
+
   if (isOverlayMode) {
     return (
       <>
@@ -208,61 +246,78 @@ export const Sidebar: FC<SidebarProps> = ({
             className="flex-1 py-2 px-2 space-y-1 overflow-y-auto no-scrollbar"
             role="menu"
           >
-            {items.map((item) => {
-              const isActive = activeKey === item.key;
-              if (renderItem) {
-                return (
-                  <div key={item.key} className="w-full">
-                    {renderItem(item, {
-                      isActive,
-                      isCollapsed: false,
-                      handleSelect: () => handleItemClick(item.key, item.disabled),
-                      renderIcon,
-                    })}
+            {isLoading && items.length === 0 ? (
+              renderDefaultSkeleton(false)
+            ) : items.length === 0 ? (
+              emptyState || null
+            ) : (
+              <>
+                {items.map((item) => {
+                  const isActive = activeKey === item.key;
+                  if (renderItem) {
+                    return (
+                      <div key={item.key} className="w-full">
+                        {renderItem(item, {
+                          isActive,
+                          isCollapsed: false,
+                          handleSelect: () => handleItemClick(item.key, item.disabled),
+                          renderIcon,
+                        })}
+                      </div>
+                    );
+                  }
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      id={`sidebar-overlay-item-${item.key}`}
+                      role="menuitem"
+                      aria-current={isActive ? "page" : undefined}
+                      disabled={item.disabled}
+                      onClick={() => handleItemClick(item.key, item.disabled)}
+                      className={cn(
+                        "group relative flex items-center justify-start h-9 w-full px-3 gap-3 rounded-md text-xs font-medium transition-all duration-150 cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-cyan-400 disabled:opacity-40 disabled:cursor-not-allowed",
+                        isActive
+                          ? "bg-cyan-950/40 text-cyan-300 border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.12)] font-semibold"
+                          : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5 border border-transparent"
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "transition-colors",
+                          isActive
+                            ? "text-cyan-400"
+                            : "text-zinc-400 group-hover:text-zinc-200"
+                        )}
+                      >
+                        {renderIcon(item.icon)}
+                      </span>
+
+                      <span className="truncate tracking-wide">{item.name}</span>
+
+                      {item.badge !== undefined && (
+                        <span className="ml-auto px-1.5 py-0.5 rounded text-[10px] font-mono bg-white/10 text-zinc-300 border border-white/5">
+                          {item.badge}
+                        </span>
+                      )}
+
+                      {isActive && (
+                        <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-cyan-400 rounded-full" />
+                      )}
+                    </button>
+                  );
+                })}
+
+                {isLoadingMore && (
+                  <div className="flex items-center justify-center py-2 gap-2 text-xs text-zinc-400 font-mono">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                    <span>Loading more chats...</span>
                   </div>
-                );
-              }
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  id={`sidebar-overlay-item-${item.key}`}
-                  role="menuitem"
-                  aria-current={isActive ? "page" : undefined}
-                  disabled={item.disabled}
-                  onClick={() => handleItemClick(item.key, item.disabled)}
-                  className={cn(
-                    "group relative flex items-center justify-start h-9 w-full px-3 gap-3 rounded-md text-xs font-medium transition-all duration-150 cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-cyan-400 disabled:opacity-40 disabled:cursor-not-allowed",
-                    isActive
-                      ? "bg-cyan-950/40 text-cyan-300 border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.12)] font-semibold"
-                      : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5 border border-transparent"
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "transition-colors",
-                      isActive
-                        ? "text-cyan-400"
-                        : "text-zinc-400 group-hover:text-zinc-200"
-                    )}
-                  >
-                    {renderIcon(item.icon)}
-                  </span>
+                )}
 
-                  <span className="truncate tracking-wide">{item.name}</span>
-
-                  {item.badge !== undefined && (
-                    <span className="ml-auto px-1.5 py-0.5 rounded text-[10px] font-mono bg-white/10 text-zinc-300 border border-white/5">
-                      {item.badge}
-                    </span>
-                  )}
-
-                  {isActive && (
-                    <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-cyan-400 rounded-full" />
-                  )}
-                </button>
-              );
-            })}
+                {bottomContent}
+              </>
+            )}
           </nav>
 
           {footer && (
@@ -361,75 +416,92 @@ export const Sidebar: FC<SidebarProps> = ({
         className="flex-1 py-2 px-2 space-y-1 overflow-y-auto overflow-x-hidden no-scrollbar"
         role="menu"
       >
-        {items.map((item) => {
-          const isActive = activeKey === item.key;
-          if (renderItem) {
-            return (
-              <div key={item.key} className="w-full">
-                {renderItem(item, {
-                  isActive,
-                  isCollapsed,
-                  handleSelect: () => handleItemClick(item.key, item.disabled),
-                  renderIcon,
-                })}
-              </div>
-            );
-          }
-          return (
-            <button
-              key={item.key}
-              type="button"
-              id={`sidebar-item-${item.key}`}
-              role="menuitem"
-              aria-current={isActive ? "page" : undefined}
-              disabled={item.disabled}
-              title={isCollapsed && typeof item.name === "string" ? item.name : undefined}
-              onClick={() => handleItemClick(item.key, item.disabled)}
-              className={cn(
-                "group relative flex items-center w-full rounded-md text-xs font-medium cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-cyan-400 disabled:opacity-40 disabled:cursor-not-allowed h-9 px-2 overflow-hidden transition-colors duration-150",
-                isActive
-                  ? "bg-cyan-950/40 text-cyan-300 border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.12)] font-semibold"
-                  : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5 border border-transparent"
-              )}
-            >
-              <span
-                className={cn(
-                  "shrink-0 flex items-center justify-center w-8 h-8 rounded transition-colors",
-                  isActive
-                    ? "text-cyan-400"
-                    : "text-zinc-400 group-hover:text-zinc-200"
-                )}
-              >
-                {renderIcon(item.icon)}
-              </span>
-
-              <div
-                className={cn(
-                  "flex items-center flex-1 min-w-0 transition-opacity duration-200 ml-2 overflow-hidden",
-                  isCollapsed
-                    ? "opacity-0 pointer-events-none"
-                    : "opacity-100"
-                )}
-              >
-                <span className="truncate tracking-wide text-left flex-1 whitespace-nowrap">
-                  {item.name}
-                </span>
-
-                {item.badge !== undefined && (
-                  <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-mono bg-white/10 text-zinc-300 border border-white/5 shrink-0 whitespace-nowrap">
-                    {item.badge}
+        {isLoading && items.length === 0 ? (
+          renderDefaultSkeleton(isCollapsed)
+        ) : items.length === 0 ? (
+          emptyState || null
+        ) : (
+          <>
+            {items.map((item) => {
+              const isActive = activeKey === item.key;
+              if (renderItem) {
+                return (
+                  <div key={item.key} className="w-full">
+                    {renderItem(item, {
+                      isActive,
+                      isCollapsed,
+                      handleSelect: () => handleItemClick(item.key, item.disabled),
+                      renderIcon,
+                    })}
+                  </div>
+                );
+              }
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  id={`sidebar-item-${item.key}`}
+                  role="menuitem"
+                  aria-current={isActive ? "page" : undefined}
+                  disabled={item.disabled}
+                  title={isCollapsed && typeof item.name === "string" ? item.name : undefined}
+                  onClick={() => handleItemClick(item.key, item.disabled)}
+                  className={cn(
+                    "group relative flex items-center w-full rounded-md text-xs font-medium cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-cyan-400 disabled:opacity-40 disabled:cursor-not-allowed h-9 px-2 overflow-hidden transition-colors duration-150",
+                    isActive
+                      ? "bg-cyan-950/40 text-cyan-300 border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.12)] font-semibold"
+                      : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5 border border-transparent"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "shrink-0 flex items-center justify-center w-8 h-8 rounded transition-colors",
+                      isActive
+                        ? "text-cyan-400"
+                        : "text-zinc-400 group-hover:text-zinc-200"
+                    )}
+                  >
+                    {renderIcon(item.icon)}
                   </span>
-                )}
-              </div>
 
-              {isActive && (
-                <span
-                  className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-cyan-400 rounded-full"
-                />
-              )}
-            </button>
-          );
-        })}
+                  <div
+                    className={cn(
+                      "flex items-center flex-1 min-w-0 transition-opacity duration-200 ml-2 overflow-hidden",
+                      isCollapsed
+                        ? "opacity-0 pointer-events-none"
+                        : "opacity-100"
+                    )}
+                  >
+                    <span className="truncate tracking-wide text-left flex-1 whitespace-nowrap">
+                      {item.name}
+                    </span>
+
+                    {item.badge !== undefined && (
+                      <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-mono bg-white/10 text-zinc-300 border border-white/5 shrink-0 whitespace-nowrap">
+                        {item.badge}
+                      </span>
+                    )}
+                  </div>
+
+                  {isActive && (
+                    <span
+                      className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-cyan-400 rounded-full"
+                    />
+                  )}
+                </button>
+              );
+            })}
+
+            {isLoadingMore && (
+              <div className="flex items-center justify-center py-2 gap-2 text-xs text-zinc-400 font-mono">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                {!isCollapsed && <span>Loading more chats...</span>}
+              </div>
+            )}
+
+            {bottomContent}
+          </>
+        )}
       </nav>
 
       {footer && (

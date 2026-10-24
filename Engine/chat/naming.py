@@ -16,27 +16,36 @@ logger = logging.getLogger("mira.engine.chat.naming")
 
 def format_naming_prompt(messages: List[Dict[str, Any]]) -> str:
     """
-    Format a concise prompt for the LLM to generate a short, relevant chat title (2 to 5 words).
+    Format an expert few-shot prompt for the LLM to generate a short, high-signal chat title (2 to 4 words).
     """
     conversation_lines: List[str] = []
     for msg in messages[:6]:
         role = "User" if msg.get("role") == "user" else "Mira"
         content = (msg.get("content") or "").strip()
-        # Truncate overly long content to maintain a fast prompt
-        if len(content) > 300:
-            content = content[:300] + "..."
+        # Truncate overly long content to maintain a fast, focused prompt
+        if len(content) > 280:
+            content = content[:280] + "..."
         conversation_lines.append(f"{role}: {content}")
 
     dialogue = "\n".join(conversation_lines)
     prompt = (
-        "You are an AI assistant creating a title for a chat conversation.\n"
-        "Generate a short, relevant, and descriptive title for this conversation.\n"
-        "Rules:\n"
-        "- The title MUST be between 2 and 5 words.\n"
-        "- Do NOT use quotes, colons, punctuation, or prefixes like 'Title:' or 'Topic:'.\n"
-        "- Do NOT include generic words like 'Chat', 'Conversation', or 'Session'.\n"
-        "- Focus specifically on the core topic or question asked by the user.\n\n"
-        f"Conversation:\n{dialogue}\n\n"
+        "You are an expert conversation summarizer that creates concise, high-signal titles for chat sessions.\n\n"
+        "Task: Read the dialogue and output a concise, specific title summarizing the core topic.\n\n"
+        "Strict Rules:\n"
+        "- Length: 2 to 4 words only (maximum 30 characters).\n"
+        "- Format: Use Title Case noun phrases (e.g., 'FastAPI CORS Setup', 'Instagram Founders').\n"
+        "- Relevance: Accurately capture the central entity, subject, or question.\n"
+        "- Prohibited: NO quotes, colons, question marks, period, or punctuation.\n"
+        "- Prohibited: NO generic fillers like 'Chat', 'Conversation', 'Discussion', 'Overview', 'Query', 'Help'.\n"
+        "- Output ONLY the title itself. Do not explain or add commentary.\n\n"
+        "Examples:\n"
+        "Dialogue: User: Who created Python and why? Mira: Guido van Rossum created Python in 1991...\n"
+        "Title: Python Creation & Origin\n\n"
+        "Dialogue: User: How to fix CORS errors in FastAPI? Mira: Use CORSMiddleware...\n"
+        "Title: FastAPI CORS Setup\n\n"
+        "Dialogue: User: What is the capital of France? Mira: Paris is the capital...\n"
+        "Title: Capital of France\n\n"
+        f"Dialogue:\n{dialogue}\n\n"
         "Title:"
     )
     return prompt
@@ -45,43 +54,72 @@ def format_naming_prompt(messages: List[Dict[str, Any]]) -> str:
 def sanitize_chat_name(raw_title: str, fallback_content: str = "") -> str:
     """
     Cleans and standardizes the LLM-generated title.
-    Strips quotes, prefixes, extra symbols, and keeps length within reasonable bounds.
+    Strips quotes, prefixes, extra symbols, and strictly keeps length within 2-4 words / 32 chars.
     """
     if not raw_title or not raw_title.strip():
         return _make_fallback_title(fallback_content)
 
-    # Strip prefixes like 'Title:', 'Chat Name:', etc.
-    cleaned = re.sub(r'^(title|chat name|topic|subject):\s*', '', raw_title.strip(), flags=re.IGNORECASE)
-    # Strip quotes, backticks, asterisks, hashtags
-    cleaned = cleaned.strip('\'"`*# \t\r\n')
-    # If multiple lines, take the first line
-    cleaned = cleaned.split('\n')[0].strip('\'"`*# \t\r\n')
-    # Strip trailing punctuation (. , : ; ! ?)
-    cleaned = re.sub(r'[.:,;!?]+$', '', cleaned).strip()
+    # Strip prefixes like 'Title:', 'Chat Name:', 'Topic:', etc.
+    cleaned = re.sub(r'^(title|chat name|topic|subject|name):\s*', '', raw_title.strip(), flags=re.IGNORECASE)
+    # Strip quotes (regular & smart/curly quotes), backticks, asterisks, hashtags
+    cleaned = cleaned.strip('\'"`*# \t\r\n“”‘’«»')
+    # If multiple lines, take only the first non-empty line
+    first_line = next((line.strip('\'"`*# \t\r\n“”‘’«»') for line in cleaned.splitlines() if line.strip()), "")
+    cleaned = first_line or cleaned
+    # Strip trailing punctuation (. , : ; ! ? -)
+    cleaned = re.sub(r'[.:,;!?\-]+$', '', cleaned).strip()
 
-    # Reject if empty or standard error string
+    # Reject if empty or standard error / model unavailable string
     lowered = cleaned.lower()
-    if not cleaned or len(cleaned) < 2 or "error" in lowered or "apologize" in lowered or "unable to" in lowered:
+    if (
+        not cleaned
+        or len(cleaned) < 2
+        or "error" in lowered
+        or "apologize" in lowered
+        or "unable to" in lowered
+        or "ai provider" in lowered
+        or "as an ai" in lowered
+    ):
         return _make_fallback_title(fallback_content)
 
-    # Keep to a maximum of 5 words or 50 characters
+    # Limit strictly to a maximum of 4 words and 32 characters
     words = cleaned.split()
-    if len(words) > 5:
-        cleaned = " ".join(words[:5])
-    if len(cleaned) > 50:
-        cleaned = cleaned[:50].rstrip()
+    if len(words) > 4:
+        cleaned = " ".join(words[:4])
+    if len(cleaned) > 32:
+        cleaned = cleaned[:32].rstrip(" -:,.")
 
-    return cleaned
+    # Apply Title Casing if all lowercase
+    if cleaned.islower():
+        cleaned = cleaned.title()
+
+    return cleaned or _make_fallback_title(fallback_content)
 
 
 def _make_fallback_title(fallback_content: str) -> str:
+    """
+    Extracts a clean, short 2-3 word topic from the user's initial query as a fallback.
+    """
     cleaned = (fallback_content or "").strip()
     if not cleaned:
         return "New Chat"
+
+    # Strip common question starters
+    cleaned = re.sub(
+        r'^(who|what|where|when|why|how|can you|could you|please|tell me|explain|describe)\s+(is|are|was|were|to|do|did|does)?\s*',
+        '',
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    # Strip non-alphanumeric punctuation except hyphens
+    cleaned = re.sub(r'[^\w\s-]', '', cleaned).strip()
     words = cleaned.split()
-    if len(words) > 5:
-        return " ".join(words[:5])
-    return cleaned[:40]
+    if not words:
+        return "New Chat"
+
+    # Take at most 3 words, title-cased
+    candidate = " ".join(words[:3]).title()
+    return candidate[:28].rstrip()
 
 
 class ChatNamingQueue:

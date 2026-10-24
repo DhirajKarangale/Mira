@@ -619,7 +619,7 @@ async def get_vault_chat_sessions(
 @router.get('/chats/{session_id}', response_model=ChatMessagesListResponse, status_code=status.HTTP_200_OK)
 async def get_vault_chats_by_session(
     session_id: str,
-    limit: int = Query(30, ge=1, le=100),
+    limit: int = Query(30, ge=1, le=500),
     offset: int = Query(0, ge=0),
     cursor: Optional[str] = Query(None),
     page: Optional[int] = Query(None, ge=1),

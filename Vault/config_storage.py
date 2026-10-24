@@ -973,7 +973,7 @@ def get_chats_by_session(
         init_config_storage()
 
     clean_sid = (session_id or "").strip()
-    effective_limit = max(1, min(limit, 100))
+    effective_limit = max(1, min(limit, 500))
 
     total_row = _DB_CONN.execute("SELECT count(*) FROM chats WHERE session_id = ?", (clean_sid,)).fetchone()
     total_messages = total_row[0] if total_row else 0

@@ -14,7 +14,7 @@ CONSUMER_KEY_LLM_CHAT: str = "llm_chat"
 CONSUMER_GROUP_LLM_CHAT: str = "CONSUMER_GROUP_LLM_CHAT"
 
 # Maximum number of chat turns stored in short-term Redis memory per session
-MAX_SHORT_TERM_MEMORY: int = 5
+MAX_SHORT_TERM_MEMORY: int = 50
 
 DEFAULT_CHAT_WORKERS: int = 1
 DEFAULT_POLL_TIME: float = 1.0
