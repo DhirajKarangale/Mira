@@ -40,6 +40,10 @@ screenshots/
 **/screenshots/
 **/screenshots/**
 
+# Service Discovery Registry
+services.json
+**/services.json
+
 # Centralized Logs (preserve Client/src/**/Logs React components)
 logs/
 **/logs/

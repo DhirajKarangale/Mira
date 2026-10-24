@@ -15,6 +15,11 @@ import webbrowser
 from pathlib import Path
 from typing import Any, Dict, List, Set, Tuple
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 ROOT_DIR = Path(__file__).resolve().parent
 SERVICES_JSON_PATH = ROOT_DIR / "services.json"
 
@@ -34,14 +39,16 @@ YELLOW = "\033[93m"
 MAGENTA = "\033[95m"
 RED = "\033[91m"
 WHITE = "\033[97m"
+TEAL = "\033[36m"
+PURPLE = "\033[35m"
 
 MODULE_COLORS = {
     "vault": BLUE,
     "message_broker": MAGENTA,
     "operator": GREEN,
-    "client": YELLOW,
+    "client": TEAL,
     "memory": CYAN,
-    "engine": RED,
+    "engine": PURPLE,
     "system": BOLD + WHITE,
 }
 
@@ -429,7 +436,7 @@ class ProcessRunner:
 
         if not mod_dir.exists():
             if mod.get("is_optional", False):
-                log_sys(f"Skipping optional module {color(mod_name, YELLOW)} (directory '{mod_dir.name}' not found).")
+                log_sys(f"{color('WARNING:', YELLOW)} Skipping optional module {color(mod_name, BOLD + WHITE)} (directory '{mod_dir.name}' not found).")
                 return True
             else:
                 log_sys(f"{color('ERROR:', RED)} Required module directory '{mod_dir}' does not exist.")
@@ -489,7 +496,7 @@ class ProcessRunner:
 
     def shutdown(self) -> None:
         self._shutdown_event.set()
-        log_sys(f"{color('Initiating graceful shutdown of all MIRA modules...', YELLOW)}")
+        log_sys(f"{color('Initiating graceful shutdown of all MIRA modules...', CYAN)}")
 
         for mod_id, proc in list(self.processes.items()):
             if proc.poll() is None:
@@ -728,7 +735,7 @@ def main() -> None:
     log_sys(f"Vault Engine:     {color(url_map.get('vault', ''), CYAN)}")
     log_sys(f"Message Broker:   {color(url_map.get('message_broker', ''), CYAN)}")
     log_sys(f"Operator Engine:  {color(url_map.get('operator', ''), CYAN)}")
-    log_sys(f"Press {color('Ctrl+C', YELLOW + BOLD)} at any time to gracefully shut down all modules.")
+    log_sys(f"Press {color('Ctrl+C', CYAN + BOLD)} at any time to gracefully shut down all modules.")
     print("=" * 82 + "\n")
 
     client_url = url_map.get("client")
@@ -745,7 +752,7 @@ def main() -> None:
                 code = proc.poll()
                 if code is not None:
                     mod_name = allocations[mod_id]["module"]["name"]
-                    log_sys(f"{color('WARNING:', RED)} {mod_name} terminated with exit code {code}.")
+                    log_sys(f"{color('WARNING:', YELLOW)} {mod_name} terminated with exit code {code}.")
             time.sleep(1.0)
     except KeyboardInterrupt:
         runner.shutdown()
