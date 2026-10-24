@@ -277,7 +277,11 @@ async def send_chat_message_endpoint(request: SendChatMessageRequest):
             job_id=job_id,
             session_id=session_id,
             user_query=content,
-            extra_data={"chat_name": chat_name},
+            extra_data={
+                "chat_name": chat_name,
+                "user_message_id": saved_user_msg.get("id"),
+                "user_message": saved_user_msg,
+            },
         )
         if not queued:
             logger.warning(f"Failed to queue chat job {job_id} into Message Broker stream.")

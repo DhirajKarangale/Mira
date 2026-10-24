@@ -677,3 +677,16 @@ async def delete_vault_chat_session(session_id: str):
             detail={'message': f'Failed to delete chat session: {str(e)}'}
         )
 
+@router.post('/chats/cleanup', status_code=status.HTTP_200_OK)
+async def cleanup_vault_chats():
+    try:
+        deleted = config_storage.cleanup_duplicate_chats()
+        return {'status': 'success', 'deleted': deleted}
+    except Exception as e:
+        logger.error(f"Failed to cleanup duplicate chats: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={'message': f'Failed to cleanup duplicate chats: {str(e)}'}
+        )
+
+

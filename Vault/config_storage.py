@@ -121,7 +121,38 @@ def init_config_storage(schema_path: Optional[Path]=None, enc_db_path: Optional[
         _DB_CONN.commit()
     except Exception as e:
         logger.debug(f"Index creation on chats table: {e}")
+    try:
+        cleanup_duplicate_chats()
+    except Exception as e:
+        logger.debug(f"Cleanup duplicate chats: {e}")
     save_config_storage(enc_db_path)
+
+def cleanup_duplicate_chats() -> int:
+    global _DB_CONN
+    if _DB_CONN is None:
+        return 0
+    try:
+        cursor = _DB_CONN.execute("""
+            DELETE FROM chats
+            WHERE id IN (
+                SELECT c2.id
+                FROM chats c1
+                JOIN chats c2
+                  ON c1.session_id = c2.session_id
+                 AND c1.role = c2.role
+                 AND c1.content = c2.content
+                 AND c1.rowid < c2.rowid
+            )
+        """)
+        deleted = cursor.rowcount
+        if deleted > 0:
+            _DB_CONN.commit()
+            save_config_storage()
+            logger.info(f"Cleaned up {deleted} duplicate chat records in Vault")
+        return deleted
+    except Exception as e:
+        logger.error(f"Error cleaning duplicate chats: {e}")
+        return 0
 
 def save_config_storage(enc_db_path: Optional[Path]=None) -> None:
     global _DB_CONN
@@ -740,6 +771,34 @@ def save_chat_message(
             "UPDATE chats SET chat_name = ? WHERE session_id = ? AND (chat_name IS NULL OR chat_name = '')",
             (clean_chat_name, session_id)
         )
+
+    # Deduplication check: return existing if an identical message in this session was saved recently
+    existing_row = _DB_CONN.execute(
+        """
+        SELECT id, session_id, chat_name, role, content, created_at
+        FROM chats
+        WHERE session_id = ? AND role = ? AND content = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+        """,
+        (session_id, role, content)
+    ).fetchone()
+    if existing_row:
+        existing_ts = existing_row[5]
+        try:
+            ex_dt = datetime.strptime(existing_ts, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
+            now_dt = datetime.strptime(created_at, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
+            if abs((now_dt - ex_dt).total_seconds()) <= 15:
+                return {
+                    "id": existing_row[0],
+                    "session_id": existing_row[1],
+                    "chat_name": existing_row[2] or clean_chat_name,
+                    "role": existing_row[3],
+                    "content": existing_row[4],
+                    "created_at": existing_row[5],
+                }
+        except Exception:
+            pass
 
     _DB_CONN.execute(
         """

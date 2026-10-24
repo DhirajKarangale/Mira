@@ -400,15 +400,8 @@ export const Sidebar: FC<SidebarProps> = ({
       </nav>
 
       {footer && (
-        <div className="p-2 border-t border-white/[0.06] overflow-hidden whitespace-nowrap shrink-0">
-          <div
-            className={cn(
-              "transition-opacity duration-200",
-              isCollapsed ? "opacity-0 pointer-events-none" : "opacity-100"
-            )}
-          >
-            {footer}
-          </div>
+        <div className="p-2 border-t border-white/[0.06] overflow-hidden whitespace-nowrap shrink-0 flex items-center justify-center">
+          {footer}
         </div>
       )}
     </aside>

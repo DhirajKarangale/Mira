@@ -58,7 +58,6 @@ export const ChatsPage: FC = () => {
   const [sessionsCursor, setSessionsCursor] = useState<string | null>(null);
   const [sessionsHasMore, setSessionsHasMore] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [isRefreshingSessions, setIsRefreshingSessions] = useState<boolean>(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
 
   // ============================================================================
@@ -87,6 +86,21 @@ export const ChatsPage: FC = () => {
   // Scroll reference
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isInitialSessionLoadRef = useRef<boolean>(false);
+
+  // Issue 9: Auto-resize input textarea height-wise up to 180px
+  const adjustTextareaHeight = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const newHeight = Math.min(el.scrollHeight, 180);
+    el.style.height = `${newHeight}px`;
+  }, []);
+
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [inputText, adjustTextareaHeight]);
 
   // Cycle through 15 loading messages every 2.5s while waiting for response
   useEffect(() => {
@@ -101,12 +115,19 @@ export const ChatsPage: FC = () => {
   }, [isSending]);
 
   // ============================================================================
-  // Format Date Helper
+  // Format Date Helper (Displays in User's Local Time)
   // ============================================================================
   const formatDate = (dateStr?: string): string => {
     if (!dateStr) return "Just now";
     try {
-      const date = new Date(dateStr.replace(" ", "T"));
+      const trimmed = dateStr.trim();
+      let isoStr = trimmed.includes("T") ? trimmed : trimmed.replace(" ", "T");
+      // If no timezone offset is specified (no 'Z', no '+', no trailing '-HH:MM'), append 'Z'
+      // because Vault stores UTC timestamps in SQLite
+      if (!isoStr.endsWith("Z") && !isoStr.includes("+") && !/-\d{2}:\d{2}$/.test(isoStr)) {
+        isoStr += "Z";
+      }
+      const date = new Date(isoStr);
       if (isNaN(date.getTime())) return dateStr;
 
       const now = new Date();
@@ -124,11 +145,13 @@ export const ChatsPage: FC = () => {
         return `Today at ${timePart}`;
       }
 
-      return date.toLocaleDateString([], {
-        month: "short",
-        day: "numeric",
-        year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
-      }) + ` • ${timePart}`;
+      return (
+        date.toLocaleDateString([], {
+          month: "short",
+          day: "numeric",
+          year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+        }) + ` • ${timePart}`
+      );
     } catch {
       return dateStr;
     }
@@ -159,9 +182,6 @@ export const ChatsPage: FC = () => {
           });
         } else {
           setSessions(data.sessions || []);
-          if (!selectedSessionId && data.sessions && data.sessions.length > 0) {
-            setSelectedSessionId(data.sessions[0].session_id);
-          }
         }
 
         setSessionsPage(data.current_page || pageToLoad);
@@ -176,7 +196,6 @@ export const ChatsPage: FC = () => {
         }
       } finally {
         setSessionsLoading(false);
-        setIsRefreshingSessions(false);
       }
     },
     [selectedSessionId]
@@ -185,11 +204,6 @@ export const ChatsPage: FC = () => {
   useEffect(() => {
     fetchSessions(1, null, false);
   }, []);
-
-  const handleRefreshSessions = async () => {
-    setIsRefreshingSessions(true);
-    await fetchSessions(1, null, false);
-  };
 
   const handleSessionsScroll = (e: React.UIEvent<HTMLElement>) => {
     const el = e.currentTarget;
@@ -227,23 +241,51 @@ export const ChatsPage: FC = () => {
         if (append) {
           setMessages((prev) => {
             const existingIds = new Set(prev.map((m) => m.id));
-            const newItems = data.messages.filter((m) => !existingIds.has(m.id));
+            const newItems = (data.messages || []).filter(
+              (m) =>
+                !existingIds.has(m.id) &&
+                !prev.some((p) => p.role === "user" && m.role === "user" && p.content === m.content)
+            );
             return [...prev, ...newItems];
           });
         } else {
-          setMessages(data.messages || []);
+          // Clean up any historical duplicate user messages from DB
+          const deduped: ChatMessage[] = [];
+          for (const m of data.messages || []) {
+            const isDup = deduped.some(
+              (p) => p.id === m.id || (p.role === "user" && m.role === "user" && p.content === m.content)
+            );
+            if (!isDup) {
+              deduped.push(m);
+            }
+          }
+          setMessages(deduped);
         }
 
+        const fetchedCount = Math.max(
+          data.total_messages ?? 0,
+          append ? messages.length + (data.messages?.length || 0) : (data.messages?.length || 0)
+        );
         setMessagesPage(data.current_page || pageToLoad);
         setMessagesTotalPages(data.total_pages || 1);
-        setMessagesTotalCount(data.total_messages ?? data.messages?.length ?? 0);
+        setMessagesTotalCount(fetchedCount);
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.session_id === sessionId
+              ? { ...s, message_count: fetchedCount }
+              : s
+          )
+        );
         setMessagesCursor(data.next_cursor || null);
         setMessagesHasMore(Boolean(data.has_more));
 
         if (!append) {
-          setTimeout(() => {
-            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-          }, 100);
+          // Issue 5: Start directly at the bottom without animated scrolling
+          requestAnimationFrame(() => {
+            if (messagesContainerRef.current) {
+              messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+            }
+          });
         }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Failed to load messages";
@@ -261,6 +303,7 @@ export const ChatsPage: FC = () => {
 
   useEffect(() => {
     if (selectedSessionId) {
+      isInitialSessionLoadRef.current = true;
       fetchMessages(selectedSessionId, 1, null, false);
     } else {
       setMessages([]);
@@ -271,6 +314,29 @@ export const ChatsPage: FC = () => {
       setMessagesHasMore(false);
     }
   }, [selectedSessionId, fetchMessages]);
+
+  // Jump to bottom immediately as soon as session messages render in DOM
+  useEffect(() => {
+    if (isInitialSessionLoadRef.current && messages.length > 0) {
+      if (messagesContainerRef.current) {
+        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+      }
+      isInitialSessionLoadRef.current = false;
+    }
+  }, [messages]);
+
+  // Keep active session message count in sidebar and top header synchronized in real-time
+  useEffect(() => {
+    if (!selectedSessionId || messages.length === 0) return;
+    setMessagesTotalCount((prev) => Math.max(prev, messages.length));
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.session_id === selectedSessionId
+          ? { ...s, message_count: Math.max(s.message_count || 0, messages.length) }
+          : s
+      )
+    );
+  }, [messages.length, selectedSessionId]);
 
   // Connect to Engine WebSocket for real-time response delivery
   useEffect(() => {
@@ -298,20 +364,22 @@ export const ChatsPage: FC = () => {
               if (isMatch) {
                 if (ai_message) {
                   setMessages((prev) => {
-                    const withoutOptimistic = prev.filter(
-                      (m) => !m.id.startsWith("temp-") || m.content !== user_message?.content
-                    );
-                    const hasUser = withoutOptimistic.some((m) => m.id === user_message?.id);
-                    const hasAi = withoutOptimistic.some((m) => m.id === ai_message.id);
+                    const hasAi = prev.some((m) => m.id === ai_message.id);
+                    if (hasAi) return prev;
 
-                    const next = [...withoutOptimistic];
-                    if (!hasUser && user_message) {
-                      next.push(user_message);
-                    }
-                    if (!hasAi) {
-                      next.push(ai_message);
-                    }
-                    return next;
+                    // 1. Replace any optimistic temp- user message in-place at its original position
+                    const updated = prev.map((m) => {
+                      if (m.id.startsWith("temp-") && user_message && m.content === user_message.content) {
+                        return user_message;
+                      }
+                      return m;
+                    });
+
+                    // 2. Remove any remaining temp- items for this query
+                    const filtered = updated.filter((m) => !m.id.startsWith("temp-"));
+
+                    // 3. Append ONLY the AI message at the end
+                    return [...filtered, ai_message];
                   });
                 }
 
@@ -408,17 +476,33 @@ export const ChatsPage: FC = () => {
       // If response returned synchronous ai_message (e.g. fallback)
       if (response.ai_message) {
         setMessages((prev) => {
-          const filtered = prev.filter((m) => m.id !== tempId);
+          const hasAi = prev.some((m) => m.id === response.ai_message!.id);
+          const hasUser = prev.some((m) => m.id === response.user_message.id || (m.role === "user" && m.content === trimmed));
+          if (hasAi && hasUser) {
+            return prev.filter((m) => m.id !== tempId);
+          }
+          const filtered = prev.filter((m) => m.id !== tempId && m.id !== response.user_message.id);
           return [...filtered, response.user_message, response.ai_message!];
         });
         setIsSending(false);
         pendingJobIdRef.current = null;
         fetchSessions(1, null, false);
       } else {
-        // Job is queued into llm_chat stream; replace temp with saved user msg
+        // Job is queued into llm_chat stream; replace tempId in-place with saved user msg
         setMessages((prev) => {
-          const filtered = prev.filter((m) => m.id !== tempId);
-          return [...filtered, response.user_message];
+          const hasTemp = prev.some((m) => m.id === tempId);
+          if (hasTemp) {
+            // Replace tempId in-place at its original position
+            return prev.map((m) => (m.id === tempId ? response.user_message : m));
+          }
+          // If temp was already removed or replaced (e.g. WebSocket arrived first)
+          const alreadyHasUser = prev.some(
+            (m) => m.id === response.user_message.id || (m.role === "user" && m.content === trimmed)
+          );
+          if (alreadyHasUser) {
+            return prev; // Do not append duplicate user query after AI response!
+          }
+          return [...prev, response.user_message];
         });
         // 35-second safety fallback timeout in case WebSocket misses the event
         setTimeout(() => {
@@ -480,15 +564,52 @@ export const ChatsPage: FC = () => {
     return sessions.find((s) => s.session_id === selectedSessionId) || null;
   }, [sessions, selectedSessionId]);
 
-  // Issue 1 & 2: Map chats to SidebarItem
+  // Guarantee clean message stream: filter out any repeating user query that appears right after an AI reply
+  const cleanMessages = useMemo(() => {
+    const result: ChatMessage[] = [];
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      if (msg.role === "user") {
+        const trimmedContent = msg.content.trim();
+        // If immediately preceding message is an identical user message, skip
+        if (
+          result.length > 0 &&
+          result[result.length - 1].role === "user" &&
+          result[result.length - 1].content.trim() === trimmedContent
+        ) {
+          continue;
+        }
+        // If this user query appears directly after an AI response that answered the exact same user query, skip
+        if (result.length >= 2) {
+          const prevMsg = result[result.length - 1]; // ai message
+          const prevPrevMsg = result[result.length - 2]; // original user message
+          if (
+            prevMsg.role === "ai" &&
+            prevPrevMsg.role === "user" &&
+            prevPrevMsg.content.trim() === trimmedContent
+          ) {
+            continue;
+          }
+        }
+      }
+      result.push(msg);
+    }
+    return result;
+  }, [messages]);
+
+  // Issue 1 & 2: Map chats to SidebarItem with real-time active message count
   const sidebarItems: SidebarItem[] = useMemo(() => {
-    return filteredSessions.map((s) => ({
-      key: s.session_id,
-      name: s.chat_name || s.session_id,
-      icon: MessageSquare,
-      badge: s.message_count ? s.message_count : undefined,
-    }));
-  }, [filteredSessions]);
+    return filteredSessions.map((s) => {
+      const isCurrent = s.session_id === selectedSessionId;
+      const count = isCurrent ? Math.max(s.message_count || 0, cleanMessages.length) : s.message_count;
+      return {
+        key: s.session_id,
+        name: s.chat_name || s.session_id,
+        icon: MessageSquare,
+        badge: count && count > 0 ? count : undefined,
+      };
+    });
+  }, [filteredSessions, selectedSessionId, cleanMessages.length]);
 
   return (
     <div
@@ -511,7 +632,7 @@ export const ChatsPage: FC = () => {
         onScroll={handleSessionsScroll}
         className="border-r border-white/[0.08] bg-zinc-950/80 shadow-lg"
         header={
-          <div className="relative w-full h-full flex items-center overflow-hidden">
+          <div className="relative w-full h-full flex items-center">
             {/* When collapsed: strictly ONE button centered (Requirement 2) */}
             <div
               className={cn(
@@ -536,7 +657,7 @@ export const ChatsPage: FC = () => {
             {/* When open: Full header controls without + button (Requirement 3 & 4) */}
             <div
               className={cn(
-                "w-[230px] flex flex-col gap-2 transition-all duration-200",
+                "w-full flex flex-col gap-2 transition-[opacity,transform] duration-200",
                 !isSidebarCollapsed
                   ? "opacity-100 pointer-events-auto translate-x-0"
                   : "opacity-0 pointer-events-none -translate-x-2"
@@ -553,17 +674,6 @@ export const ChatsPage: FC = () => {
                 </div>
 
                 <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    type="button"
-                    id="btn-sidebar-refresh"
-                    onClick={handleRefreshSessions}
-                    title="Refresh chats"
-                    aria-label="Refresh chats"
-                    className="p-1 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-white/10 transition-colors cursor-pointer"
-                  >
-                    <RefreshCw className={cn("w-3.5 h-3.5", (isRefreshingSessions || sessionsLoading) && "animate-spin text-cyan-400")} />
-                  </button>
-
                   <button
                     type="button"
                     id="btn-sidebar-close"
@@ -586,19 +696,22 @@ export const ChatsPage: FC = () => {
                   placeholder="Search by name or session ID..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-2.5 py-1 text-xs bg-zinc-900/90 border border-white/[0.08] rounded-md text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 transition-all"
+                  className="w-full pl-8 pr-2.5 py-1 text-xs bg-zinc-900/90 border border-white/[0.08] rounded-md text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-cyan-500/60 focus:ring-1 focus:ring-inset focus:ring-cyan-500/40 transition-colors duration-150"
                 />
               </div>
             </div>
           </div>
         }
-        // Issue 5: In sidebar bottoms just show total number of chats of users
+        // Issue 5: In sidebar bottoms show total number of chats of users (visible both expanded and collapsed)
         footer={
-          <div className="h-8 flex items-center justify-center text-xs text-zinc-400 font-mono select-none overflow-hidden whitespace-nowrap">
+          <div className="h-8 flex items-center justify-center text-xs text-zinc-400 font-mono select-none overflow-hidden whitespace-nowrap w-full">
             {!isSidebarCollapsed ? (
               <span className="truncate">Total Chats: {sessionsTotalItems || sessions.length}</span>
             ) : (
-              <span title={`Total Chats: ${sessionsTotalItems || sessions.length}`}>
+              <span
+                className="flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded-full bg-zinc-900 border border-white/10 text-cyan-400 font-semibold text-[11px] shadow-sm"
+                title={`Total Chats: ${sessionsTotalItems || sessions.length}`}
+              >
                 {sessionsTotalItems || sessions.length}
               </span>
             )}
@@ -631,9 +744,10 @@ export const ChatsPage: FC = () => {
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
                     Active
                   </span>
-                  {messagesTotalCount > 0 && (
+                  {Math.max(messagesTotalCount, cleanMessages.length) > 0 && (
                     <span className="text-[11px] text-zinc-500 font-mono hidden sm:inline">
-                      • {messagesTotalCount} {messagesTotalCount === 1 ? "message" : "messages"}
+                      • {Math.max(messagesTotalCount, cleanMessages.length)}{" "}
+                      {Math.max(messagesTotalCount, cleanMessages.length) === 1 ? "message" : "messages"}
                     </span>
                   )}
                 </div>
@@ -667,21 +781,6 @@ export const ChatsPage: FC = () => {
 
           {/* Header Action Tools */}
           <div className="flex items-center gap-2">
-            {selectedSessionId && (
-              <button
-                type="button"
-                id="btn-refresh-messages"
-                onClick={() => fetchMessages(selectedSessionId, 1, null, false)}
-                disabled={messagesLoading}
-                title="Refresh messages"
-                aria-label="Refresh messages"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-300 bg-zinc-900/80 hover:bg-zinc-800/80 border border-white/[0.08] transition-all cursor-pointer disabled:opacity-50"
-              >
-                <RefreshCw className={cn("w-3.5 h-3.5", messagesLoading && "animate-spin text-cyan-400")} />
-                <span className="hidden sm:inline">Refresh</span>
-              </button>
-            )}
-
             <button
               type="button"
               id="btn-header-new-chat"
@@ -731,7 +830,7 @@ export const ChatsPage: FC = () => {
 
           {/* Loading State */}
           {messagesLoading && messages.length === 0 ? (
-            <div className="space-y-4 max-w-3xl mx-auto py-8">
+            <div className="space-y-4 max-w-6xl mx-auto px-2 sm:px-6 py-8">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="flex gap-3 animate-pulse">
                   <div className="w-8 h-8 rounded-full bg-zinc-800 shrink-0" />
@@ -758,7 +857,7 @@ export const ChatsPage: FC = () => {
                 Try Again
               </button>
             </div>
-          ) : !selectedSessionId && messages.length === 0 ? (
+          ) : !selectedSessionId && cleanMessages.length === 0 ? (
             // Empty / No Session Selected
             <div className="flex flex-col items-center justify-center h-full text-center max-w-md mx-auto space-y-6 py-12">
               <div className="relative">
@@ -801,7 +900,7 @@ export const ChatsPage: FC = () => {
                 ))}
               </div>
             </div>
-          ) : messages.length === 0 ? (
+          ) : cleanMessages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center max-w-sm mx-auto space-y-3 py-16">
               <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-white/[0.08] flex items-center justify-center text-zinc-500">
                 <MessageCircle className="w-6 h-6" />
@@ -814,15 +913,15 @@ export const ChatsPage: FC = () => {
               </div>
             </div>
           ) : (
-            // Messages List
-            <div className="space-y-6 max-w-3xl mx-auto w-full">
-              {messages.map((msg) => {
+            // Messages List (Issue 7 & 8: wide layout stretching user messages right and Mira messages left)
+            <div className="space-y-6 max-w-6xl mx-auto w-full px-2 sm:px-6">
+              {cleanMessages.map((msg) => {
                 const isUser = msg.role === "user";
                 return (
                   <div
                     key={msg.id}
                     className={cn(
-                      "flex items-start gap-3 group",
+                      "flex items-start gap-3 group w-full",
                       isUser ? "flex-row-reverse" : "flex-row"
                     )}
                   >
@@ -841,15 +940,18 @@ export const ChatsPage: FC = () => {
                     {/* Content */}
                     <div
                       className={cn(
-                        "flex flex-col space-y-1 max-w-[85%] sm:max-w-[78%]",
+                        "flex flex-col space-y-1 max-w-[88%] sm:max-w-[80%]",
                         isUser ? "items-end" : "items-start"
                       )}
                     >
+                      {/* Issue 2 & 3: For user remove 'You •', for Mira use 'Mira' */}
                       <div className="flex items-center gap-2 px-1 text-[11px] text-zinc-500 font-mono">
-                        <span className="font-semibold text-zinc-400">
-                          {isUser ? "You" : "MIRA AI"}
-                        </span>
-                        <span>•</span>
+                        {!isUser && (
+                          <>
+                            <span className="font-semibold text-cyan-400">Mira</span>
+                            <span>•</span>
+                          </>
+                        )}
                         <span>{formatDate(msg.created_at)}</span>
                       </div>
 
@@ -870,13 +972,13 @@ export const ChatsPage: FC = () => {
 
               {/* Sending / Thinking Indicator with 15 Rotating Messages */}
               {isSending && (
-                <div className="flex items-start gap-3 max-w-3xl mx-auto w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="flex items-start gap-3 w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
                   <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shrink-0 shadow-[0_0_15px_rgba(6,182,212,0.15)]">
                     <Bot className="w-4 h-4 animate-pulse" />
                   </div>
-                  <div className="flex flex-col space-y-1.5 max-w-[85%] sm:max-w-[78%]">
+                  <div className="flex flex-col space-y-1.5 max-w-[88%] sm:max-w-[80%]">
                     <div className="flex items-center gap-2 px-1 text-[11px] text-zinc-500 font-mono">
-                      <span className="font-semibold text-cyan-400">MIRA AI</span>
+                      <span className="font-semibold text-cyan-400">Mira</span>
                       <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
                     </div>
                     <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-zinc-900/90 border border-cyan-500/30 text-xs sm:text-[13px] text-zinc-200 shadow-[0_0_25px_rgba(6,182,212,0.1)] flex items-center gap-3">
@@ -902,9 +1004,10 @@ export const ChatsPage: FC = () => {
         {/* INPUT AREA: Text Input & Controls */}
         {/* ==================================================================== */}
         <footer className="p-3 sm:p-4 border-t border-white/[0.08] bg-zinc-950/70 backdrop-blur-md shrink-0 z-10">
-          <div className="max-w-3xl mx-auto space-y-2">
+          <div className="max-w-6xl mx-auto w-full px-2 sm:px-6 space-y-2">
             <div className="relative flex items-end gap-2 bg-zinc-900/90 border border-white/[0.1] focus-within:border-cyan-500/50 focus-within:ring-1 focus-within:ring-cyan-500/30 rounded-2xl p-2 transition-all">
               <textarea
+                ref={textareaRef}
                 id="input-chat-message"
                 rows={1}
                 value={inputText}
@@ -915,7 +1018,7 @@ export const ChatsPage: FC = () => {
                     ? "Type your message... (Enter to send, Shift+Enter for new line)"
                     : "Type a prompt to start a new chat session..."
                 }
-                className="flex-1 max-h-36 min-h-[36px] bg-transparent resize-none text-xs sm:text-[13px] text-zinc-100 placeholder-zinc-500 focus:outline-none px-2 py-1.5 leading-relaxed"
+                className="flex-1 max-h-44 min-h-[38px] bg-transparent resize-none text-xs sm:text-[13px] text-zinc-100 placeholder-zinc-500 focus:outline-none px-2 py-1.5 leading-relaxed overflow-y-auto"
               />
 
               <button
@@ -942,7 +1045,6 @@ export const ChatsPage: FC = () => {
 
             {/* Issue 4: Removed 'mira engine online' text */}
             <div className="flex items-center justify-between px-2 text-[10px] text-zinc-500 font-mono">
-              <span>Press Enter to send, Shift + Enter for new line</span>
               {sessionsError && (
                 <span className="text-red-400">Offline fallback active</span>
               )}
