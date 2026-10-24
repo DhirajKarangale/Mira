@@ -20,6 +20,11 @@ from ocr_summarization import (
     stop_ocr_summarization,
     get_summarization_status,
 )
+from embedding import (
+    initialize_embedding_model,
+    get_embedding_status,
+)
+
 async def run_standalone_workers():
     """Runs OCR Summarization workers in standalone asyncio loop."""
     log("Initializing Engine configuration from Vault...")
@@ -27,6 +32,12 @@ async def run_standalone_workers():
         config.CONFIG.fetch_from_vault()
     except Exception as e:
         log_error(f"Failed to fetch initial configuration from Vault: {e}")
+
+    log("Initializing embedding model manager...")
+    try:
+        await asyncio.to_thread(initialize_embedding_model)
+    except Exception as e:
+        log_error(f"Failed to initialize embedding model manager: {e}")
 
     log("Starting OCR Summarization module...")
     await start_ocr_summarization()

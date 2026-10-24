@@ -14,6 +14,11 @@ from ocr_summarization import (
     stop_ocr_summarization,
     get_summarization_status,
 )
+from embedding import (
+    initialize_embedding_model,
+    get_embedding_status,
+)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log("Engine service starting up...")
@@ -22,6 +27,13 @@ async def lifespan(app: FastAPI):
         config.CONFIG.fetch_from_vault()
     except Exception as e:
         log_error(f"Startup configuration sync from Vault encountered an error: {e}")
+
+    try:
+        # Initialize and verify embedding model manager before processing requests or starting workers
+        log("Initializing embedding model manager...")
+        await asyncio.to_thread(initialize_embedding_model)
+    except Exception as e:
+        log_error(f"Failed to initialize embedding model manager: {e}")
 
     try:
         # Initialize and start the OCR Summarization module
@@ -66,6 +78,7 @@ async def get_status():
     active_prov = config.CONFIG.get_active_provider()
     workers = config.CONFIG.get_workers_config()
     summarization = get_summarization_status()
+    embedding_status = get_embedding_status()
     return {
         "service": "Engine",
         "status": "online",
@@ -73,7 +86,12 @@ async def get_status():
         "ai_priorities": priorities,
         "workers": workers,
         "ocr_summarization": summarization,
+        "embedding_model": embedding_status,
     }
+
+@app.get("/embedding/status", status_code=status.HTTP_200_OK)
+async def embedding_status_endpoint():
+    return get_embedding_status()
 
 @app.get("/summarization/status", status_code=status.HTTP_200_OK)
 async def summarization_status_endpoint():

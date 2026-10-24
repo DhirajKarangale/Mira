@@ -19,7 +19,7 @@ The **Engine** module coordinates LLM orchestration, model executions, provider 
 Engine/
 ├── __init__.py
 ├── start.py                   # General startup script: initializes config, starts OCR Summarization & web server
-├── app.py                     # FastAPI service exposing /health, /status, /llm/call, /config/sync, /summarization/*
+├── app.py                     # FastAPI service exposing /health, /status, /llm/call, /config/sync, /summarization/*, /embedding/*
 ├── config.py                  # In-memory configuration store & Vault HTTP fetcher
 ├── requirements.txt           # Module dependencies
 ├── vault_logger.py            # Centralized logging to Vault with API key redaction
@@ -29,8 +29,9 @@ Engine/
 │   ├── test_embedding.py      # Embedding submodule and Qwen model tests
 │   └── test_ocr_summarization.py # OCR summarization, individual processing, and worker tests
 ├── embedding/
-│   ├── __init__.py            # Exposes get_embedding(text) -> List[float]
-│   └── model.py               # Singleton Qwen/Qwen3-Embedding-0.6B model loader
+│   ├── __init__.py            # Exposes get_embedding(text) -> List[float], initialize_embedding_model, EmbeddingModelManager
+│   ├── init_embedding.py      # Dedicated initialization script (SentenceTransformer & Qwen model manager, CLI runnable)
+│   └── model.py               # Singleton inference caller delegating to EmbeddingModelManager
 ├── ocr_summarization/
 │   ├── __init__.py            # Public startup function start_ocr_summarization()
 │   ├── broker_client.py       # Message Broker polling, publishing, and acknowledgement
