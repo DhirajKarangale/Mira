@@ -59,7 +59,16 @@ class EngineMemoryConfig:
 
     def __init__(self):
         self._lock = threading.RLock()
-        self.workers: Dict[str, Any] = {'llm_workers': 1, 'screenshot_extraction_workers': 1, 'screenshot_summarization_workers': 1, 'embedding_vector_store_workers': 1, 'screenshot_extraction_poll_time': 5.0, 'screenshot_summarization_poll_time': 5.0, 'embedding_vector_store_workers_poll_time': 1.0}
+        self.workers: Dict[str, Any] = {
+            'chat_workers': 1,
+            'chat_workers_poll_time': 1.0,
+            'screenshot_extraction_workers': 1,
+            'screenshot_summarization_workers': 1,
+            'embedding_vector_store_workers': 1,
+            'screenshot_extraction_poll_time': 5.0,
+            'screenshot_summarization_poll_time': 5.0,
+            'embedding_vector_store_workers_poll_time': 1.0,
+        }
         self.ai_priorities: List[str] = ['gemini', 'groq']
         self.ai_configs: Dict[str, Dict[str, Any]] = {}
         self.active_provider: Optional[str] = 'gemini'

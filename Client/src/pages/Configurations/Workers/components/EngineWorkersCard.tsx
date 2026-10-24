@@ -14,6 +14,7 @@ import {
   Clock,
   Layers,
   Database,
+  MessageSquare,
 } from "lucide-react";
 import type { EngineWorkersConfig, EngineWorkersUpdateRequest } from "@/services";
 import { cn } from "@/lib/utils";
@@ -32,11 +33,12 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
   onSave,
   disabled = false,
 }) => {
-  const [llmWorkers, setLlmWorkers] = useState<string>("1");
+  const [chatWorkers, setChatWorkers] = useState<string>("1");
   const [screenshotExtractionWorkers, setScreenshotExtractionWorkers] = useState<string>("1");
   const [screenshotSummarizationWorkers, setScreenshotSummarizationWorkers] = useState<string>("1");
   const [embeddingVectorStoreWorkers, setEmbeddingVectorStoreWorkers] = useState<string>("1");
 
+  const [chatWorkersPollTime, setChatWorkersPollTime] = useState<string>("1");
   const [screenshotExtractionPollTime, setScreenshotExtractionPollTime] = useState<string>("5");
   const [screenshotSummarizationPollTime, setScreenshotSummarizationPollTime] = useState<string>("5");
   const [embeddingVectorStoreWorkersPollTime, setEmbeddingVectorStoreWorkersPollTime] = useState<string>("1");
@@ -46,10 +48,11 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
 
   useEffect(() => {
     if (config) {
-      setLlmWorkers(String(config.llm_workers ?? 1));
+      setChatWorkers(String(config.chat_workers ?? (config as any).llm_workers ?? 1));
       setScreenshotExtractionWorkers(String(config.screenshot_extraction_workers ?? 1));
       setScreenshotSummarizationWorkers(String(config.screenshot_summarization_workers ?? 1));
       setEmbeddingVectorStoreWorkers(String(config.embedding_vector_store_workers ?? 1));
+      setChatWorkersPollTime(String(config.chat_workers_poll_time ?? 1));
       setScreenshotExtractionPollTime(String(config.screenshot_extraction_poll_time ?? 5));
       setScreenshotSummarizationPollTime(String(config.screenshot_summarization_poll_time ?? 5));
       setEmbeddingVectorStoreWorkersPollTime(String(config.embedding_vector_store_workers_poll_time ?? 1));
@@ -57,37 +60,41 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
   }, [config]);
 
   const persisted = {
-    llm_workers: config?.llm_workers ?? 1,
+    chat_workers: config?.chat_workers ?? (config as any)?.llm_workers ?? 1,
     screenshot_extraction_workers: config?.screenshot_extraction_workers ?? 1,
     screenshot_summarization_workers: config?.screenshot_summarization_workers ?? 1,
     embedding_vector_store_workers: config?.embedding_vector_store_workers ?? 1,
+    chat_workers_poll_time: config?.chat_workers_poll_time ?? 1,
     screenshot_extraction_poll_time: config?.screenshot_extraction_poll_time ?? 5,
     screenshot_summarization_poll_time: config?.screenshot_summarization_poll_time ?? 5,
     embedding_vector_store_workers_poll_time: config?.embedding_vector_store_workers_poll_time ?? 1,
   };
 
   const currentValues = {
-    llm_workers: parseInt(llmWorkers, 10),
+    chat_workers: parseInt(chatWorkers, 10),
     screenshot_extraction_workers: parseInt(screenshotExtractionWorkers, 10),
     screenshot_summarization_workers: parseInt(screenshotSummarizationWorkers, 10),
     embedding_vector_store_workers: parseInt(embeddingVectorStoreWorkers, 10),
+    chat_workers_poll_time: parseFloat(chatWorkersPollTime),
     screenshot_extraction_poll_time: parseFloat(screenshotExtractionPollTime),
     screenshot_summarization_poll_time: parseFloat(screenshotSummarizationPollTime),
     embedding_vector_store_workers_poll_time: parseFloat(embeddingVectorStoreWorkersPollTime),
   };
 
   const hasChanges =
-    !isNaN(currentValues.llm_workers) &&
+    !isNaN(currentValues.chat_workers) &&
     !isNaN(currentValues.screenshot_extraction_workers) &&
     !isNaN(currentValues.screenshot_summarization_workers) &&
     !isNaN(currentValues.embedding_vector_store_workers) &&
+    !isNaN(currentValues.chat_workers_poll_time) &&
     !isNaN(currentValues.screenshot_extraction_poll_time) &&
     !isNaN(currentValues.screenshot_summarization_poll_time) &&
     !isNaN(currentValues.embedding_vector_store_workers_poll_time) &&
-    (currentValues.llm_workers !== persisted.llm_workers ||
+    (currentValues.chat_workers !== persisted.chat_workers ||
       currentValues.screenshot_extraction_workers !== persisted.screenshot_extraction_workers ||
       currentValues.screenshot_summarization_workers !== persisted.screenshot_summarization_workers ||
       currentValues.embedding_vector_store_workers !== persisted.embedding_vector_store_workers ||
+      Math.abs(currentValues.chat_workers_poll_time - persisted.chat_workers_poll_time) > 0.001 ||
       Math.abs(currentValues.screenshot_extraction_poll_time - persisted.screenshot_extraction_poll_time) > 0.001 ||
       Math.abs(currentValues.screenshot_summarization_poll_time - persisted.screenshot_summarization_poll_time) > 0.001 ||
       Math.abs(currentValues.embedding_vector_store_workers_poll_time - persisted.embedding_vector_store_workers_poll_time) > 0.001);
@@ -137,8 +144,8 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
   };
 
   const handleSave = async () => {
-    const llmW = validateWorkerCount(llmWorkers, "LLM workers");
-    if (llmW === null) return;
+    const chatW = validateWorkerCount(chatWorkers, "Chat workers");
+    if (chatW === null) return;
 
     const extW = validateWorkerCount(screenshotExtractionWorkers, "Screenshot extraction workers");
     if (extW === null) return;
@@ -148,6 +155,9 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
 
     const vecW = validateWorkerCount(embeddingVectorStoreWorkers, "Embedding vector store workers");
     if (vecW === null) return;
+
+    const chatPt = validatePollTime(chatWorkersPollTime, "Chat workers poll time");
+    if (chatPt === null) return;
 
     const extPt = validatePollTime(screenshotExtractionPollTime, "Screenshot extraction poll time");
     if (extPt === null) return;
@@ -161,7 +171,8 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
     try {
       setIsSaving(true);
       await onSave({
-        llm_workers: llmW,
+        chat_workers: chatW,
+        chat_workers_poll_time: chatPt,
         screenshot_extraction_workers: extW,
         screenshot_summarization_workers: sumW,
         embedding_vector_store_workers: vecW,
@@ -183,10 +194,11 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
   };
 
   const handleReset = () => {
-    setLlmWorkers(String(persisted.llm_workers));
+    setChatWorkers(String(persisted.chat_workers));
     setScreenshotExtractionWorkers(String(persisted.screenshot_extraction_workers));
     setScreenshotSummarizationWorkers(String(persisted.screenshot_summarization_workers));
     setEmbeddingVectorStoreWorkers(String(persisted.embedding_vector_store_workers));
+    setChatWorkersPollTime(String(persisted.chat_workers_poll_time));
     setScreenshotExtractionPollTime(String(persisted.screenshot_extraction_poll_time));
     setScreenshotSummarizationPollTime(String(persisted.screenshot_summarization_poll_time));
     setEmbeddingVectorStoreWorkersPollTime(String(persisted.embedding_vector_store_workers_poll_time));
@@ -281,16 +293,16 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {/* Tile 1: LLM Workers */}
+            {/* Tile 1: Chat Workers */}
             <div className="rounded-xl border border-white/[0.08] bg-zinc-950/50 p-3 hover:border-white/15 transition-all flex flex-col justify-between gap-2.5">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <div className="p-1 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                    <Cpu className="w-3.5 h-3.5" />
+                    <MessageSquare className="w-3.5 h-3.5" />
                   </div>
                   <div>
-                    <h4 className="text-xs font-semibold text-white leading-tight">LLM Inference</h4>
-                    <p className="text-[10px] text-zinc-400">LangGraph chains</p>
+                    <h4 className="text-xs font-semibold text-white leading-tight">Chat Workers</h4>
+                    <p className="text-[10px] text-zinc-400">LLM chat & inference</p>
                   </div>
                 </div>
                 <span className="text-[9px] font-mono text-cyan-300 bg-cyan-500/10 px-1.5 py-0.5 rounded">
@@ -302,31 +314,31 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
                 <div className="flex items-center gap-1 bg-zinc-900/90 border border-white/10 rounded-lg p-0.5">
                   <button
                     type="button"
-                    id="btn-dec-llm-workers"
-                    disabled={disabled || isSaving || currentValues.llm_workers <= 1}
-                    onClick={() => adjustWorker(setLlmWorkers, llmWorkers, -1)}
+                    id="btn-dec-chat-workers"
+                    disabled={disabled || isSaving || currentValues.chat_workers <= 1}
+                    onClick={() => adjustWorker(setChatWorkers, chatWorkers, -1)}
                     className="w-6 h-6 rounded hover:bg-white/10 text-zinc-400 hover:text-white flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                   >
                     <Minus className="w-3 h-3" />
                   </button>
                   <input
                     type="number"
-                    id="input-llm-workers"
+                    id="input-chat-workers"
                     min={1}
                     max={50}
                     step={1}
                     disabled={disabled || isSaving || isLoading}
-                    value={llmWorkers}
+                    value={chatWorkers}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                      setLlmWorkers(e.target.value);
+                      setChatWorkers(e.target.value);
                     }}
                     className="w-10 text-center font-mono font-bold text-xs bg-transparent text-white focus:outline-none"
                   />
                   <button
                     type="button"
-                    id="btn-inc-llm-workers"
-                    disabled={disabled || isSaving || currentValues.llm_workers >= 50}
-                    onClick={() => adjustWorker(setLlmWorkers, llmWorkers, 1)}
+                    id="btn-inc-chat-workers"
+                    disabled={disabled || isSaving || currentValues.chat_workers >= 50}
+                    onClick={() => adjustWorker(setChatWorkers, chatWorkers, 1)}
                     className="w-6 h-6 rounded hover:bg-white/10 text-zinc-400 hover:text-white flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                   >
                     <Plus className="w-3 h-3" />
@@ -517,8 +529,86 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Poll 1: Screenshot Extraction Poll Time */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Poll 1: Chat Workers Poll Time */}
+            <div className="rounded-xl border border-white/[0.08] bg-zinc-950/50 p-3 hover:border-white/15 transition-all flex flex-col justify-between gap-2.5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-1 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                    <Clock className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-semibold text-white leading-tight">Chat Interval</h4>
+                    <p className="text-[10px] text-zinc-400">Engine chat queue poll</p>
+                  </div>
+                </div>
+                <span className="text-[9px] font-mono text-cyan-300 bg-cyan-500/10 px-1.5 py-0.5 rounded">
+                  Seconds
+                </span>
+              </div>
+
+              <div className="space-y-1.5 pt-0.5">
+                <div className="flex items-center justify-between gap-1.5">
+                  <div className="flex items-center gap-1 bg-zinc-900/90 border border-white/10 rounded-lg p-0.5">
+                    <button
+                      type="button"
+                      id="btn-dec-chat-poll-time"
+                      disabled={disabled || isSaving || currentValues.chat_workers_poll_time <= 0.1}
+                      onClick={() => adjustPollTime(setChatWorkersPollTime, chatWorkersPollTime, -1)}
+                      className="w-6 h-6 rounded hover:bg-white/10 text-zinc-400 hover:text-white flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      <Minus className="w-3 h-3" />
+                    </button>
+                    <input
+                      type="number"
+                      id="input-chat-poll-time"
+                      min={0.1}
+                      max={1800}
+                      step={0.5}
+                      disabled={disabled || isSaving || isLoading}
+                      value={chatWorkersPollTime}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                        setChatWorkersPollTime(e.target.value);
+                      }}
+                      className="w-14 text-center font-mono font-bold text-xs bg-transparent text-white focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      id="btn-inc-chat-poll-time"
+                      disabled={disabled || isSaving || currentValues.chat_workers_poll_time >= 1800}
+                      onClick={() => adjustPollTime(setChatWorkersPollTime, chatWorkersPollTime, 1)}
+                      className="w-6 h-6 rounded hover:bg-white/10 text-zinc-400 hover:text-white flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <span className="text-[11px] font-mono text-zinc-400">sec</span>
+                </div>
+
+                {/* Preset Chips */}
+                <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                  {pollPresets.map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => {
+                        setChatWorkersPollTime(String(p));
+                      }}
+                      className={cn(
+                        "px-1.5 py-0.5 rounded text-[9px] font-mono cursor-pointer transition-colors border",
+                        currentValues.chat_workers_poll_time === p
+                          ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/30 font-bold"
+                          : "bg-white/[0.03] text-zinc-400 border-white/5 hover:text-white"
+                      )}
+                    >
+                      {p}s
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Poll 2: Screenshot Extraction Poll Time */}
             <div className="rounded-xl border border-white/[0.08] bg-zinc-950/50 p-3 hover:border-white/15 transition-all flex flex-col justify-between gap-2.5">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -762,7 +852,7 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
             <Layers className="w-3 h-3 text-cyan-400" />
             <span>Pools:</span>
           </span>
-          <span>{persisted.llm_workers} llm</span>
+          <span>{persisted.chat_workers} chat</span>
           <span className="text-zinc-600">/</span>
           <span>{persisted.screenshot_extraction_workers} ext</span>
           <span className="text-zinc-600">/</span>
@@ -772,7 +862,7 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
           <span className="text-zinc-600 hidden sm:inline">|</span>
           <span className="text-zinc-400 hidden sm:inline">Poll:</span>
           <span className="hidden sm:inline">
-            {persisted.screenshot_extraction_poll_time}s / {persisted.screenshot_summarization_poll_time}s / {persisted.embedding_vector_store_workers_poll_time}s
+            {persisted.chat_workers_poll_time}s / {persisted.screenshot_extraction_poll_time}s / {persisted.screenshot_summarization_poll_time}s / {persisted.embedding_vector_store_workers_poll_time}s
           </span>
         </div>
 

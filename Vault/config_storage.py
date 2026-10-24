@@ -97,6 +97,14 @@ def init_config_storage(schema_path: Optional[Path]=None, enc_db_path: Optional[
                     _DB_CONN.execute('UPDATE logs SET store_logs_vault = 1 WHERE store_logs_vault IS NULL')
                     _DB_CONN.commit()
                 elif table_name == 'engine_workers':
+                    if 'llm_workers' in existing_cols and 'chat_workers' in target_cols:
+                        try:
+                            _DB_CONN.execute('UPDATE engine_workers SET chat_workers = llm_workers WHERE chat_workers IS NULL')
+                            _DB_CONN.commit()
+                        except Exception:
+                            pass
+                    _DB_CONN.execute('UPDATE engine_workers SET chat_workers = 1 WHERE chat_workers IS NULL')
+                    _DB_CONN.execute('UPDATE engine_workers SET chat_workers_poll_time = 1.0 WHERE chat_workers_poll_time IS NULL')
                     _DB_CONN.execute('UPDATE engine_workers SET embedding_vector_store_workers = 1 WHERE embedding_vector_store_workers IS NULL')
                     _DB_CONN.execute('UPDATE engine_workers SET embedding_vector_store_workers_poll_time = 1.0 WHERE embedding_vector_store_workers_poll_time IS NULL')
                     _DB_CONN.commit()
@@ -525,17 +533,54 @@ def get_engine_workers() -> Dict[str, Any]:
         init_config_storage()
     exists = _DB_CONN.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='engine_workers'").fetchone()[0]
     if not exists:
-        return {'llm_workers': 1, 'screenshot_extraction_workers': 1, 'screenshot_summarization_workers': 1, 'embedding_vector_store_workers': 1, 'screenshot_extraction_poll_time': 5.0, 'screenshot_summarization_poll_time': 5.0, 'embedding_vector_store_workers_poll_time': 1.0}
+        return {
+            'chat_workers': 1,
+            'screenshot_extraction_workers': 1,
+            'screenshot_summarization_workers': 1,
+            'embedding_vector_store_workers': 1,
+            'chat_workers_poll_time': 1.0,
+            'screenshot_extraction_poll_time': 5.0,
+            'screenshot_summarization_poll_time': 5.0,
+            'embedding_vector_store_workers_poll_time': 1.0
+        }
     cursor = _DB_CONN.execute('SELECT * FROM engine_workers LIMIT 1')
     row = cursor.fetchone()
     if not row:
-        _DB_CONN.execute('INSERT INTO engine_workers (\n                llm_workers,\n                screenshot_extraction_workers,\n                screenshot_summarization_workers,\n                embedding_vector_store_workers,\n                screenshot_extraction_poll_time,\n                screenshot_summarization_poll_time,\n                embedding_vector_store_workers_poll_time\n            ) VALUES (1, 1, 1, 1, 5.0, 5.0, 1.0)')
+        _DB_CONN.execute('''INSERT INTO engine_workers (
+                chat_workers,
+                screenshot_extraction_workers,
+                screenshot_summarization_workers,
+                embedding_vector_store_workers,
+                chat_workers_poll_time,
+                screenshot_extraction_poll_time,
+                screenshot_summarization_poll_time,
+                embedding_vector_store_workers_poll_time
+            ) VALUES (1, 1, 1, 1, 1.0, 5.0, 5.0, 1.0)''')
         _DB_CONN.commit()
         save_config_storage()
-        return {'llm_workers': 1, 'screenshot_extraction_workers': 1, 'screenshot_summarization_workers': 1, 'embedding_vector_store_workers': 1, 'screenshot_extraction_poll_time': 5.0, 'screenshot_summarization_poll_time': 5.0, 'embedding_vector_store_workers_poll_time': 1.0}
+        return {
+            'chat_workers': 1,
+            'screenshot_extraction_workers': 1,
+            'screenshot_summarization_workers': 1,
+            'embedding_vector_store_workers': 1,
+            'chat_workers_poll_time': 1.0,
+            'screenshot_extraction_poll_time': 5.0,
+            'screenshot_summarization_poll_time': 5.0,
+            'embedding_vector_store_workers_poll_time': 1.0
+        }
     col_names = [d[0].lower() for d in cursor.description]
     row_dict = dict(zip(col_names, row))
-    return {'llm_workers': int(row_dict.get('llm_workers') or 1), 'screenshot_extraction_workers': int(row_dict.get('screenshot_extraction_workers') or 1), 'screenshot_summarization_workers': int(row_dict.get('screenshot_summarization_workers') or 1), 'embedding_vector_store_workers': int(row_dict.get('embedding_vector_store_workers') or 1), 'screenshot_extraction_poll_time': float(row_dict.get('screenshot_extraction_poll_time') if row_dict.get('screenshot_extraction_poll_time') is not None else 5.0), 'screenshot_summarization_poll_time': float(row_dict.get('screenshot_summarization_poll_time') if row_dict.get('screenshot_summarization_poll_time') is not None else 5.0), 'embedding_vector_store_workers_poll_time': float(row_dict.get('embedding_vector_store_workers_poll_time') if row_dict.get('embedding_vector_store_workers_poll_time') is not None else 1.0)}
+    chat_w = row_dict.get('chat_workers') or row_dict.get('llm_workers') or 1
+    return {
+        'chat_workers': int(chat_w),
+        'screenshot_extraction_workers': int(row_dict.get('screenshot_extraction_workers') or 1),
+        'screenshot_summarization_workers': int(row_dict.get('screenshot_summarization_workers') or 1),
+        'embedding_vector_store_workers': int(row_dict.get('embedding_vector_store_workers') or 1),
+        'chat_workers_poll_time': float(row_dict.get('chat_workers_poll_time') if row_dict.get('chat_workers_poll_time') is not None else (row_dict.get('llm_workers_poll_time') if row_dict.get('llm_workers_poll_time') is not None else 1.0)),
+        'screenshot_extraction_poll_time': float(row_dict.get('screenshot_extraction_poll_time') if row_dict.get('screenshot_extraction_poll_time') is not None else 5.0),
+        'screenshot_summarization_poll_time': float(row_dict.get('screenshot_summarization_poll_time') if row_dict.get('screenshot_summarization_poll_time') is not None else 5.0),
+        'embedding_vector_store_workers_poll_time': float(row_dict.get('embedding_vector_store_workers_poll_time') if row_dict.get('embedding_vector_store_workers_poll_time') is not None else 1.0)
+    }
 
 def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
     global _DB_CONN
@@ -544,13 +589,33 @@ def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(updates, dict):
         raise ValueError('Payload must be a dictionary or object containing worker settings.')
     current = get_engine_workers()
-    alias_map = {'extraction_workers': 'screenshot_extraction_workers', 'memory_extraction_workers': 'screenshot_extraction_workers', 'summarization_workers': 'screenshot_summarization_workers', 'engine_summarization_workers': 'screenshot_summarization_workers', 'vector_store_workers': 'embedding_vector_store_workers', 'embedding_workers': 'embedding_vector_store_workers', 'vector_workers': 'embedding_vector_store_workers', 'extraction_poll_time': 'screenshot_extraction_poll_time', 'summarization_poll_time': 'screenshot_summarization_poll_time', 'vector_store_poll_time': 'embedding_vector_store_workers_poll_time', 'embedding_poll_time': 'embedding_vector_store_workers_poll_time', 'vector_poll_time': 'embedding_vector_store_workers_poll_time', 'embedding_vector_store_poll_time': 'embedding_vector_store_workers_poll_time'}
+    alias_map = {
+        'llm_workers': 'chat_workers',
+        'llm_worker': 'chat_workers',
+        'chat_worker': 'chat_workers',
+        'llm_workers_poll_time': 'chat_workers_poll_time',
+        'chat_poll_time': 'chat_workers_poll_time',
+        'chat_worker_poll_time': 'chat_workers_poll_time',
+        'extraction_workers': 'screenshot_extraction_workers',
+        'memory_extraction_workers': 'screenshot_extraction_workers',
+        'summarization_workers': 'screenshot_summarization_workers',
+        'engine_summarization_workers': 'screenshot_summarization_workers',
+        'vector_store_workers': 'embedding_vector_store_workers',
+        'embedding_workers': 'embedding_vector_store_workers',
+        'vector_workers': 'embedding_vector_store_workers',
+        'extraction_poll_time': 'screenshot_extraction_poll_time',
+        'summarization_poll_time': 'screenshot_summarization_poll_time',
+        'vector_store_poll_time': 'embedding_vector_store_workers_poll_time',
+        'embedding_poll_time': 'embedding_vector_store_workers_poll_time',
+        'vector_poll_time': 'embedding_vector_store_workers_poll_time',
+        'embedding_vector_store_poll_time': 'embedding_vector_store_workers_poll_time'
+    }
     normalized_updates = {}
     for k, v in updates.items():
         canonical = alias_map.get(k.lower(), k.lower())
         normalized_updates[canonical] = v
     new_config = dict(current)
-    int_fields = ['llm_workers', 'screenshot_extraction_workers', 'screenshot_summarization_workers']
+    int_fields = ['chat_workers', 'screenshot_extraction_workers', 'screenshot_summarization_workers']
     for field in int_fields:
         if field in normalized_updates and normalized_updates[field] is not None:
             val = normalized_updates[field]
@@ -566,15 +631,15 @@ def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
         if val < 1:
             raise ValueError('embedding_vector_store_workers must be an integer of at least 1.')
         new_config['embedding_vector_store_workers'] = val
-    float_fields = ['screenshot_extraction_poll_time', 'screenshot_summarization_poll_time']
+    float_fields = ['chat_workers_poll_time', 'screenshot_extraction_poll_time', 'screenshot_summarization_poll_time']
     for field in float_fields:
         if field in normalized_updates and normalized_updates[field] is not None:
             val = normalized_updates[field]
             if isinstance(val, bool) or not isinstance(val, (int, float)):
-                raise ValueError(f'{field} must be a number between 1 and 1800 seconds.')
+                raise ValueError(f'{field} must be a number between 0.1 and 1800 seconds.')
             val_f = float(val)
-            if val_f < 1.0 or val_f > 1800.0:
-                raise ValueError(f'{field} must be between 1 and 1800 seconds inclusive.')
+            if val_f < 0.1 or val_f > 1800.0:
+                raise ValueError(f'{field} must be between 0.1 and 1800 seconds inclusive.')
             new_config[field] = val_f
     if 'embedding_vector_store_workers_poll_time' in normalized_updates and normalized_updates['embedding_vector_store_workers_poll_time'] is not None:
         val = normalized_updates['embedding_vector_store_workers_poll_time']
@@ -587,9 +652,46 @@ def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
     cursor = _DB_CONN.execute('SELECT id FROM engine_workers LIMIT 1')
     row = cursor.fetchone()
     if row:
-        _DB_CONN.execute('UPDATE engine_workers SET\n                llm_workers = ?,\n                screenshot_extraction_workers = ?,\n                screenshot_summarization_workers = ?,\n                embedding_vector_store_workers = ?,\n                screenshot_extraction_poll_time = ?,\n                screenshot_summarization_poll_time = ?,\n                embedding_vector_store_workers_poll_time = ?\n            WHERE id = ?', (new_config['llm_workers'], new_config['screenshot_extraction_workers'], new_config['screenshot_summarization_workers'], new_config['embedding_vector_store_workers'], new_config['screenshot_extraction_poll_time'], new_config['screenshot_summarization_poll_time'], new_config['embedding_vector_store_workers_poll_time'], row[0]))
+        _DB_CONN.execute('''UPDATE engine_workers SET
+                chat_workers = ?,
+                screenshot_extraction_workers = ?,
+                screenshot_summarization_workers = ?,
+                embedding_vector_store_workers = ?,
+                chat_workers_poll_time = ?,
+                screenshot_extraction_poll_time = ?,
+                screenshot_summarization_poll_time = ?,
+                embedding_vector_store_workers_poll_time = ?
+            WHERE id = ?''', (
+                new_config['chat_workers'],
+                new_config['screenshot_extraction_workers'],
+                new_config['screenshot_summarization_workers'],
+                new_config['embedding_vector_store_workers'],
+                new_config['chat_workers_poll_time'],
+                new_config['screenshot_extraction_poll_time'],
+                new_config['screenshot_summarization_poll_time'],
+                new_config['embedding_vector_store_workers_poll_time'],
+                row[0]
+            ))
     else:
-        _DB_CONN.execute('INSERT INTO engine_workers (\n                llm_workers,\n                screenshot_extraction_workers,\n                screenshot_summarization_workers,\n                embedding_vector_store_workers,\n                screenshot_extraction_poll_time,\n                screenshot_summarization_poll_time,\n                embedding_vector_store_workers_poll_time\n            ) VALUES (?, ?, ?, ?, ?, ?, ?)', (new_config['llm_workers'], new_config['screenshot_extraction_workers'], new_config['screenshot_summarization_workers'], new_config['embedding_vector_store_workers'], new_config['screenshot_extraction_poll_time'], new_config['screenshot_summarization_poll_time'], new_config['embedding_vector_store_workers_poll_time']))
+        _DB_CONN.execute('''INSERT INTO engine_workers (
+                chat_workers,
+                screenshot_extraction_workers,
+                screenshot_summarization_workers,
+                embedding_vector_store_workers,
+                chat_workers_poll_time,
+                screenshot_extraction_poll_time,
+                screenshot_summarization_poll_time,
+                embedding_vector_store_workers_poll_time
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', (
+                new_config['chat_workers'],
+                new_config['screenshot_extraction_workers'],
+                new_config['screenshot_summarization_workers'],
+                new_config['embedding_vector_store_workers'],
+                new_config['chat_workers_poll_time'],
+                new_config['screenshot_extraction_poll_time'],
+                new_config['screenshot_summarization_poll_time'],
+                new_config['embedding_vector_store_workers_poll_time']
+            ))
     _DB_CONN.commit()
     save_config_storage()
     logger.info(f'Updated engine workers configuration: {new_config}')

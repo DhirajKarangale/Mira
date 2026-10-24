@@ -1,5 +1,6 @@
 {
   "ocr_extraction": "CONSUMER_GROUP_OCR_EXTRACTION",
   "ocr_summarization": "CONSUMER_GROUP_OCR_TEXT_SUMMARIZATION",
-  "embedding_memory": "CONSUMER_GROUP_EMBEDDING_MEMORY"
+  "embedding_memory": "CONSUMER_GROUP_EMBEDDING_MEMORY",
+  "llm_chat": "llm_chat"
 }

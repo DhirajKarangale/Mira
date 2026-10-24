@@ -36,7 +36,7 @@ The **Engine** module coordinates LLM orchestration, model execution, provider f
     "status": "online",
     "active_provider": "gemini",
     "ai_priorities": ["gemini", "groq"],
-    "workers": { "llm_workers": 1, "screenshot_summarization_workers": 1 },
+    "workers": { "chat_workers": 1, "chat_workers_poll_time": 1.0, "screenshot_summarization_workers": 1 },
     "ocr_summarization": { "running": true, "total_jobs_processed": 0 },
     "embedding_model": { "status": "ready", "model_name": "Qwen/Qwen3-Embedding-0.6B" }
   }

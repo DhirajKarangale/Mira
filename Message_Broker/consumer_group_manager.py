@@ -23,6 +23,8 @@ def get_consumer_group(consumer_key: str) -> Optional[str]:
         return groups[consumer_key]
     if consumer_key in groups.values():
         return consumer_key
+    if consumer_key.upper() in ('CONSUMER_GROUP_LLM_CHAT', 'LLM_CHAT') and 'llm_chat' in groups:
+        return groups['llm_chat']
     return None
 
 def get_all_consumer_groups() -> List[str]:
@@ -36,11 +38,15 @@ def get_stream_for_consumer_key(consumer_key: str) -> Optional[str]:
     for k, v in groups.items():
         if v == consumer_key:
             return f'mira:stream:{k}'
+    if consumer_key.upper() in ('CONSUMER_GROUP_LLM_CHAT', 'LLM_CHAT') and 'llm_chat' in groups:
+        return 'mira:stream:llm_chat'
     return None
 
 def get_stream_for_consumer_group(consumer_group: str) -> Optional[str]:
     mappings = _load_consumer_groups()
     for key, group in mappings.items():
-        if group == consumer_group:
+        if group == consumer_group or key == consumer_group:
             return f'mira:stream:{key}'
+    if consumer_group.upper() in ('CONSUMER_GROUP_LLM_CHAT', 'LLM_CHAT') and 'llm_chat' in mappings:
+        return 'mira:stream:llm_chat'
     return None
