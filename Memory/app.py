@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Union
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Query, status
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 import config
@@ -42,6 +43,16 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
+
 
 class ExtractRequest(BaseModel):
     image_path: str = Field(..., min_length=1)
@@ -119,6 +130,67 @@ async def get_kb_status():
         "workers": kb_worker_manager.get_status(),
         "daily_knowledge_bases": kb_storage.list_knowledge_bases(),
     }
+
+@app.get("/knowledge-base", status_code=status.HTTP_200_OK)
+@app.get("/knowledge-base/list", status_code=status.HTTP_200_OK)
+async def list_knowledge_bases_endpoint(
+    start_date: Optional[str] = Query(None, description="Filter KBs covering start date onwards"),
+    end_date: Optional[str] = Query(None, description="Filter KBs covering up to end date"),
+    search: Optional[str] = Query(None, description="Search term for KB name or date"),
+    page: int = Query(1, ge=1, description="Page number (1-based)"),
+    limit: int = Query(10, ge=1, le=100, description="Items per page"),
+):
+    try:
+        data = await asyncio.to_thread(
+            kb_worker_manager.list_knowledge_bases,
+            start_date=start_date,
+            end_date=end_date,
+            search=search,
+            page=page,
+            limit=limit,
+        )
+        return data
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to list Knowledge Bases: {str(e)}"}
+        )
+
+@app.delete("/knowledge-base/{name}", status_code=status.HTTP_200_OK)
+@app.delete("/knowledge-base", status_code=status.HTTP_200_OK)
+async def delete_knowledge_base_endpoint(
+    name: Optional[str] = None,
+    name_query: Optional[str] = Query(None, alias="name"),
+):
+    target_name = name or name_query
+    if not target_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": "Knowledge Base name parameter is required."}
+        )
+
+    try:
+        await asyncio.to_thread(kb_worker_manager.delete_knowledge_base, target_name)
+        return {
+            "status": "success",
+            "message": f"Knowledge Base '{target_name}' deleted successfully.",
+            "name": target_name,
+        }
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": str(e)}
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": str(e)}
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to delete Knowledge Base '{target_name}': {str(e)}"}
+        )
 
 @app.post("/knowledge-base/workers/start", status_code=status.HTTP_200_OK)
 async def start_kb_workers():

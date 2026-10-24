@@ -409,6 +409,8 @@ class ProcessRunner:
             env["VITE_VAULT_URL"] = url_map.get("vault", "")
             env["VITE_MESSAGE_BROKER_URL"] = url_map.get("message_broker", "")
             env["VITE_OPERATOR_URL"] = url_map.get("operator", "")
+            env["VITE_MEMORY_URL"] = url_map.get("memory", "")
+            env["VITE_ENGINE_URL"] = url_map.get("engine", "")
 
         return env
 

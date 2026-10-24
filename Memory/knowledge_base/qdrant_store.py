@@ -385,3 +385,31 @@ class QdrantVectorStore:
                 return client.count(collection_name=COLLECTION_NAME).count
             except Exception:
                 return 0
+
+    def get_kb_point_count(self, kb_path: Path) -> int:
+        """Returns the point count for a target or active Knowledge Base directory."""
+        with self._lock:
+            try:
+                if self._current_path and self._current_path.resolve() == kb_path.resolve():
+                    return self.count_points()
+                # Inspect inactive KB collection safely
+                temp_client = QdrantClient(path=str(kb_path))
+                existing = [c.name for c in temp_client.get_collections().collections]
+                count_val = (
+                    temp_client.count(collection_name=COLLECTION_NAME).count
+                    if COLLECTION_NAME in existing
+                    else 0
+                )
+                temp_client.close()
+                return count_val
+            except Exception:
+                return 0
+
+    def delete_knowledge_base(self, name: str) -> bool:
+        """Deletes a Knowledge Base safely by name, ensuring open clients are closed."""
+        with self._lock:
+            return self.storage.delete_knowledge_base(
+                name=name,
+                before_delete_cb=self.close,
+            )
+

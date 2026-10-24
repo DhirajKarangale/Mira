@@ -170,5 +170,28 @@ class KnowledgeBaseWorkerManager:
             "total_points_in_active_kb": points_count,
         }
 
+    def list_knowledge_bases(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        search: Optional[str] = None,
+        page: int = 1,
+        limit: int = 10,
+    ) -> Dict[str, Any]:
+        """Returns paginated Knowledge Bases with date filtering and point counts."""
+        return self.storage.get_knowledge_bases_paginated(
+            start_date=start_date,
+            end_date=end_date,
+            search=search,
+            page=page,
+            limit=limit,
+            get_point_count_cb=self.vector_store.get_kb_point_count,
+        )
+
+    def delete_knowledge_base(self, name: str) -> bool:
+        """Deletes a Knowledge Base safely by name."""
+        return self.vector_store.delete_knowledge_base(name)
+
+
 # Global singleton
 kb_worker_manager = KnowledgeBaseWorkerManager()

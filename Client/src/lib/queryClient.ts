@@ -49,5 +49,11 @@ export const QUERY_KEYS = {
     all: ["vault", "engine"] as const,
     workers: ["vault", "engine", "workers"] as const,
   },
+  memory: {
+    all: ["memory"] as const,
+    status: ["memory", "status"] as const,
+    knowledgeBases: (filters?: unknown, page?: number, limit?: number) =>
+      ["memory", "knowledgeBases", { ...((filters as Record<string, unknown>) || {}), page, limit }] as const,
+  },
 } as const;
 

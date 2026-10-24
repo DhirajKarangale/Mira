@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import math
 import os
 import re
+import shutil
 import sys
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -18,8 +21,46 @@ from .config import get_knowledge_base_dir
 
 KB_NAME_PATTERN = re.compile(r"^kb-(\d{2})_(\d{2})_(\d{4})-(\d{2})_(\d{2})_(\d{4})$")
 
+def parse_query_date(d_str: Optional[str]) -> Optional[datetime]:
+    """Parses various date string formats into a datetime object for filtering."""
+    if not d_str:
+        return None
+    s = str(d_str).strip()
+    for fmt in (
+        "%Y-%m-%d",
+        "%d_%m_%Y",
+        "%d-%m-%Y",
+        "%d/%m/%Y",
+        "%Y/%m/%d",
+        "%Y-%m-%dT%H:%M:%S",
+    ):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            pass
+    try:
+        # Check numeric Unix timestamp
+        ts = float(s)
+        return datetime.fromtimestamp(ts)
+    except Exception:
+        pass
+    return None
+
+def get_dir_size_bytes(dir_path: Path) -> int:
+    """Calculates total disk storage size of a directory in bytes."""
+    try:
+        total = 0
+        for entry in os.scandir(dir_path):
+            if entry.is_file():
+                total += entry.stat().st_size
+            elif entry.is_dir():
+                total += get_dir_size_bytes(Path(entry.path))
+        return total
+    except Exception:
+        return 0
+
 class KnowledgeBaseStorage:
-    """Manages discovery, selection, and monthly lifecycle of Qdrant Knowledge Bases.
+    """Manages discovery, selection, deletion, and monthly lifecycle of Qdrant Knowledge Bases.
 
     - Stores Qdrant Knowledge Bases directly under vault/system/knowledge_base/.
     - Checks and validates names using format: kb-DD_MM_YYYY-DD_MM_YYYY.
@@ -27,6 +68,8 @@ class KnowledgeBaseStorage:
     - If none exists for the current month, creates a new one: kb-currentdate-currentdate.
     - Keeps the start date constant after creation.
     - Updates the end date to the current date only when new data is successfully ingested.
+    - Provides paginated listing with date-based filtering and metadata.
+    - Safely removes Knowledge Base directories upon deletion.
     """
 
     def __init__(self, base_dir: Optional[Path] = None) -> None:
@@ -89,9 +132,157 @@ class KnowledgeBaseStorage:
                         parsed["path"] = str(item.resolve())
                         results.append(parsed)
 
-            # Sort primarily by start_datetime, then end_datetime descending
-            results.sort(key=lambda x: (x["start_datetime"], x["end_datetime"]), reverse=True)
+            # Sort by end_datetime descending, then start_datetime descending (newest first)
+            results.sort(key=lambda x: (x["end_datetime"], x["start_datetime"]), reverse=True)
             return results
+
+    def get_knowledge_bases_paginated(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        search: Optional[str] = None,
+        page: int = 1,
+        limit: int = 10,
+        get_point_count_cb: Optional[Callable[[Path], int]] = None,
+    ) -> Dict[str, Any]:
+        """Lists Knowledge Bases with date-based filtering and pagination metadata."""
+        with self._lock:
+            all_kbs = self.list_knowledge_bases()
+            active_name = self._active_kb_name or (self.get_active_kb_name() if all_kbs else "")
+
+            q_start = parse_query_date(start_date)
+            q_end = parse_query_date(end_date)
+            q_search = str(search).strip().lower() if search else None
+
+            filtered_kbs: List[Dict[str, Any]] = []
+            for kb in all_kbs:
+                kb_start: datetime = kb["start_datetime"]
+                kb_end: datetime = kb["end_datetime"]
+
+                # Date-based filtering
+                if q_start and q_end:
+                    # Overlap condition: KB was active during [q_start, q_end]
+                    if kb_end < q_start or kb_start > q_end:
+                        continue
+                elif q_start:
+                    if kb_end < q_start:
+                        continue
+                elif q_end:
+                    if kb_start > q_end:
+                        continue
+
+                # Search filtering
+                if q_search:
+                    name_match = q_search in kb["name"].lower()
+                    date_match = q_search in kb["start_date"] or q_search in kb["end_date"]
+                    if not (name_match or date_match):
+                        continue
+
+                kb_path = Path(kb["path"])
+                days_coverage = max(1, (kb_end - kb_start).days + 1)
+                is_active = (kb["name"] == active_name)
+
+                # Point count via callback if provided
+                points_count = 0
+                if get_point_count_cb:
+                    try:
+                        points_count = get_point_count_cb(kb_path)
+                    except Exception:
+                        points_count = 0
+
+                size_bytes = get_dir_size_bytes(kb_path)
+
+                filtered_kbs.append({
+                    "name": kb["name"],
+                    "start_date": kb["start_date"],
+                    "end_date": kb["end_date"],
+                    "start_date_formatted": kb_start.strftime("%Y-%m-%d"),
+                    "end_date_formatted": kb_end.strftime("%Y-%m-%d"),
+                    "days_coverage": days_coverage,
+                    "is_current_month": kb["is_current_month"],
+                    "is_active": is_active,
+                    "points_count": points_count,
+                    "size_bytes": size_bytes,
+                    "path": kb["path"],
+                })
+
+            total = len(filtered_kbs)
+            page_num = max(1, int(page))
+            limit_num = max(1, min(int(limit), 100))
+            total_pages = max(1, math.ceil(total / limit_num)) if total > 0 else 1
+
+            start_idx = (page_num - 1) * limit_num
+            end_idx = start_idx + limit_num
+            page_items = filtered_kbs[start_idx:end_idx]
+
+            return {
+                "status": "success",
+                "total": total,
+                "page": page_num,
+                "limit": limit_num,
+                "total_pages": total_pages,
+                "knowledge_bases": page_items,
+            }
+
+    def delete_knowledge_base(
+        self,
+        name: str,
+        before_delete_cb: Optional[Callable[[], None]] = None,
+        after_delete_cb: Optional[Callable[[], None]] = None,
+    ) -> bool:
+        """Deletes a specific Knowledge Base directory safely by its name."""
+        with self._lock:
+            clean_name = str(name or "").strip()
+            if not clean_name or not KB_NAME_PATTERN.match(clean_name):
+                raise ValueError(
+                    f"Invalid Knowledge Base name format: '{clean_name}'. Must match 'kb-DD_MM_YYYY-DD_MM_YYYY'."
+                )
+
+            target_dir = self.base_dir / clean_name
+            if not target_dir.exists() or not target_dir.is_dir():
+                raise FileNotFoundError(f"Knowledge Base '{clean_name}' does not exist.")
+
+            is_active = False
+            if self._active_kb_path:
+                try:
+                    is_active = (self._active_kb_path.resolve() == target_dir.resolve())
+                except Exception:
+                    is_active = (self._active_kb_name == clean_name)
+
+            if before_delete_cb:
+                try:
+                    before_delete_cb()
+                except Exception as e:
+                    log_error(f"[KnowledgeBaseStorage] Callback before delete failed: {e}")
+
+            if is_active:
+                self._active_kb_path = None
+                self._active_kb_name = None
+                self._start_date_str = None
+                self._end_date_str = None
+
+            # Retry deletion up to 5 times for Windows file locks
+            deleted = False
+            for attempt in range(5):
+                try:
+                    shutil.rmtree(target_dir)
+                    deleted = True
+                    break
+                except (PermissionError, OSError):
+                    time.sleep(0.15)
+
+            if not deleted:
+                shutil.rmtree(target_dir)
+
+            log(f"[KnowledgeBaseStorage] Successfully deleted Knowledge Base: '{clean_name}'")
+
+            if after_delete_cb:
+                try:
+                    after_delete_cb()
+                except Exception as e:
+                    log_error(f"[KnowledgeBaseStorage] Callback after delete failed: {e}")
+
+            return True
 
     def get_active_knowledge_base(self) -> Path:
         """Selects and reuses the Knowledge Base for the current month, or creates a new one."""
@@ -148,11 +339,7 @@ class KnowledgeBaseStorage:
         before_rename_cb: Optional[Callable[[], None]] = None,
         after_rename_cb: Optional[Callable[[Path], None]] = None,
     ) -> Path:
-        """Updates the end date of the active Knowledge Base to the current date upon successful data ingestion.
-
-        - Keeps the start date constant after creation.
-        - Updates the end date to the current date only when new data is successfully ingested.
-        """
+        """Updates the end date of the active Knowledge Base to the current date upon successful data ingestion."""
         with self._lock:
             active_path = self.get_active_knowledge_base()
             parsed = self.parse_kb_name(active_path.name)
@@ -163,14 +350,12 @@ class KnowledgeBaseStorage:
             old_end_date_str = parsed["end_date"]
             today_str = datetime.now().strftime("%d_%m_%Y")
 
-            # If end date is already the current date, no rename is required
             if old_end_date_str == today_str:
                 return active_path
 
             new_kb_name = f"kb-{start_date_str}-{today_str}"
             new_kb_path = self.base_dir / new_kb_name
 
-            # If the destination directory already exists (edge case), just point to it
             if new_kb_path.exists() and new_kb_path != active_path:
                 if before_rename_cb:
                     before_rename_cb()
@@ -183,7 +368,6 @@ class KnowledgeBaseStorage:
                 log(f"[KnowledgeBaseStorage] Switched active KB to existing target path: {new_kb_name}")
                 return new_kb_path
 
-            # Close vector store connection before directory rename on Windows
             if before_rename_cb:
                 try:
                     before_rename_cb()
@@ -199,7 +383,6 @@ class KnowledgeBaseStorage:
                 log(f"[KnowledgeBaseStorage] Updated Knowledge Base end date: '{parsed['name']}' -> '{new_kb_name}'")
             except Exception as e:
                 log_error(f"[KnowledgeBaseStorage] Failed to rename '{active_path}' to '{new_kb_path}': {e}")
-                # Keep active path as is if rename failed
                 return active_path
             finally:
                 if after_rename_cb:

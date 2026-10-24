@@ -1,4 +1,4 @@
-import { useState, useMemo, type FC } from "react";
+import { useMemo, type FC } from "react";
 import {
   useOperatorConfigQuery,
   useOperatorStatusQuery,
@@ -7,17 +7,9 @@ import {
 } from "../queries";
 import { CaptureStatusHeader } from "./components/CaptureStatusHeader";
 import { CaptureIntervalCard } from "./components/CaptureIntervalCard";
-import { StoredDateRangeCard } from "./components/StoredDateRangeCard";
-import { DeleteConfirmModal } from "./components/DeleteConfirmModal";
-import type { CaptureStatus, StoredDataRange } from "../types";
+import { KnowledgeBaseManagerCard } from "./components/KnowledgeBaseManagerCard";
+import type { CaptureStatus } from "../types";
 import { toast } from "@/components";
-
-const INITIAL_DEMO_RANGE: StoredDataRange = {
-  startDate: "2026-10-14",
-  endDate: "2026-10-20",
-  totalDays: 7,
-  hasData: true,
-};
 
 export const CaptureConfigurationsPage: FC = () => {
   const { data: vaultConfig } = useOperatorConfigQuery();
@@ -47,10 +39,6 @@ export const CaptureConfigurationsPage: FC = () => {
 
   const autoStart = Boolean(vaultConfig?.AUTO_START);
   const autoStartLoading = updateConfigMutation.isPending;
-
-  const [storedRange, setStoredRange] = useState<StoredDataRange>(INITIAL_DEMO_RANGE);
-  const [deletedSuccess, setDeletedSuccess] = useState<boolean>(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const handleToggleStatus = async () => {
     if (toggleCaptureMutation.isPending) return;
@@ -96,19 +84,6 @@ export const CaptureConfigurationsPage: FC = () => {
     }
   };
 
-  const handleExecuteDelete = () => {
-    setStoredRange({
-      startDate: "",
-      endDate: "",
-      totalDays: 0,
-      hasData: false,
-    });
-    setDeletedSuccess(true);
-    toast.success("All stored screen capture data has been permanently cleared.", {
-      title: "Data Cleared",
-    });
-  };
-
   return (
     <div
       id="subpage-capture-configurations"
@@ -132,11 +107,8 @@ export const CaptureConfigurationsPage: FC = () => {
           isCapturing={status === "Started"}
         />
 
-        <StoredDateRangeCard
-          dataRange={storedRange}
-          onRequestDeleteAll={() => setShowDeleteConfirm(true)}
-          deletedSuccess={deletedSuccess}
-        />
+        {/* Real Knowledge Base Management: List, Date Filter, Pagination, Total Count, Delete */}
+        <KnowledgeBaseManagerCard />
 
         <div className="pt-4 pb-6 text-center text-xs text-zinc-500 font-mono flex items-center justify-center gap-2 flex-wrap">
           <span>Operator Engine</span>
@@ -148,13 +120,6 @@ export const CaptureConfigurationsPage: FC = () => {
           <span>Status: {status}</span>
         </div>
       </div>
-
-      <DeleteConfirmModal
-        isOpen={showDeleteConfirm}
-        totalDays={storedRange.totalDays}
-        onExecuteDelete={handleExecuteDelete}
-        onClose={() => setShowDeleteConfirm(false)}
-      />
     </div>
   );
 };

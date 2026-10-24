@@ -1,0 +1,196 @@
+import { useState, useEffect, type FC } from "react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+interface KnowledgeBasePaginationProps {
+  page: number;
+  total: number;
+  limit: number;
+  onPageChange: (newPage: number) => void;
+  loading?: boolean;
+}
+
+export const KnowledgeBasePagination: FC<KnowledgeBasePaginationProps> = ({
+  page,
+  total,
+  limit,
+  onPageChange,
+  loading = false,
+}) => {
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const startItem = total === 0 ? 0 : (page - 1) * limit + 1;
+  const endItem = Math.min(page * limit, total);
+
+  const canPrev = page > 1;
+  const canNext = page < totalPages;
+
+  const [pageInput, setPageInput] = useState<string>(String(page));
+
+  useEffect(() => {
+    setPageInput(String(page));
+  }, [page]);
+
+  const handleInputChange = (val: string) => {
+    const cleaned = val.replace(/[^0-9]/g, "");
+    setPageInput(cleaned);
+    if (cleaned !== "") {
+      const num = parseInt(cleaned, 10);
+      if (num >= 1) {
+        const clamped = Math.min(totalPages, num);
+        onPageChange(clamped);
+      }
+    }
+  };
+
+  const handleInputBlur = () => {
+    if (!pageInput || pageInput.trim() === "") {
+      setPageInput(String(page));
+      return;
+    }
+    const num = parseInt(pageInput, 10);
+    const clamped = Math.min(totalPages, Math.max(1, isNaN(num) ? 1 : num));
+    setPageInput(String(clamped));
+    if (clamped !== page) {
+      onPageChange(clamped);
+    }
+  };
+
+  const getPageNumbers = () => {
+    const pages: number[] = [];
+    const maxButtons = 5;
+    if (totalPages <= maxButtons) {
+      for (let p = 1; p <= totalPages; p++) {
+        pages.push(p);
+      }
+      return pages;
+    }
+
+    let start = Math.max(1, page - Math.floor(maxButtons / 2));
+    let end = start + maxButtons - 1;
+    if (end > totalPages) {
+      end = totalPages;
+      start = Math.max(1, end - maxButtons + 1);
+    }
+
+    for (let p = start; p <= end; p++) {
+      pages.push(p);
+    }
+    return pages;
+  };
+
+  const pageNumbers = getPageNumbers();
+
+  return (
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-zinc-950/80 border-t border-white/[0.08] backdrop-blur-md text-xs text-zinc-400 select-none">
+      <div className="flex items-center gap-1.5 font-mono text-[11px] flex-wrap">
+        <span>Showing</span>
+        <span className="font-semibold text-zinc-200">
+          {startItem}-{endItem}
+        </span>
+        <span>of</span>
+        <span className="font-semibold text-zinc-200">{total}</span>
+        <span>Knowledge Bases</span>
+        <span className="text-zinc-600 mx-0.5">•</span>
+
+        <span>Page</span>
+        <input
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          id="input-kb-page-jump"
+          value={pageInput}
+          onChange={(e) => handleInputChange(e.target.value)}
+          onBlur={handleInputBlur}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              handleInputBlur();
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+          disabled={loading || totalPages <= 1}
+          className="w-9 h-6 px-1 text-center font-mono font-bold text-cyan-300 bg-zinc-900 border border-white/10 rounded focus:outline-none focus:border-cyan-500/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition-colors"
+          title="Type to jump directly to page"
+        />
+        <span>of</span>
+        <span className="font-semibold text-zinc-200">{totalPages}</span>
+      </div>
+
+      <div className="flex items-center gap-1">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(1)}
+          disabled={!canPrev || loading}
+          title="First page"
+          className="h-7 w-7 p-0 text-xs cursor-pointer disabled:cursor-not-allowed"
+        >
+          <ChevronsLeft className="w-3.5 h-3.5" />
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(page - 1)}
+          disabled={!canPrev || loading}
+          title="Previous page"
+          className="h-7 px-2 text-xs gap-1 cursor-pointer disabled:cursor-not-allowed"
+        >
+          <ChevronLeft className="w-3.5 h-3.5" />
+          <span className="hidden xs:inline">Prev</span>
+        </Button>
+
+        <div className="flex items-center gap-1 mx-1">
+          {pageNumbers.map((p) => {
+            const isCurrent = p === page;
+            return (
+              <button
+                key={p}
+                type="button"
+                onClick={() => onPageChange(p)}
+                disabled={loading}
+                className={cn(
+                  "h-7 min-w-[28px] px-1.5 rounded text-xs font-mono font-medium transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50",
+                  isCurrent
+                    ? "bg-cyan-600 text-white font-bold shadow-[0_0_8px_rgba(6,182,212,0.3)]"
+                    : "bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-white border border-white/5"
+                )}
+              >
+                {p}
+              </button>
+            );
+          })}
+        </div>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(page + 1)}
+          disabled={!canNext || loading}
+          title="Next page"
+          className="h-7 px-2 text-xs gap-1 cursor-pointer disabled:cursor-not-allowed"
+        >
+          <span className="hidden xs:inline">Next</span>
+          <ChevronRight className="w-3.5 h-3.5" />
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(totalPages)}
+          disabled={!canNext || loading}
+          title="Last page"
+          className="h-7 w-7 p-0 text-xs cursor-pointer disabled:cursor-not-allowed"
+        >
+          <ChevronsRight className="w-3.5 h-3.5" />
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+export default KnowledgeBasePagination;

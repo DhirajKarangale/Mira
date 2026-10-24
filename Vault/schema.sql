@@ -35,12 +35,12 @@ CREATE TABLE IF NOT EXISTS operator (
 
 CREATE TABLE IF NOT EXISTS user_details (
     id INTEGER PRIMARY KEY,
-    user_name TEXT DEFAULT 'Dhiraj',
-    email TEXT DEFAULT 'dakarangale02@gmail.com',
-    phone_number TEXT DEFAULT '+91 7620320595',
-    city TEXT DEFAULT 'Pune',
-    state TEXT DEFAULT 'Maharashtra',
-    country TEXT DEFAULT 'India'
+    user_name TEXT DEFAULT '',
+    email TEXT DEFAULT '',
+    phone_number TEXT DEFAULT '',
+    city TEXT DEFAULT '',
+    state TEXT DEFAULT '',
+    country TEXT DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS app_permissions (

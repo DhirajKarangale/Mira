@@ -41,6 +41,43 @@ export interface ProcessJobResponse {
   success: boolean;
 }
 
+export interface KnowledgeBaseItem {
+  name: string;
+  start_date: string;
+  end_date: string;
+  start_date_formatted: string;
+  end_date_formatted: string;
+  days_coverage: number;
+  is_current_month: boolean;
+  is_active?: boolean;
+  points_count?: number;
+  size_bytes?: number;
+  path?: string;
+}
+
+export interface KnowledgeBaseListResponse {
+  status: string;
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
+  knowledge_bases: KnowledgeBaseItem[];
+}
+
+export interface KnowledgeBaseListParams {
+  start_date?: string;
+  end_date?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface DeleteKnowledgeBaseResponse {
+  status: string;
+  message: string;
+  name: string;
+}
+
 export const memoryService = {
   async getHealth(): Promise<MemoryHealth> {
     const response = await memoryApi.get<MemoryHealth>("/health");
@@ -73,4 +110,24 @@ export const memoryService = {
     const response = await memoryApi.post<ProcessJobResponse>("/process-job", job);
     return response.data;
   },
+
+  async getKnowledgeBases(
+    params?: KnowledgeBaseListParams
+  ): Promise<KnowledgeBaseListResponse> {
+    const response = await memoryApi.get<KnowledgeBaseListResponse>(
+      "/knowledge-base",
+      { params }
+    );
+    return response.data;
+  },
+
+  async deleteKnowledgeBase(
+    name: string
+  ): Promise<DeleteKnowledgeBaseResponse> {
+    const response = await memoryApi.delete<DeleteKnowledgeBaseResponse>(
+      `/knowledge-base/${encodeURIComponent(name)}`
+    );
+    return response.data;
+  },
 };
+

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { vaultService, operatorService } from "@/services";
+import { vaultService, operatorService, memoryService } from "@/services";
+import type { KnowledgeBaseListParams, KnowledgeBaseListResponse } from "@/services/memory.service";
 import { QUERY_KEYS } from "@/lib/queryClient";
 import type {
   OperatorConfigResponse,
@@ -132,3 +133,24 @@ export function useUpdateAppPermissionMutation() {
     },
   });
 }
+
+export function useKnowledgeBasesQuery(params?: KnowledgeBaseListParams) {
+  return useQuery<KnowledgeBaseListResponse>({
+    queryKey: QUERY_KEYS.memory.knowledgeBases(params, params?.page, params?.limit),
+    queryFn: () => memoryService.getKnowledgeBases(params),
+    staleTime: 30 * 1000,
+    refetchOnMount: true,
+  });
+}
+
+export function useDeleteKnowledgeBaseMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (name: string) => memoryService.deleteKnowledgeBase(name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.memory.all });
+    },
+  });
+}
+
