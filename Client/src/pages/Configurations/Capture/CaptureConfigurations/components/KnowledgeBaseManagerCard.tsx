@@ -465,22 +465,16 @@ export const KnowledgeBaseManagerCard: FC = () => {
                 {/* Capture Dates Timeline Banner */}
                 <div className="mt-3.5 grid grid-cols-1 md:grid-cols-3 gap-3 items-center text-xs">
                   {/* Start Date */}
-                  <div className="p-3 rounded-xl bg-zinc-900/80 border border-white/[0.04] space-y-0.5">
+                  <div className="p-3 rounded-xl bg-zinc-900/80 border border-white/[0.04] space-y-1">
                     <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 block">
                       Capture Start Date
                     </span>
                     <div className="flex items-center gap-2">
                       <Calendar className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                      <span className="font-mono font-bold text-white">
-                        {kb.start_date_formatted || kb.start_date}
-                      </span>
-                      <span className="text-zinc-500 text-[11px] font-mono">
-                        ({kb.start_date})
+                      <span className="font-mono font-bold text-white text-xs sm:text-sm">
+                        {formatReadableDate(kb.start_date_formatted || kb.start_date)}
                       </span>
                     </div>
-                    <p className="text-[11px] text-cyan-300/80 font-medium pt-0.5">
-                      {formatReadableDate(kb.start_date_formatted || kb.start_date)}
-                    </p>
                   </div>
 
                   {/* Range Connector */}
@@ -495,22 +489,16 @@ export const KnowledgeBaseManagerCard: FC = () => {
                   </div>
 
                   {/* End Date */}
-                  <div className="p-3 rounded-xl bg-zinc-900/80 border border-white/[0.04] space-y-0.5 md:text-right">
+                  <div className="p-3 rounded-xl bg-zinc-900/80 border border-white/[0.04] space-y-1 md:text-right">
                     <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 block">
                       Capture End Date
                     </span>
                     <div className="flex items-center md:justify-end gap-2">
                       <Calendar className="w-3.5 h-3.5 text-cyan-400 shrink-0 md:order-last" />
-                      <span className="font-mono font-bold text-white">
-                        {kb.end_date_formatted || kb.end_date}
-                      </span>
-                      <span className="text-zinc-500 text-[11px] font-mono">
-                        ({kb.end_date})
+                      <span className="font-mono font-bold text-white text-xs sm:text-sm">
+                        {formatReadableDate(kb.end_date_formatted || kb.end_date)}
                       </span>
                     </div>
-                    <p className="text-[11px] text-cyan-300/80 font-medium pt-0.5">
-                      {formatReadableDate(kb.end_date_formatted || kb.end_date)}
-                    </p>
                   </div>
                 </div>
               </div>
