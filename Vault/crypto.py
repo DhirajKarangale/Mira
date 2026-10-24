@@ -9,9 +9,20 @@ from typing import Optional
 import keyring
 import nacl.bindings as nb
 
-import config
+from pathlib import Path
+try:
+    from Vault import config
+    if not hasattr(config, "KEYRING_SERVICE_NAME"):
+        raise AttributeError("Loaded wrong config module")
+except (ImportError, AttributeError):
+    import importlib.util
+    _vault_config_path = Path(__file__).resolve().parent / "config.py"
+    _spec = importlib.util.spec_from_file_location("vault_config", _vault_config_path)
+    config = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(config)
 
 logger = logging.getLogger("mira.vault.crypto")
+
 
 _CREDENTIAL_KEY: Optional[str] = None
 _DERIVED_KEY: Optional[bytes] = None
@@ -96,3 +107,26 @@ def decrypt_log_data(encrypted_data: bytes, key: Optional[bytes] = None) -> byte
     nonce = encrypted_data[:nonce_len]
     ciphertext = encrypted_data[nonce_len:]
     return nb.crypto_aead_xchacha20poly1305_ietf_decrypt(ciphertext, None, nonce, key)
+
+def encrypt_text(data: str, key: Optional[bytes] = None) -> str:
+    """Encrypts plaintext string into base64 ciphertext using internal Vault key."""
+    import base64
+    raw_bytes = data.encode("utf-8")
+    enc_bytes = encrypt_log_data(raw_bytes, key=key)
+    return base64.b64encode(enc_bytes).decode("ascii")
+
+def decrypt_text(ciphertext_b64: str, key: Optional[bytes] = None) -> str:
+    """Decrypts base64 ciphertext string into plaintext using internal Vault key."""
+    import base64
+    enc_bytes = base64.b64decode(ciphertext_b64.encode("ascii"))
+    dec_bytes = decrypt_log_data(enc_bytes, key=key)
+    return dec_bytes.decode("utf-8")
+
+def encrypt_batch(items: list[str], key: Optional[bytes] = None) -> list[str]:
+    """Encrypts a list of plaintext strings into base64 ciphertexts."""
+    return [encrypt_text(item, key=key) for item in items]
+
+def decrypt_batch(ciphertexts: list[str], key: Optional[bytes] = None) -> list[str]:
+    """Decrypts a list of base64 ciphertexts into plaintext strings."""
+    return [decrypt_text(ct, key=key) for ct in ciphertexts]
+

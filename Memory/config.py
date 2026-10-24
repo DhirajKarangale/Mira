@@ -69,6 +69,8 @@ def fetch_worker_config(vault_base_url: Optional[str] = None) -> Dict[str, Any]:
     default_config = {
         "screenshot_extraction_workers": 1,
         "screenshot_extraction_poll_time": 5.0,
+        "embedding_vector_store_workers": 1,
+        "embedding_vector_store_workers_poll_time": 1.0,
     }
     if not vault_url:
         return default_config
@@ -83,13 +85,67 @@ def fetch_worker_config(vault_base_url: Optional[str] = None) -> Dict[str, Any]:
             resp = requests.get(ep, timeout=3.0)
             if resp.status_code == 200:
                 data = resp.json()
-                workers = int(data.get("screenshot_extraction_workers") or default_config["screenshot_extraction_workers"])
-                poll_time = float(data.get("screenshot_extraction_poll_time") or default_config["screenshot_extraction_poll_time"])
+                sc_workers = int(data.get("screenshot_extraction_workers") or default_config["screenshot_extraction_workers"])
+                sc_poll_time = float(data.get("screenshot_extraction_poll_time") or default_config["screenshot_extraction_poll_time"])
+                kb_workers = int(data.get("embedding_vector_store_workers") or default_config["embedding_vector_store_workers"])
+                kb_poll_time = float(
+                    data.get("embedding_vector_store_workers_poll_time")
+                    if data.get("embedding_vector_store_workers_poll_time") is not None
+                    else default_config["embedding_vector_store_workers_poll_time"]
+                )
                 return {
-                    "screenshot_extraction_workers": max(1, min(workers, 50)),
-                    "screenshot_extraction_poll_time": max(0.5, min(poll_time, 1800.0)),
+                    "screenshot_extraction_workers": max(1, min(sc_workers, 50)),
+                    "screenshot_extraction_poll_time": max(0.5, min(sc_poll_time, 1800.0)),
+                    "embedding_vector_store_workers": max(1, min(kb_workers, 50)),
+                    "embedding_vector_store_workers_poll_time": max(0.1, min(kb_poll_time, 1800.0)),
                 }
         except Exception:
             continue
 
     return default_config
+
+def fetch_system_storage_path(vault_base_url: Optional[str] = None) -> Path:
+    """Retrieves the configured system storage path from Vault or local fallback."""
+    vault_url = vault_base_url or VAULT_URL or get_service_url("vault")
+    default_system_path = Path(
+        os.getenv(
+            "MIRA_SYSTEM_DIR",
+            str(Path(__file__).resolve().parent.parent / "Vault" / "system")
+        )
+    )
+
+    if not vault_url:
+        return default_system_path
+
+    endpoints = [
+        f"{vault_url.rstrip('/')}/system/storage",
+        f"{vault_url.rstrip('/')}/config/system",
+        f"{vault_url.rstrip('/')}/config/system_storage",
+    ]
+
+    for ep in endpoints:
+        try:
+            resp = requests.get(ep, timeout=3.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                sys_path = data.get("system_storage_path")
+                if sys_path:
+                    return Path(sys_path)
+        except Exception:
+            continue
+
+    return default_system_path
+
+DEFAULT_KB_BATCH_SIZE: int = int(os.getenv("KB_BATCH_SIZE", "10"))
+CONSUMER_KEY_EMBEDDING_MEMORY: str = "embedding_memory"
+CONSUMER_GROUP_EMBEDDING_MEMORY: str = "CONSUMER_GROUP_EMBEDDING_MEMORY"
+
+_initial_worker_cfg = fetch_worker_config()
+SCREENSHOT_EXTRACTION_WORKERS: int = _initial_worker_cfg.get("screenshot_extraction_workers", 1)
+SCREENSHOT_EXTRACTION_POLL_TIME: float = _initial_worker_cfg.get("screenshot_extraction_poll_time", 5.0)
+EMBEDDING_VECTOR_STORE_WORKERS: int = _initial_worker_cfg.get("embedding_vector_store_workers", 1)
+EMBEDDING_VECTOR_STORE_WORKERS_POLL_TIME: float = _initial_worker_cfg.get("embedding_vector_store_workers_poll_time", 1.0)
+
+SYSTEM_STORAGE_PATH: Path = fetch_system_storage_path()
+KNOWLEDGE_BASE_DIR: Path = SYSTEM_STORAGE_PATH / "knowledge_base"
+

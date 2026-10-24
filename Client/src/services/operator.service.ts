@@ -6,7 +6,7 @@ import type {
   AppPermission,
   RefreshAppsResponse,
   UpdateAppPermissionResponse,
-} from "@/pages/Activity/CapturedData/types";
+} from "@/pages/Configurations/Capture/types";
 
 export interface OperatorIntervalResponse {
   capture_interval_secs: number;

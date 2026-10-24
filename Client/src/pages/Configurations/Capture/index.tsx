@@ -12,11 +12,13 @@ export const CapturedDataPage: FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const isAppsView = location.pathname.includes("/captured-data/apps");
+  const isAppsView =
+    location.pathname.includes("/capture/apps") ||
+    location.pathname.includes("/captured-data/apps");
 
   return (
     <div
-      id="activity-subpage-captured-data"
+      id="activity-subpage-capture"
       className="flex flex-col h-full w-full overflow-hidden select-none bg-zinc-950/40"
     >
       <div className="flex-none px-6 py-4 border-b border-white/[0.06] bg-zinc-950/60 backdrop-blur-md">
@@ -28,7 +30,7 @@ export const CapturedDataPage: FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-bold tracking-tight text-white">
-                  Captured Data
+                  Capture
                 </h1>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20">
                   Operator
@@ -44,7 +46,7 @@ export const CapturedDataPage: FC = () => {
             <button
               type="button"
               id="tab-btn-capture-configurations"
-              onClick={() => navigate("/activity/captured-data/configurations")}
+              onClick={() => navigate("/configurations/capture/data")}
               className={cn(
                 "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
                 !isAppsView
@@ -59,7 +61,7 @@ export const CapturedDataPage: FC = () => {
             <button
               type="button"
               id="tab-btn-capture-apps-configurations"
-              onClick={() => navigate("/activity/captured-data/apps")}
+              onClick={() => navigate("/configurations/capture/apps")}
               className={cn(
                 "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
                 isAppsView
@@ -79,10 +81,11 @@ export const CapturedDataPage: FC = () => {
         className="flex-1 relative h-full w-full overflow-hidden"
       >
         <Routes>
-          <Route path="/" element={<Navigate to="configurations" replace />} />
-          <Route path="configurations" element={<CaptureConfigurationsPage />} />
+          <Route path="/" element={<Navigate to="data" replace />} />
+          <Route path="data" element={<CaptureConfigurationsPage />} />
+          <Route path="configurations" element={<Navigate to="data" replace />} />
           <Route path="apps" element={<CaptureAppsConfigurationsPage />} />
-          <Route path="*" element={<Navigate to="configurations" replace />} />
+          <Route path="*" element={<Navigate to="data" replace />} />
         </Routes>
       </div>
     </div>

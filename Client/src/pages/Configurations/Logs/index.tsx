@@ -128,7 +128,7 @@ export const LogsPage: FC = () => {
             <button
               type="button"
               id="tab-btn-logs-viewer"
-              onClick={() => navigate("/activity/logs")}
+              onClick={() => navigate("/configurations/logs")}
               className={cn(
                 "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
                 !isConfigView
@@ -148,7 +148,7 @@ export const LogsPage: FC = () => {
             <button
               type="button"
               id="tab-btn-logs-config"
-              onClick={() => navigate("/activity/logs/config")}
+              onClick={() => navigate("/configurations/logs/config")}
               className={cn(
                 "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
                 isConfigView

@@ -65,7 +65,7 @@ export const RedisPage: FC = () => {
           <div className="flex items-center p-1 rounded-xl bg-zinc-900/80 border border-white/[0.08] self-start sm:self-auto shadow-inner">
             <button
               type="button"
-              onClick={() => navigate("/activity/redis")}
+              onClick={() => navigate("/configurations/redis")}
               className={cn(
                 "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
                 !isConfigView
@@ -79,7 +79,7 @@ export const RedisPage: FC = () => {
 
             <button
               type="button"
-              onClick={() => navigate("/activity/redis/config")}
+              onClick={() => navigate("/configurations/redis/config")}
               className={cn(
                 "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
                 isConfigView
@@ -108,7 +108,7 @@ export const RedisPage: FC = () => {
               }
             />
             <Route path="config" element={<RedisConfigCard />} />
-            <Route path="*" element={<Navigate to="/activity/redis" replace />} />
+            <Route path="*" element={<Navigate to="/configurations/redis" replace />} />
           </Routes>
         </div>
       </div>

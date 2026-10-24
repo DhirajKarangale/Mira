@@ -1,7 +1,5 @@
 export { MiraPage } from "./MiraPage";
 export { ChatsPage } from "./ChatsPage";
 export { UserPage } from "./User";
-export { LlmConfigsPage } from "./LlmConfigsPage";
-export { AiConfigsPage } from "./AiConfigs";
-export { HistoryPage } from "./Activity";
+export { ConfigurationsPage } from "./Configurations";
 export { AboutPage } from "./About";

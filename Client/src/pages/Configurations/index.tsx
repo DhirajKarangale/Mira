@@ -1,0 +1,98 @@
+import type { FC } from "react";
+import {
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+import { Sidebar, type SidebarItem } from "@/components/Sidebar";
+import {
+  Sparkles,
+  Sliders,
+  MonitorPlay,
+  Database,
+  Terminal,
+} from "lucide-react";
+import { AiConfigPage } from "./AiConfig";
+import { WorkersPage } from "./Workers";
+import { CapturedDataPage } from "./Capture";
+import { RedisPage } from "./Redis";
+import { LogsPage } from "./Logs";
+
+export { AiConfigPage } from "./AiConfig";
+export { WorkersPage } from "./Workers";
+
+const CONFIGURATIONS_SIDEBAR_ITEMS: readonly SidebarItem[] = [
+  {
+    key: "capture",
+    name: "Capture",
+    icon: MonitorPlay,
+  },
+  {
+    key: "ai-config",
+    name: "AI Config",
+    icon: Sparkles,
+  },
+  {
+    key: "workers",
+    name: "Workers",
+    icon: Sliders,
+  },
+  {
+    key: "redis",
+    name: "Redis",
+    icon: Database,
+  },
+  {
+    key: "logs",
+    name: "Logs",
+    icon: Terminal,
+  },
+] as const;
+
+export const ConfigurationsPage: FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const segments = location.pathname.split("/").filter(Boolean);
+  const rawSubTab = segments[1] || "capture";
+  const activeSubTab = rawSubTab === "captured-data" ? "capture" : rawSubTab;
+
+  return (
+    <div
+      id="page-configurations-container"
+      className="flex h-full w-full overflow-hidden select-none"
+    >
+      <Sidebar
+        items={CONFIGURATIONS_SIDEBAR_ITEMS}
+        activeKey={activeSubTab}
+        onSelect={(key) => navigate(`/configurations/${key}`)}
+        title="Configurations"
+        defaultCollapsed={false}
+        className="border-r border-white/[0.06] bg-zinc-950/60"
+      />
+
+      <div
+        id="configurations-subpage-viewport"
+        className="flex-1 relative h-full w-full overflow-hidden"
+      >
+        <Routes>
+          <Route path="/" element={<Navigate to="capture" replace />} />
+          <Route path="capture/*" element={<CapturedDataPage />} />
+          <Route
+            path="captured-data/*"
+            element={<Navigate to="/configurations/capture/data" replace />}
+          />
+          <Route path="ai-config/*" element={<AiConfigPage />} />
+          <Route path="workers/*" element={<WorkersPage />} />
+          <Route path="redis/*" element={<RedisPage />} />
+          <Route path="logs/*" element={<LogsPage />} />
+          <Route path="*" element={<Navigate to="capture" replace />} />
+        </Routes>
+      </div>
+    </div>
+  );
+};
+
+export default ConfigurationsPage;

@@ -2,8 +2,7 @@ export type NavTabId =
   | "mira"
   | "chats"
   | "user"
-  | "ai-configs"
-  | "activity"
+  | "configurations"
   | "about";
 
 export interface NavItem {
@@ -21,16 +20,10 @@ export const NAV_ITEMS: readonly NavItem[] = [
     iconName: "MessageSquare",
   },
   {
-    id: "ai-configs",
-    label: "AI Configs",
-    description: "Model parameters, providers, and reasoning settings",
-    iconName: "Cpu",
-  },
-  {
-    id: "activity",
-    label: "Activity",
-    description: "Temporal activity logs, recalled memories, and sessions",
-    iconName: "Activity",
+    id: "configurations",
+    label: "Configurations",
+    description: "System parameters, AI provider credentials, worker concurrency, and telemetry",
+    iconName: "Sliders",
   },
   {
     id: "user",
@@ -45,3 +38,4 @@ export const NAV_ITEMS: readonly NavItem[] = [
     iconName: "Info",
   },
 ] as const;
+

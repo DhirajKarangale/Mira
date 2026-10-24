@@ -178,6 +178,13 @@ def get_configuration(key: str) -> Dict[str, Any]:
         }
     elif normalized_key in ("engine", "engine_workers", "workers"):
         return get_engine_workers()
+    elif normalized_key in ("system", "system_storage", "storage"):
+        return {
+            "system_storage_path": str(config.SYSTEM_DIR.resolve()),
+            "knowledge_base_path": str((config.SYSTEM_DIR / "knowledge_base").resolve()),
+            "logs_path": str(config.LOGS_DIR.resolve()),
+        }
+
 
     if normalized_key in _PARSED_SCHEMA:
         table_name = normalized_key

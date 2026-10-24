@@ -1,13 +1,26 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { Header } from "@/components/layout/Header";
 import {
   MiraPage,
   ChatsPage,
   UserPage,
-  LlmConfigsPage,
-  HistoryPage,
+  ConfigurationsPage,
   AboutPage,
 } from "@/pages";
+
+function ActivityRedirect() {
+  const { "*": rest } = useParams();
+  const normalized = (rest || "").replace(/^captured-data/, "capture");
+  return <Navigate to={`/configurations/${normalized}`} replace />;
+}
+
+function AiConfigsRedirect() {
+  const { "*": rest } = useParams();
+  if (rest === "engine-workers") {
+    return <Navigate to="/configurations/workers" replace />;
+  }
+  return <Navigate to={`/configurations/ai-config/${rest || ""}`} replace />;
+}
 
 export function App() {
   return (
@@ -25,8 +38,11 @@ export function App() {
           <Route path="/mira" element={<MiraPage />} />
           <Route path="/chats" element={<ChatsPage />} />
           <Route path="/user" element={<UserPage />} />
-          <Route path="/ai-configs/*" element={<LlmConfigsPage />} />
-          <Route path="/activity/*" element={<HistoryPage />} />
+          <Route path="/configurations/*" element={<ConfigurationsPage />} />
+          <Route path="/activity" element={<Navigate to="/configurations" replace />} />
+          <Route path="/activity/*" element={<ActivityRedirect />} />
+          <Route path="/ai-configs" element={<Navigate to="/configurations/ai-config" replace />} />
+          <Route path="/ai-configs/*" element={<AiConfigsRedirect />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="*" element={<Navigate to="/mira" replace />} />
         </Routes>

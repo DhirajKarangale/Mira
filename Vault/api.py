@@ -676,3 +676,126 @@ async def update_engine_workers_endpoint(payload: Union[EngineWorkersUpdateReque
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": f"Failed to update engine workers config: {str(e)}"}
         )
+
+class SystemStorageResponse(BaseModel):
+    system_storage_path: str
+    knowledge_base_path: str
+    logs_path: str
+
+@router.get(
+    "/system/storage",
+    response_model=SystemStorageResponse,
+    status_code=status.HTTP_200_OK
+)
+async def get_system_storage_endpoint():
+    try:
+        sys_path = str(config.SYSTEM_DIR.resolve())
+        kb_path = str((config.SYSTEM_DIR / "knowledge_base").resolve())
+        logs_path = str(config.LOGS_DIR.resolve())
+        return {
+            "system_storage_path": sys_path,
+            "knowledge_base_path": kb_path,
+            "logs_path": logs_path,
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to retrieve system storage path: {str(e)}"}
+        )
+
+@router.get(
+    "/config/system",
+    response_model=SystemStorageResponse,
+    status_code=status.HTTP_200_OK
+)
+async def get_config_system_endpoint():
+    return await get_system_storage_endpoint()
+
+class CryptoEncryptRequest(BaseModel):
+    data: str = Field(..., description="Plaintext string to encrypt")
+
+class CryptoEncryptResponse(BaseModel):
+    ciphertext: str = Field(..., description="Encrypted base64 ciphertext")
+
+class CryptoDecryptRequest(BaseModel):
+    ciphertext: str = Field(..., min_length=1, description="Encrypted base64 ciphertext to decrypt")
+
+class CryptoDecryptResponse(BaseModel):
+    data: str = Field(..., description="Decrypted plaintext string")
+
+class CryptoBatchEncryptRequest(BaseModel):
+    items: List[str] = Field(..., description="List of plaintext strings to encrypt")
+
+class CryptoBatchEncryptResponse(BaseModel):
+    ciphertexts: List[str] = Field(..., description="List of encrypted base64 ciphertexts")
+
+class CryptoBatchDecryptRequest(BaseModel):
+    ciphertexts: List[str] = Field(..., description="List of encrypted base64 ciphertexts to decrypt")
+
+class CryptoBatchDecryptResponse(BaseModel):
+    items: List[str] = Field(..., description="List of decrypted plaintext strings")
+
+@router.post(
+    "/crypto/encrypt",
+    response_model=CryptoEncryptResponse,
+    status_code=status.HTTP_200_OK
+)
+async def encrypt_data_endpoint(request: CryptoEncryptRequest):
+    try:
+        import crypto
+        ct = crypto.encrypt_text(request.data)
+        return {"ciphertext": ct}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Encryption failed: {str(e)}"}
+        )
+
+@router.post(
+    "/crypto/decrypt",
+    response_model=CryptoDecryptResponse,
+    status_code=status.HTTP_200_OK
+)
+async def decrypt_data_endpoint(request: CryptoDecryptRequest):
+    try:
+        import crypto
+        pt = crypto.decrypt_text(request.ciphertext)
+        return {"data": pt}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Decryption failed: {str(e)}"}
+        )
+
+@router.post(
+    "/crypto/encrypt-batch",
+    response_model=CryptoBatchEncryptResponse,
+    status_code=status.HTTP_200_OK
+)
+async def encrypt_batch_endpoint(request: CryptoBatchEncryptRequest):
+    try:
+        import crypto
+        ciphertexts = crypto.encrypt_batch(request.items)
+        return {"ciphertexts": ciphertexts}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Batch encryption failed: {str(e)}"}
+        )
+
+@router.post(
+    "/crypto/decrypt-batch",
+    response_model=CryptoBatchDecryptResponse,
+    status_code=status.HTTP_200_OK
+)
+async def decrypt_batch_endpoint(request: CryptoBatchDecryptRequest):
+    try:
+        import crypto
+        items = crypto.decrypt_batch(request.ciphertexts)
+        return {"items": items}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Batch decryption failed: {str(e)}"}
+        )
+

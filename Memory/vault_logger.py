@@ -38,3 +38,7 @@ def log(message: str) -> None:
             file=sys.stderr,
             flush=True
         )
+
+def log_error(message: str) -> None:
+    log(f"ERROR: {message}")
+

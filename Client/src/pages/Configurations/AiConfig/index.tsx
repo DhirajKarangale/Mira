@@ -5,15 +5,13 @@ import {
   Navigate,
   useLocation,
   useNavigate,
-  useParams,
 } from "react-router-dom";
 import {
-  Loader2,
   Cpu,
+  Zap,
   Sparkles,
   RefreshCw,
-  Zap,
-  Sliders,
+  Loader2,
 } from "lucide-react";
 import {
   useAIProvidersQuery,
@@ -21,117 +19,91 @@ import {
   useUpdateAIConfigMutation,
   useAIPrioritiesQuery,
   useUpdateAIPrioritiesMutation,
-  useEngineWorkersQuery,
-  useUpdateEngineWorkersMutation,
 } from "./queries";
 import { ProviderOverviewCard } from "./components/ProviderOverviewCard";
 import { AddApiKeyCard } from "./components/AddApiKeyCard";
 import { ApiKeyList } from "./components/ApiKeyList";
 import { ProviderPriorityCard } from "./components/ProviderPriorityCard";
-import { EngineWorkersCard } from "./components/EngineWorkersCard";
-import { getProviderMeta } from "./types";
-import type { AIConfig, EngineWorkersUpdateRequest } from "@/services";
+import type { AIConfig } from "@/services";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components";
 
-interface ProviderViewProps {
-  providers: string[];
+interface ProviderTabContentProps {
+  provider: string;
+  config: AIConfig | null;
+  orderedProviders: string[];
+  priorities: string[];
   configsMap: Record<string, AIConfig>;
-  isLoading: boolean;
   onScrollToAdd: (provider: string) => void;
   onSetAsActive: (provider: string, index: number) => Promise<void>;
   onUpdateKey: (provider: string, index: number, updatedKeyValue: string) => Promise<void>;
   onRemoveKey: (provider: string, index: number) => Promise<void>;
   onAddKey: (provider: string, newKey: string, makeActive: boolean) => Promise<void>;
+  onSavePriorities: (newOrder: string[]) => Promise<void>;
+  onSelectProvider: (provider: string) => void;
   isUpdating: boolean;
+  isPrioritiesUpdating: boolean;
 }
 
-const ProviderView: FC<ProviderViewProps> = ({
-  providers,
+const ProviderTabContent: FC<ProviderTabContentProps> = ({
+  provider,
+  config,
+  orderedProviders,
+  priorities,
   configsMap,
-  isLoading,
   onScrollToAdd,
   onSetAsActive,
   onUpdateKey,
   onRemoveKey,
   onAddKey,
+  onSavePriorities,
+  onSelectProvider,
   isUpdating,
+  isPrioritiesUpdating,
 }) => {
-  const { provider: paramProvider } = useParams<{ provider: string }>();
-
-  const activeProvider = useMemo(() => {
-    if (!paramProvider) return "";
-    const canonical = providers.find(
-      (p) => p.toLowerCase() === paramProvider.toLowerCase()
-    );
-    return canonical || paramProvider;
-  }, [paramProvider, providers]);
-
-  const activeConfig = activeProvider
-    ? configsMap[activeProvider.toLowerCase()] || null
-    : null;
-  const activeKeys = activeConfig?.keys || [];
-  const currentKeyIndex = activeConfig?.current_key ?? 0;
-
-  if (isLoading && providers.length === 0) {
-    return (
-      <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-16 flex flex-col items-center justify-center gap-3 backdrop-blur-xl">
-        <Loader2 className="w-8 h-8 animate-spin text-cyan-400" />
-        <p className="text-sm text-zinc-400 font-mono">Synchronizing with Vault...</p>
-      </div>
-    );
-  }
-
-  if (
-    !isLoading &&
-    providers.length > 0 &&
-    !providers.some((p) => p.toLowerCase() === paramProvider?.toLowerCase())
-  ) {
-    return <Navigate to="/ai-configs/engine-workers" replace />;
-  }
-
-  if (!activeProvider) {
-    return (
-      <div className="rounded-2xl border border-dashed border-white/10 bg-zinc-900/20 p-12 text-center">
-        <Cpu className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
-        <h3 className="text-sm font-semibold text-zinc-300">No Provider Available</h3>
-        <p className="text-xs text-zinc-500 max-w-sm mx-auto mt-1">
-          No LLM providers were returned from Vault. Please ensure Vault is running.
-        </p>
-      </div>
-    );
-  }
+  const activeKeys = config?.keys || [];
+  const currentKeyIndex = config?.current_key ?? 0;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       <ProviderOverviewCard
-        provider={activeProvider}
-        config={activeConfig}
-        onAddNewKeyClick={() => onScrollToAdd(activeProvider)}
+        provider={provider}
+        config={config}
+        onAddNewKeyClick={() => onScrollToAdd(provider)}
       />
 
       <ApiKeyList
-        provider={activeProvider}
+        provider={provider}
         keys={activeKeys}
         currentKeyIndex={currentKeyIndex}
-        onSetAsActive={(idx) => onSetAsActive(activeProvider, idx)}
-        onUpdateKey={(idx, val) => onUpdateKey(activeProvider, idx, val)}
-        onRemoveKey={(idx) => onRemoveKey(activeProvider, idx)}
-        onAddNewKeyClick={() => onScrollToAdd(activeProvider)}
+        onSetAsActive={(idx) => onSetAsActive(provider, idx)}
+        onUpdateKey={(idx, val) => onUpdateKey(provider, idx, val)}
+        onRemoveKey={(idx) => onRemoveKey(provider, idx)}
+        onAddNewKeyClick={() => onScrollToAdd(provider)}
         disabled={isUpdating}
       />
 
       <AddApiKeyCard
-        provider={activeProvider}
-        onAddKey={(key, makeActive) => onAddKey(activeProvider, key, makeActive)}
+        provider={provider}
+        onAddKey={(key, makeActive) => onAddKey(provider, key, makeActive)}
         existingKeys={activeKeys}
         disabled={isUpdating}
+      />
+
+      <ProviderPriorityCard
+        providers={orderedProviders}
+        priorities={priorities}
+        configsMap={configsMap}
+        onSavePriorities={onSavePriorities}
+        onSelectProvider={onSelectProvider}
+        activeProvider={provider}
+        disabled={isPrioritiesUpdating}
       />
     </div>
   );
 };
 
-export const AiConfigsPage: FC = () => {
+export const AiConfigPage: FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -156,26 +128,20 @@ export const AiConfigsPage: FC = () => {
     isLoading: isConfigsLoading,
     isFetching: isConfigsFetching,
     refetch: refetchConfigs,
+    error: configsError,
   } = useAIConfigsQuery();
-
-  const {
-    data: engineWorkers,
-    isLoading: isEngineLoading,
-    isFetching: isEngineFetching,
-    refetch: refetchEngineWorkers,
-    error: engineError,
-  } = useEngineWorkersQuery();
 
   const updateMutation = useUpdateAIConfigMutation();
   const updatePrioritiesMutation = useUpdateAIPrioritiesMutation();
-  const updateEngineMutation = useUpdateEngineWorkersMutation();
   const lastErrorRef = useRef<string | null>(null);
 
   const pathSegments = location.pathname.split("/").filter(Boolean);
-  const currentSubRoute = (pathSegments[1] || "").toLowerCase();
-  const isEngineTab = currentSubRoute === "engine-workers" || currentSubRoute === "";
+  // URL pattern: /configurations/ai-config/:provider
+  const currentSubTab = (pathSegments[2] || "groq").toLowerCase();
+  const isGroqActive = currentSubTab === "groq";
+  const isGeminiActive = currentSubTab === "gemini";
 
-  const queryError = providersError || prioritiesError || engineError;
+  const queryError = providersError || prioritiesError || configsError;
   const queryErrorMessage = queryError
     ? (queryError as any)?.response?.data?.detail?.message ||
       (queryError as Error)?.message ||
@@ -189,30 +155,6 @@ export const AiConfigsPage: FC = () => {
     }
   }, [queryErrorMessage]);
 
-  const orderedProviders = useMemo(() => {
-    if (!providers || providers.length === 0) return [];
-    if (!priorities || priorities.length === 0) return providers;
-    const canonicalMap = new Map(providers.map((p) => [p.toLowerCase(), p]));
-    const result: string[] = [];
-    const seen = new Set<string>();
-
-    for (const p of priorities) {
-      const lower = p.toLowerCase();
-      if (canonicalMap.has(lower) && !seen.has(lower)) {
-        result.push(canonicalMap.get(lower)!);
-        seen.add(lower);
-      }
-    }
-    for (const p of providers) {
-      const lower = p.toLowerCase();
-      if (!seen.has(lower)) {
-        result.push(p);
-        seen.add(lower);
-      }
-    }
-    return result;
-  }, [providers, priorities]);
-
   const configsMap = useMemo(() => {
     const map: Record<string, AIConfig> = {};
     for (const c of configs) {
@@ -223,13 +165,42 @@ export const AiConfigsPage: FC = () => {
     return map;
   }, [configs]);
 
+  const orderedProviders = useMemo(() => {
+    const baseList = ["groq", "gemini"];
+    const allProviders = Array.from(
+      new Set([...baseList, ...providers.map((p) => p.toLowerCase())])
+    );
+
+    if (!priorities || priorities.length === 0) return allProviders;
+
+    const result: string[] = [];
+    const seen = new Set<string>();
+
+    for (const p of priorities) {
+      const lower = p.toLowerCase();
+      if (allProviders.includes(lower) && !seen.has(lower)) {
+        result.push(lower);
+        seen.add(lower);
+      }
+    }
+
+    for (const p of allProviders) {
+      if (!seen.has(p)) {
+        result.push(p);
+        seen.add(p);
+      }
+    }
+
+    return result;
+  }, [providers, priorities]);
+
   const showFeedback = (
     type: "success" | "error" | "info",
     message: string,
     durationMs = 5000
   ) => {
     if (type === "success") {
-      toast.success(message, { duration: durationMs, title: "AI Configurations" });
+      toast.success(message, { duration: durationMs, title: "AI Configuration" });
     } else if (type === "error") {
       toast.error(message, { duration: durationMs, title: "Configuration Error" });
     } else {
@@ -242,19 +213,13 @@ export const AiConfigsPage: FC = () => {
       refetchProviders(),
       refetchPriorities(),
       refetchConfigs(),
-      refetchEngineWorkers(),
     ]);
-    showFeedback("info", "Synchronized latest Engine workers & AI configurations from Vault.");
+    showFeedback("info", "Synchronized latest AI credentials from Vault.");
   };
 
   const handleSavePriorities = async (newOrder: string[]) => {
     await updatePrioritiesMutation.mutateAsync(newOrder);
     showFeedback("success", "LLM provider priority sequence updated and saved in Vault.");
-  };
-
-  const handleSaveEngineWorkers = async (updates: EngineWorkersUpdateRequest) => {
-    await updateEngineMutation.mutateAsync(updates);
-    showFeedback("success", "Engine worker concurrency updated successfully in Vault.");
   };
 
   const handleAddKey = async (provider: string, newKey: string, makeActive: boolean) => {
@@ -273,9 +238,10 @@ export const AiConfigsPage: FC = () => {
       },
     });
 
+    const displayName = provider.charAt(0).toUpperCase() + provider.slice(1);
     showFeedback(
       "success",
-      `New API key successfully encrypted and stored for ${provider}.`
+      `New API key successfully encrypted and stored for ${displayName}.`
     );
   };
 
@@ -324,7 +290,8 @@ export const AiConfigsPage: FC = () => {
       },
     });
 
-    showFeedback("success", `API key removed from ${provider}.`);
+    const displayName = provider.charAt(0).toUpperCase() + provider.slice(1);
+    showFeedback("success", `API key removed from ${displayName}.`);
   };
 
   const handleSetAsActive = async (provider: string, index: number) => {
@@ -335,9 +302,10 @@ export const AiConfigsPage: FC = () => {
       },
     });
 
+    const displayName = provider.charAt(0).toUpperCase() + provider.slice(1);
     showFeedback(
       "success",
-      `Active key for ${provider} switched to Key #${index + 1}.`
+      `Active key for ${displayName} switched to Key #${index + 1}.`
     );
   };
 
@@ -351,23 +319,21 @@ export const AiConfigsPage: FC = () => {
     }
   };
 
-  const isLoading =
-    isProvidersLoading || isConfigsLoading || isPrioritiesLoading || isEngineLoading;
-  const isFetching =
-    isProvidersFetching || isConfigsFetching || isPrioritiesFetching || isEngineFetching;
+  const isLoading = isProvidersLoading || isConfigsLoading || isPrioritiesLoading;
+  const isFetching = isProvidersFetching || isConfigsFetching || isPrioritiesFetching;
 
-  const getProviderIcon = (providerName: string) => {
-    const lower = providerName.toLowerCase();
-    if (lower === "groq") return Zap;
-    if (lower === "gemini") return Sparkles;
-    return Cpu;
-  };
+  const groqConfig = configsMap["groq"];
+  const groqKeysCount = groqConfig?.keys?.length ?? 0;
+
+  const geminiConfig = configsMap["gemini"];
+  const geminiKeysCount = geminiConfig?.keys?.length ?? 0;
 
   return (
     <div
-      id="ai-configs-container"
+      id="configurations-subpage-ai-config"
       className="flex flex-col h-full w-full overflow-hidden select-none bg-zinc-950/40 text-zinc-100"
     >
+      {/* Top Header Bar following Logs & Redis layout */}
       <div className="flex-none px-6 py-4 border-b border-white/[0.06] bg-zinc-950/60 backdrop-blur-md">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 max-w-7xl mx-auto">
           <div className="flex items-center gap-3.5">
@@ -377,80 +343,72 @@ export const AiConfigsPage: FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-bold tracking-tight text-white">
-                  AI Configs
+                  AI Config
                 </h1>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
                   Vault Engine
                 </span>
               </div>
               <p className="text-xs text-zinc-400 mt-0.5">
-                Encrypted LLM inference API credentials, provider priorities, and Engine worker concurrency
+                Encrypted LLM inference API credentials, provider priorities, and keyring configurations
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Groq and Gemini Sub-Tabs */}
             <div className="flex items-center p-1 rounded-xl bg-zinc-900/80 border border-white/[0.08] self-start sm:self-auto shadow-inner">
               <button
                 type="button"
-                id="tab-btn-engine-workers"
-                onClick={() => navigate("/ai-configs/engine-workers")}
+                id="tab-btn-groq"
+                onClick={() => navigate("/configurations/ai-config/groq")}
                 className={cn(
                   "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
-                  isEngineTab
-                    ? "bg-cyan-600 text-white shadow-sm font-semibold shadow-cyan-950/60"
+                  isGroqActive
+                    ? "bg-amber-600 text-white shadow-sm font-semibold shadow-amber-950/60"
                     : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
                 )}
               >
-                <Sliders className="w-3.5 h-3.5" />
-                <span>Engine Workers</span>
+                <Zap className="w-3.5 h-3.5" />
+                <span>Groq</span>
+                <span
+                  className={cn(
+                    "ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-mono",
+                    isGroqActive
+                      ? "bg-white/20 text-white font-bold"
+                      : "bg-white/[0.06] text-zinc-400"
+                  )}
+                >
+                  {groqKeysCount}
+                </span>
               </button>
 
               <div className="h-4 w-px bg-white/10 mx-1" />
 
-              {orderedProviders.map((p, index) => {
-                const meta = getProviderMeta(p);
-                const isActive = currentSubRoute === p.toLowerCase();
-                const cfg = configsMap[p.toLowerCase()];
-                const count = cfg?.total_keys ?? cfg?.keys?.length ?? 0;
-                const Icon = getProviderIcon(p);
-
-                return (
-                  <button
-                    key={p}
-                    type="button"
-                    id={`tab-btn-provider-${p.toLowerCase()}`}
-                    onClick={() => navigate(`/ai-configs/${p.toLowerCase()}`)}
-                    className={cn(
-                      "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
-                      isActive
-                        ? "bg-cyan-600 text-white shadow-sm font-semibold shadow-cyan-950/60"
-                        : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "text-[10px] font-mono px-1 rounded",
-                        isActive ? "bg-cyan-700 text-cyan-100 font-bold" : "text-zinc-500"
-                      )}
-                    >
-                      #{index + 1}
-                    </span>
-                    <Icon className="w-3.5 h-3.5" />
-                    <span>{meta.name}</span>
-                    <span
-                      className={cn(
-                        "ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-mono",
-                        isActive
-                          ? "bg-white/20 text-white font-bold"
-                          : "bg-white/[0.06] text-zinc-400"
-                      )}
-                    >
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
+              <button
+                type="button"
+                id="tab-btn-gemini"
+                onClick={() => navigate("/configurations/ai-config/gemini")}
+                className={cn(
+                  "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
+                  isGeminiActive
+                    ? "bg-cyan-600 text-white shadow-sm font-semibold shadow-cyan-950/60"
+                    : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
+                )}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Gemini</span>
+                <span
+                  className={cn(
+                    "ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-mono",
+                    isGeminiActive
+                      ? "bg-white/20 text-white font-bold"
+                      : "bg-white/[0.06] text-zinc-400"
+                  )}
+                >
+                  {geminiKeysCount}
+                </span>
+              </button>
             </div>
 
             <button
@@ -469,68 +427,72 @@ export const AiConfigsPage: FC = () => {
         </div>
       </div>
 
+      {/* Main Content Viewport */}
       <div
-        id="ai-configs-subpage-viewport"
+        id="ai-config-subpage-viewport"
         className="flex-1 overflow-y-auto px-6 py-6"
       >
         <div className="max-w-7xl mx-auto space-y-6">
-          {isLoading && orderedProviders.length === 0 && !engineWorkers ? (
+          {isLoading && configs.length === 0 ? (
             <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-16 flex flex-col items-center justify-center gap-3 backdrop-blur-xl">
               <Loader2 className="w-8 h-8 animate-spin text-cyan-400" />
               <p className="text-sm text-zinc-400 font-mono">Synchronizing with Vault...</p>
             </div>
           ) : (
             <Routes>
-              <Route path="/" element={<Navigate to="/ai-configs/engine-workers" replace />} />
+              <Route path="/" element={<Navigate to="groq" replace />} />
               <Route
-                path="engine-workers"
+                path="groq"
                 element={
-                  <div className="space-y-6 animate-in fade-in duration-200">
-                    <EngineWorkersCard
-                      config={engineWorkers}
-                      isLoading={isEngineLoading}
-                      onSave={handleSaveEngineWorkers}
-                      disabled={updateEngineMutation.isPending}
-                    />
-
-                    <ProviderPriorityCard
-                      providers={orderedProviders}
-                      priorities={priorities}
-                      configsMap={configsMap}
-                      onSavePriorities={handleSavePriorities}
-                      onSelectProvider={(p) => navigate(`/ai-configs/${p.toLowerCase()}`)}
-                      activeProvider=""
-                      disabled={updatePrioritiesMutation.isPending}
-                    />
-                  </div>
-                }
-              />
-              <Route
-                path=":provider"
-                element={
-                  <ProviderView
-                    providers={orderedProviders}
+                  <ProviderTabContent
+                    provider="groq"
+                    config={groqConfig}
+                    orderedProviders={orderedProviders}
+                    priorities={priorities}
                     configsMap={configsMap}
-                    isLoading={isLoading}
                     onScrollToAdd={handleScrollToAdd}
                     onSetAsActive={handleSetAsActive}
                     onUpdateKey={handleUpdateKey}
                     onRemoveKey={handleRemoveKey}
                     onAddKey={handleAddKey}
+                    onSavePriorities={handleSavePriorities}
+                    onSelectProvider={(p) => navigate(`/configurations/ai-config/${p.toLowerCase()}`)}
                     isUpdating={updateMutation.isPending}
+                    isPrioritiesUpdating={updatePrioritiesMutation.isPending}
                   />
                 }
               />
-              <Route path="*" element={<Navigate to="/ai-configs/engine-workers" replace />} />
+              <Route
+                path="gemini"
+                element={
+                  <ProviderTabContent
+                    provider="gemini"
+                    config={geminiConfig}
+                    orderedProviders={orderedProviders}
+                    priorities={priorities}
+                    configsMap={configsMap}
+                    onScrollToAdd={handleScrollToAdd}
+                    onSetAsActive={handleSetAsActive}
+                    onUpdateKey={handleUpdateKey}
+                    onRemoveKey={handleRemoveKey}
+                    onAddKey={handleAddKey}
+                    onSavePriorities={handleSavePriorities}
+                    onSelectProvider={(p) => navigate(`/configurations/ai-config/${p.toLowerCase()}`)}
+                    isUpdating={updateMutation.isPending}
+                    isPrioritiesUpdating={updatePrioritiesMutation.isPending}
+                  />
+                }
+              />
+              <Route path="*" element={<Navigate to="groq" replace />} />
             </Routes>
           )}
 
           <div className="pt-4 pb-2 text-center text-xs text-zinc-500 font-mono flex items-center justify-center gap-2">
             <span>MIRA Vault Engine</span>
             <span>•</span>
-            <span>Worker Concurrency Manager</span>
+            <span>AI Keyring Manager</span>
             <span>•</span>
-            <span>Encrypted LLM Keyring</span>
+            <span>Provider Priority Sequence</span>
           </div>
         </div>
       </div>
@@ -538,4 +500,4 @@ export const AiConfigsPage: FC = () => {
   );
 };
 
-export default AiConfigsPage;
+export default AiConfigPage;
