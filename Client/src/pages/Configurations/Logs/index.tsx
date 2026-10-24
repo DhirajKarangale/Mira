@@ -163,8 +163,8 @@ export const LogsPage: FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-6">
-        <div className="max-w-7xl mx-auto h-full flex flex-col">
+      <div className="flex-1 overflow-y-auto px-6 pt-6 pb-5">
+        <div className={cn("max-w-7xl mx-auto flex flex-col", isConfigView ? "min-h-full pb-16" : "h-full")}>
           {isConfigView ? (
             <LogConfigCard onSaved={() => refetch()} />
           ) : (

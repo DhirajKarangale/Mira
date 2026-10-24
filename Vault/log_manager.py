@@ -292,3 +292,86 @@ async def get_logs(
         paged_logs = collected_logs[offset:]
 
     return paged_logs, total_count
+
+async def delete_logs(module_name: Optional[str] = None) -> Dict[str, Any]:
+    init_logs_directory()
+    deleted_count = 0
+    files_modified = 0
+    files_deleted = 0
+
+    target = module_name.strip().lower() if module_name and module_name.strip().lower() != "all" else None
+
+    async with _LOG_LOCK:
+        if not config.LOGS_DIR.exists():
+            return {
+                "status": "success",
+                "message": "No logs found to delete.",
+                "deleted_count": 0,
+                "files_deleted": 0,
+                "files_modified": 0,
+            }
+
+        for item in list(config.LOGS_DIR.iterdir()):
+            if not item.is_file():
+                continue
+            file_date = parse_log_filename(item.name)
+            if file_date is None:
+                continue
+
+            try:
+                logs = read_logs_from_file(item)
+            except Exception as e:
+                logger.error(f"Error reading log file '{item.name}' during deletion: {e}")
+                continue
+
+            if not logs:
+                try:
+                    item.unlink(missing_ok=True)
+                    files_deleted += 1
+                except Exception:
+                    pass
+                continue
+
+            if target is None:
+                deleted_count += len(logs)
+                try:
+                    item.unlink(missing_ok=True)
+                    files_deleted += 1
+                except Exception as e:
+                    logger.error(f"Error deleting log file '{item.name}': {e}")
+            else:
+                initial_count = len(logs)
+                remaining = [
+                    log for log in logs
+                    if str(log.get("module_name", "")).strip().lower() != target
+                ]
+                removed = initial_count - len(remaining)
+                if removed > 0:
+                    deleted_count += removed
+                    if not remaining:
+                        try:
+                            item.unlink(missing_ok=True)
+                            files_deleted += 1
+                        except Exception as e:
+                            logger.error(f"Error removing empty log file '{item.name}': {e}")
+                    else:
+                        files_modified += 1
+                        serialized_json = json.dumps(remaining, indent=2, ensure_ascii=False).encode("utf-8")
+                        encrypted_payload = encrypt_log_data(serialized_json)
+                        temp_filepath = item.with_suffix(".tmp")
+                        temp_filepath.write_bytes(encrypted_payload)
+                        temp_filepath.replace(item)
+
+    msg = (
+        f"Successfully deleted {deleted_count} logs for module '{module_name}'."
+        if target
+        else f"Successfully deleted {deleted_count} total logs across all modules."
+    )
+    logger.info(msg)
+    return {
+        "status": "success",
+        "message": msg,
+        "deleted_count": deleted_count,
+        "files_deleted": files_deleted,
+        "files_modified": files_modified,
+    }

@@ -90,6 +90,23 @@ export const vaultService = {
     return response.data;
   },
 
+  async deleteLogs(
+    moduleName?: string
+  ): Promise<{ status: string; message: string; deleted_count: number }> {
+    const params: Record<string, string> = {};
+    if (moduleName && moduleName.toLowerCase() !== "all") {
+      params.module_name = moduleName;
+    } else if (moduleName) {
+      params.module_name = "all";
+    }
+    const response = await vaultApi.delete<{
+      status: string;
+      message: string;
+      deleted_count: number;
+    }>("/logs", { params });
+    return response.data;
+  },
+
   async getLogs(
     filters: LogFilters,
     page: number = 1,

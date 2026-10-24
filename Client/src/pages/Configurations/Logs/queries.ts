@@ -24,6 +24,17 @@ export function useSaveLogConfigMutation() {
   });
 }
 
+export function useDeleteLogsMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (moduleName?: string) => vaultService.deleteLogs(moduleName),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.logs.all });
+    },
+  });
+}
+
 export function useLogsQuery(filters: LogFilters, page: number = 1, limit: number = 50) {
   const isEnabled = Boolean(filters.startDate && filters.endDate);
 

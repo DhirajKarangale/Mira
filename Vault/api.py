@@ -311,6 +311,29 @@ async def get_logs(
             }
         return []
 
+class LogDeleteResponse(BaseModel):
+    status: str
+    message: str
+    deleted_count: int
+    files_deleted: Optional[int] = 0
+    files_modified: Optional[int] = 0
+
+@router.delete(
+    "/logs",
+    response_model=LogDeleteResponse,
+    status_code=status.HTTP_200_OK
+)
+async def delete_logs_endpoint(module_name: Optional[str] = Query(None)):
+    try:
+        result = await log_manager.delete_logs(module_name=module_name)
+        return result
+    except Exception as e:
+        logger.error(f"Error in delete_logs: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to delete logs: {str(e)}"}
+        )
+
 @router.get(
     "/config/{key}",
     status_code=status.HTTP_200_OK
