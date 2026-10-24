@@ -536,3 +536,139 @@ async def decrypt_batch_endpoint(request: CryptoBatchDecryptRequest):
         return {'items': items}
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Batch decryption failed: {str(e)}'})
+
+# ==============================================================================
+# Chat Vault APIs
+# ==============================================================================
+
+class ChatMessageCreateRequest(BaseModel):
+    id: Optional[str] = None
+    session_id: Optional[str] = None
+    chat_name: Optional[str] = None
+    role: str = Field(..., description="Role ('user' or 'ai')")
+    content: str = Field(..., description="Message text content")
+    created_at: Optional[str] = None
+
+class ChatSessionItem(BaseModel):
+    session_id: str
+    chat_name: Optional[str] = None
+    latest_created_at: str
+    created_at: Optional[str] = None
+    message_count: Optional[int] = 0
+
+class ChatSessionsListResponse(BaseModel):
+    sessions: List[ChatSessionItem]
+    total_pages: int
+    current_page: int
+    total_items: int
+    limit: int
+    next_cursor: Optional[str] = None
+    has_more: bool
+
+class ChatMessageItem(BaseModel):
+    id: str
+    session_id: str
+    chat_name: Optional[str] = None
+    role: str
+    content: str
+    created_at: str
+
+class ChatMessagesListResponse(BaseModel):
+    session_id: str
+    messages: List[ChatMessageItem]
+    total_pages: int
+    current_page: int
+    total_messages: int
+    limit: int
+    next_cursor: Optional[str] = None
+    has_more: bool
+
+@router.get('/chats/sessions', response_model=ChatSessionsListResponse, status_code=status.HTTP_200_OK)
+async def get_vault_chat_sessions(
+    limit: int = Query(10, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    cursor: Optional[str] = Query(None),
+    page: Optional[int] = Query(None, ge=1),
+):
+    try:
+        result = config_storage.get_chat_sessions(
+            limit=limit,
+            offset=offset,
+            cursor=cursor,
+            page=page,
+        )
+        return result
+    except Exception as e:
+        logger.error(f'Failed to get chat sessions: {e}')
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={'message': f'Failed to retrieve chat sessions: {str(e)}'}
+        )
+
+@router.get('/chats/sessions/{session_id}', response_model=ChatMessagesListResponse, status_code=status.HTTP_200_OK)
+@router.get('/chats/{session_id}', response_model=ChatMessagesListResponse, status_code=status.HTTP_200_OK)
+async def get_vault_chats_by_session(
+    session_id: str,
+    limit: int = Query(30, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    cursor: Optional[str] = Query(None),
+    page: Optional[int] = Query(None, ge=1),
+):
+    try:
+        result = config_storage.get_chats_by_session(
+            session_id=session_id,
+            limit=limit,
+            offset=offset,
+            cursor=cursor,
+            page=page,
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Failed to get messages for session '{session_id}': {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={'message': f'Failed to retrieve chat messages: {str(e)}'}
+        )
+
+@router.post('/chats', response_model=ChatMessageItem, status_code=status.HTTP_201_CREATED)
+async def create_vault_chat_message(request: ChatMessageCreateRequest):
+    try:
+        role = request.role.lower().strip()
+        if role not in ('user', 'ai'):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={'message': "Role must be 'user' or 'ai'"}
+            )
+        saved = config_storage.save_chat_message(
+            session_id=request.session_id or "",
+            role=role,
+            content=request.content,
+            chat_name=request.chat_name,
+            message_id=request.id,
+            created_at=request.created_at,
+        )
+        return saved
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={'message': str(e)})
+    except Exception as e:
+        logger.error(f'Failed to save chat message: {e}')
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={'message': f'Failed to store chat message: {str(e)}'}
+        )
+
+@router.delete('/chats/sessions/{session_id}', status_code=status.HTTP_200_OK)
+@router.delete('/chats/{session_id}', status_code=status.HTTP_200_OK)
+async def delete_vault_chat_session(session_id: str):
+    try:
+        config_storage.delete_chat_session(session_id)
+        return {'status': 'success', 'message': f"Chat session '{session_id}' deleted."}
+    except Exception as e:
+        logger.error(f"Failed to delete chat session '{session_id}': {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={'message': f'Failed to delete chat session: {str(e)}'}
+        )
+

@@ -1,8 +1,12 @@
 from __future__ import annotations
+import base64
+from datetime import datetime, timezone
 import json
 import logging
+import math
 import re
 import sqlite3
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 import config
@@ -63,7 +67,7 @@ def init_config_storage(schema_path: Optional[Path]=None, enc_db_path: Optional[
         if not exists:
             logger.info(f"Creating missing configuration table: '{table_name}'")
             _DB_CONN.execute(table_spec['create_sql'])
-            if table_name not in ('app_permissions', 'ai_configs'):
+            if table_name not in ('app_permissions', 'ai_configs', 'chats'):
                 _DB_CONN.execute(f'INSERT INTO {table_name} DEFAULT VALUES')
             _DB_CONN.commit()
         else:
@@ -83,7 +87,7 @@ def init_config_storage(schema_path: Optional[Path]=None, enc_db_path: Optional[
                         _DB_CONN.commit()
                     except Exception as e:
                         logger.error(f"Failed to drop column '{col_name}' from '{table_name}': {e}")
-            if table_name not in ('app_permissions', 'ai_configs'):
+            if table_name not in ('app_permissions', 'ai_configs', 'chats'):
                 count = _DB_CONN.execute(f'SELECT count(*) FROM {table_name}').fetchone()[0]
                 if count == 0:
                     _DB_CONN.execute(f'INSERT INTO {table_name} DEFAULT VALUES')
@@ -103,6 +107,12 @@ def init_config_storage(schema_path: Optional[Path]=None, enc_db_path: Optional[
                 _DB_CONN.execute("DELETE FROM app_permissions WHERE app_id IS NULL OR app_id = ''")
                 _DB_CONN.commit()
     _seed_default_ai_configs()
+    try:
+        _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_chats_session_created ON chats(session_id, created_at)")
+        _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_chats_created ON chats(created_at)")
+        _DB_CONN.commit()
+    except Exception as e:
+        logger.debug(f"Index creation on chats table: {e}")
     save_config_storage(enc_db_path)
 
 def save_config_storage(enc_db_path: Optional[Path]=None) -> None:
@@ -584,3 +594,275 @@ def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
     save_config_storage()
     logger.info(f'Updated engine workers configuration: {new_config}')
     return new_config
+
+def _encode_cursor(data: Dict[str, Any]) -> str:
+    raw = json.dumps(data)
+    return base64.urlsafe_b64encode(raw.encode('utf-8')).decode('utf-8')
+
+def _decode_cursor(cursor_str: Optional[str]) -> Optional[Dict[str, Any]]:
+    if not cursor_str:
+        return None
+    try:
+        raw = base64.urlsafe_b64decode(cursor_str.encode('utf-8')).decode('utf-8')
+        return json.loads(raw)
+    except Exception:
+        return {"created_at": cursor_str}
+
+def save_chat_message(
+    session_id: str,
+    role: str,
+    content: str,
+    chat_name: Optional[str] = None,
+    message_id: Optional[str] = None,
+    created_at: Optional[str] = None,
+) -> Dict[str, Any]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+    if role not in ('user', 'ai'):
+        raise ValueError(f"Invalid role '{role}'. Role must be either 'user' or 'ai'.")
+    if not session_id or not session_id.strip():
+        session_id = str(uuid.uuid4())
+    else:
+        session_id = session_id.strip()
+
+    msg_id = (message_id or str(uuid.uuid4())).strip()
+    if not created_at:
+        created_at = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+
+    clean_chat_name = chat_name.strip() if chat_name and chat_name.strip() else None
+
+    # If chat_name is provided, also backfill/update existing messages for this session
+    if clean_chat_name:
+        _DB_CONN.execute(
+            "UPDATE chats SET chat_name = ? WHERE session_id = ? AND (chat_name IS NULL OR chat_name = '')",
+            (clean_chat_name, session_id)
+        )
+
+    _DB_CONN.execute(
+        """
+        INSERT INTO chats (id, session_id, chat_name, role, content, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (msg_id, session_id, clean_chat_name, role, content, created_at)
+    )
+    _DB_CONN.commit()
+    save_config_storage()
+
+    return {
+        "id": msg_id,
+        "session_id": session_id,
+        "chat_name": clean_chat_name,
+        "role": role,
+        "content": content,
+        "created_at": created_at,
+    }
+
+def get_chat_sessions(
+    limit: int = 10,
+    offset: int = 0,
+    cursor: Optional[str] = None,
+    page: Optional[int] = None,
+) -> Dict[str, Any]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+
+    effective_limit = max(1, min(limit, 100))
+
+    # Total distinct sessions
+    total_row = _DB_CONN.execute("SELECT count(DISTINCT session_id) FROM chats").fetchone()
+    total_items = total_row[0] if total_row else 0
+    total_pages = max(1, math.ceil(total_items / effective_limit))
+
+    cursor_data = _decode_cursor(cursor)
+
+    if cursor_data and "created_at" in cursor_data:
+        cur_ts = cursor_data["created_at"]
+        cur_sid = cursor_data.get("session_id", "")
+        query = """
+            WITH session_summaries AS (
+                SELECT session_id,
+                       COALESCE(MAX(CASE WHEN chat_name IS NOT NULL AND chat_name != '' THEN chat_name ELSE NULL END), session_id) as chat_name,
+                       MAX(created_at) as latest_created_at,
+                       count(*) as message_count
+                FROM chats
+                GROUP BY session_id
+            )
+            SELECT session_id, chat_name, latest_created_at, message_count
+            FROM session_summaries
+            WHERE (latest_created_at < ?) OR (latest_created_at = ? AND session_id < ?)
+            ORDER BY latest_created_at DESC, session_id DESC
+            LIMIT ?
+        """
+        cursor_exec = _DB_CONN.execute(query, (cur_ts, cur_ts, cur_sid, effective_limit))
+        rows = cursor_exec.fetchall()
+
+        if page is not None and page >= 1:
+            current_page = page
+        else:
+            preceding_query = """
+                WITH session_summaries AS (
+                    SELECT session_id, MAX(created_at) as latest_created_at
+                    FROM chats
+                    GROUP BY session_id
+                )
+                SELECT count(*)
+                FROM session_summaries
+                WHERE (latest_created_at > ?) OR (latest_created_at = ? AND session_id >= ?)
+            """
+            preceding_row = _DB_CONN.execute(preceding_query, (cur_ts, cur_ts, cur_sid)).fetchone()
+            preceding_count = preceding_row[0] if preceding_row else 0
+            current_page = (preceding_count // effective_limit) + 1
+    else:
+        effective_page = page if page is not None and page >= 1 else 1
+        calc_offset = offset if offset > 0 else (effective_page - 1) * effective_limit
+        current_page = effective_page
+
+        query = """
+            WITH session_summaries AS (
+                SELECT session_id,
+                       COALESCE(MAX(CASE WHEN chat_name IS NOT NULL AND chat_name != '' THEN chat_name ELSE NULL END), session_id) as chat_name,
+                       MAX(created_at) as latest_created_at,
+                       count(*) as message_count
+                FROM chats
+                GROUP BY session_id
+            )
+            SELECT session_id, chat_name, latest_created_at, message_count
+            FROM session_summaries
+            ORDER BY latest_created_at DESC, session_id DESC
+            LIMIT ? OFFSET ?
+        """
+        cursor_exec = _DB_CONN.execute(query, (effective_limit, calc_offset))
+        rows = cursor_exec.fetchall()
+
+    sessions: List[Dict[str, Any]] = []
+    for r in rows:
+        sessions.append({
+            "session_id": r[0],
+            "chat_name": r[1] or r[0],
+            "latest_created_at": r[2],
+            "created_at": r[2],
+            "message_count": r[3],
+        })
+
+    has_more = current_page < total_pages and len(sessions) > 0
+    next_cursor = None
+    if has_more and sessions:
+        last = sessions[-1]
+        next_cursor = _encode_cursor({
+            "created_at": last["latest_created_at"],
+            "session_id": last["session_id"],
+        })
+
+    return {
+        "sessions": sessions,
+        "total_pages": total_pages,
+        "current_page": current_page,
+        "total_items": total_items,
+        "limit": effective_limit,
+        "next_cursor": next_cursor,
+        "has_more": has_more,
+    }
+
+def get_chats_by_session(
+    session_id: str,
+    limit: int = 30,
+    offset: int = 0,
+    cursor: Optional[str] = None,
+    page: Optional[int] = None,
+) -> Dict[str, Any]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+
+    clean_sid = (session_id or "").strip()
+    effective_limit = max(1, min(limit, 100))
+
+    total_row = _DB_CONN.execute("SELECT count(*) FROM chats WHERE session_id = ?", (clean_sid,)).fetchone()
+    total_messages = total_row[0] if total_row else 0
+    total_pages = max(1, math.ceil(total_messages / effective_limit))
+
+    cursor_data = _decode_cursor(cursor)
+
+    if cursor_data and "created_at" in cursor_data:
+        cur_ts = cursor_data["created_at"]
+        cur_id = cursor_data.get("id", "")
+        query = """
+            SELECT id, session_id, chat_name, role, content, created_at
+            FROM chats
+            WHERE session_id = ?
+              AND ((created_at > ?) OR (created_at = ? AND id > ?))
+            ORDER BY created_at ASC, id ASC
+            LIMIT ?
+        """
+        cursor_exec = _DB_CONN.execute(query, (clean_sid, cur_ts, cur_ts, cur_id, effective_limit))
+        rows = cursor_exec.fetchall()
+
+        if page is not None and page >= 1:
+            current_page = page
+        else:
+            preceding_query = """
+                SELECT count(*) FROM chats
+                WHERE session_id = ?
+                  AND ((created_at < ?) OR (created_at = ? AND id <= ?))
+            """
+            preceding_row = _DB_CONN.execute(preceding_query, (clean_sid, cur_ts, cur_ts, cur_id)).fetchone()
+            preceding_count = preceding_row[0] if preceding_row else 0
+            current_page = (preceding_count // effective_limit) + 1
+    else:
+        effective_page = page if page is not None and page >= 1 else 1
+        calc_offset = offset if offset > 0 else (effective_page - 1) * effective_limit
+        current_page = effective_page
+
+        query = """
+            SELECT id, session_id, chat_name, role, content, created_at
+            FROM chats
+            WHERE session_id = ?
+            ORDER BY created_at ASC, id ASC
+            LIMIT ? OFFSET ?
+        """
+        cursor_exec = _DB_CONN.execute(query, (clean_sid, effective_limit, calc_offset))
+        rows = cursor_exec.fetchall()
+
+    messages: List[Dict[str, Any]] = []
+    for r in rows:
+        messages.append({
+            "id": r[0],
+            "session_id": r[1],
+            "chat_name": r[2],
+            "role": r[3],
+            "content": r[4],
+            "created_at": r[5],
+        })
+
+    has_more = current_page < total_pages and len(messages) > 0
+    next_cursor = None
+    if has_more and messages:
+        last = messages[-1]
+        next_cursor = _encode_cursor({
+            "created_at": last["created_at"],
+            "id": last["id"],
+        })
+
+    return {
+        "session_id": clean_sid,
+        "messages": messages,
+        "total_pages": total_pages,
+        "current_page": current_page,
+        "total_messages": total_messages,
+        "limit": effective_limit,
+        "next_cursor": next_cursor,
+        "has_more": has_more,
+    }
+
+def delete_chat_session(session_id: str) -> bool:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+    clean_sid = (session_id or "").strip()
+    _DB_CONN.execute("DELETE FROM chats WHERE session_id = ?", (clean_sid,))
+    _DB_CONN.commit()
+    save_config_storage()
+    return True
+

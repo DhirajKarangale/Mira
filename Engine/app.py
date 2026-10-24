@@ -9,6 +9,7 @@ from vault_logger import log, log_error, mask_sensitive
 from llm import call_llm, get_work_config
 from ocr_summarization import start_ocr_summarization, stop_ocr_summarization, get_summarization_status
 from embedding import initialize_embedding_model, get_embedding_status
+from chat import router as chat_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -33,6 +34,8 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         log_error(f'Error stopping OCR Summarization module: {e}')
 app = FastAPI(title='MIRA Engine Service', description='LLM orchestration, model execution, provider fallback, and AI workflow coordination', version='1.0.0', lifespan=lifespan)
+app.include_router(chat_router)
+
 
 class LLMCallRequest(BaseModel):
     prompt: str = Field(..., min_length=1, description='Prompt text to send to LLM')

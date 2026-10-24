@@ -26,6 +26,58 @@ export interface LLMCallResponse {
   provider?: string;
 }
 
+export interface ChatSession {
+  session_id: string;
+  chat_name?: string;
+  latest_created_at: string;
+  created_at?: string;
+  message_count?: number;
+}
+
+export interface ChatSessionsResponse {
+  sessions: ChatSession[];
+  total_pages: number;
+  current_page: number;
+  total_items: number;
+  limit: number;
+  next_cursor?: string | null;
+  has_more: boolean;
+}
+
+export interface ChatMessage {
+  id: string;
+  session_id: string;
+  chat_name?: string;
+  role: "user" | "ai";
+  content: string;
+  created_at: string;
+}
+
+export interface ChatMessagesResponse {
+  session_id: string;
+  messages: ChatMessage[];
+  total_pages: number;
+  current_page: number;
+  total_messages: number;
+  limit: number;
+  next_cursor?: string | null;
+  has_more: boolean;
+}
+
+export interface SendChatMessageRequest {
+  session_id?: string;
+  content: string;
+  chat_name?: string;
+  role?: "user" | "ai";
+  generate_ai_reply?: boolean;
+}
+
+export interface SendChatMessageResponse {
+  session_id: string;
+  user_message: ChatMessage;
+  ai_message?: ChatMessage | null;
+}
+
 export const engineService = {
   async getHealth(): Promise<EngineHealth> {
     const response = await engineApi.get<EngineHealth>("/health");
@@ -66,4 +118,45 @@ export const engineService = {
     const response = await engineApi.post<LLMCallResponse>("/llm/call", { prompt, work });
     return response.data;
   },
+
+  async getChatSessions(params?: {
+    page?: number;
+    cursor?: string | null;
+    limit?: number;
+    offset?: number;
+  }): Promise<ChatSessionsResponse> {
+    const response = await engineApi.get<ChatSessionsResponse>("/chats/sessions", {
+      params,
+    });
+    return response.data;
+  },
+
+  async getChatsBySession(
+    sessionId: string,
+    params?: {
+      page?: number;
+      cursor?: string | null;
+      limit?: number;
+      offset?: number;
+    }
+  ): Promise<ChatMessagesResponse> {
+    const response = await engineApi.get<ChatMessagesResponse>(
+      `/chats/sessions/${encodeURIComponent(sessionId)}`,
+      { params }
+    );
+    return response.data;
+  },
+
+  async sendChatMessage(payload: SendChatMessageRequest): Promise<SendChatMessageResponse> {
+    const response = await engineApi.post<SendChatMessageResponse>("/chats/message", payload);
+    return response.data;
+  },
+
+  async seedDemoChats(count: number = 12): Promise<{ status: string; seeded_count: number }> {
+    const response = await engineApi.post<{ status: string; seeded_count: number }>("/chats/seed", null, {
+      params: { count },
+    });
+    return response.data;
+  },
 };
+

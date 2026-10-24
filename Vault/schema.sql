@@ -75,3 +75,13 @@ CREATE TABLE IF NOT EXISTS engine_workers (
     embedding_vector_store_workers_poll_time REAL DEFAULT 180.0
 );
 
+CREATE TABLE IF NOT EXISTS chats (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    chat_name TEXT,
+    role TEXT NOT NULL CHECK(role IN ('user', 'ai')),
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
