@@ -21,7 +21,7 @@ interface ProviderPriorityCardProps {
   configsMap: Record<string, AIConfig>;
   onSavePriorities: (newPriorities: string[]) => Promise<void>;
   onSelectProvider: (provider: string) => void;
-  activeProvider: string;
+  activeProvider?: string;
   disabled?: boolean;
 }
 
@@ -31,7 +31,7 @@ export const ProviderPriorityCard: FC<ProviderPriorityCardProps> = ({
   configsMap,
   onSavePriorities,
   onSelectProvider,
-  activeProvider,
+  activeProvider = "",
   disabled = false,
 }) => {
   const [orderedProviders, setOrderedProviders] = useState<string[]>([]);
@@ -198,7 +198,7 @@ export const ProviderPriorityCard: FC<ProviderPriorityCardProps> = ({
             const Icon = getProviderIcon(provider);
             const config = configsMap[provider.toLowerCase()];
             const keyCount = config?.total_keys ?? config?.keys?.length ?? 0;
-            const isSelected = activeProvider.toLowerCase() === provider.toLowerCase();
+            const isSelected = Boolean(activeProvider && activeProvider.toLowerCase() === provider.toLowerCase());
             const isDragging = draggedIndex === index;
             const isOver = dragOverIndex === index;
 
@@ -324,7 +324,7 @@ export const ProviderPriorityCard: FC<ProviderPriorityCardProps> = ({
                         : "border-white/10 bg-white/[0.03] text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.06]"
                     )}
                   >
-                    <span>{isSelected ? "Managing Keys" : "View Keys"}</span>
+                    <span>{isSelected ? "Managing Keys" : "Configure Keys"}</span>
                   </button>
                 </div>
               </div>

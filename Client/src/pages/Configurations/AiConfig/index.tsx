@@ -12,6 +12,7 @@ import {
   Sparkles,
   RefreshCw,
   Loader2,
+  Workflow,
 } from "lucide-react";
 import {
   useAIProvidersQuery,
@@ -23,7 +24,8 @@ import {
 import { ProviderOverviewCard } from "./components/ProviderOverviewCard";
 import { AddApiKeyCard } from "./components/AddApiKeyCard";
 import { ApiKeyList } from "./components/ApiKeyList";
-import { ProviderPriorityCard } from "./components/ProviderPriorityCard";
+import { LlmManagementView } from "./components/LlmManagementView";
+import { getProviderMeta } from "./types";
 import type { AIConfig } from "@/services";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components";
@@ -31,35 +33,23 @@ import { toast } from "@/components";
 interface ProviderTabContentProps {
   provider: string;
   config: AIConfig | null;
-  orderedProviders: string[];
-  priorities: string[];
-  configsMap: Record<string, AIConfig>;
   onScrollToAdd: (provider: string) => void;
   onSetAsActive: (provider: string, index: number) => Promise<void>;
   onUpdateKey: (provider: string, index: number, updatedKeyValue: string) => Promise<void>;
   onRemoveKey: (provider: string, index: number) => Promise<void>;
   onAddKey: (provider: string, newKey: string, makeActive: boolean) => Promise<void>;
-  onSavePriorities: (newOrder: string[]) => Promise<void>;
-  onSelectProvider: (provider: string) => void;
   isUpdating: boolean;
-  isPrioritiesUpdating: boolean;
 }
 
 const ProviderTabContent: FC<ProviderTabContentProps> = ({
   provider,
   config,
-  orderedProviders,
-  priorities,
-  configsMap,
   onScrollToAdd,
   onSetAsActive,
   onUpdateKey,
   onRemoveKey,
   onAddKey,
-  onSavePriorities,
-  onSelectProvider,
   isUpdating,
-  isPrioritiesUpdating,
 }) => {
   const activeKeys = config?.keys || [];
   const currentKeyIndex = config?.current_key ?? 0;
@@ -88,16 +78,6 @@ const ProviderTabContent: FC<ProviderTabContentProps> = ({
         onAddKey={(key, makeActive) => onAddKey(provider, key, makeActive)}
         existingKeys={activeKeys}
         disabled={isUpdating}
-      />
-
-      <ProviderPriorityCard
-        providers={orderedProviders}
-        priorities={priorities}
-        configsMap={configsMap}
-        onSavePriorities={onSavePriorities}
-        onSelectProvider={onSelectProvider}
-        activeProvider={provider}
-        disabled={isPrioritiesUpdating}
       />
     </div>
   );
@@ -136,8 +116,9 @@ export const AiConfigPage: FC = () => {
   const lastErrorRef = useRef<string | null>(null);
 
   const pathSegments = location.pathname.split("/").filter(Boolean);
-  // URL pattern: /configurations/ai-config/:provider
-  const currentSubTab = (pathSegments[2] || "groq").toLowerCase();
+  // URL pattern: /configurations/ai-config/:tab (e.g. management, groq, gemini)
+  const currentSubTab = (pathSegments[2] || "management").toLowerCase();
+  const isManagementActive = currentSubTab === "management" || currentSubTab === "llm-management";
   const isGroqActive = currentSubTab === "groq";
   const isGeminiActive = currentSubTab === "gemini";
 
@@ -194,6 +175,10 @@ export const AiConfigPage: FC = () => {
     return result;
   }, [providers, priorities]);
 
+  const otherProviders = useMemo(() => {
+    return orderedProviders.filter((p) => p !== "groq" && p !== "gemini");
+  }, [orderedProviders]);
+
   const showFeedback = (
     type: "success" | "error" | "info",
     message: string,
@@ -219,7 +204,7 @@ export const AiConfigPage: FC = () => {
 
   const handleSavePriorities = async (newOrder: string[]) => {
     await updatePrioritiesMutation.mutateAsync(newOrder);
-    showFeedback("success", "LLM provider priority sequence updated and saved in Vault.");
+    showFeedback("success", "Global LLM provider priority sequence updated and saved in Vault.");
   };
 
   const handleAddKey = async (provider: string, newKey: string, makeActive: boolean) => {
@@ -333,7 +318,7 @@ export const AiConfigPage: FC = () => {
       id="configurations-subpage-ai-config"
       className="flex flex-col h-full w-full overflow-hidden select-none bg-zinc-950/40 text-zinc-100"
     >
-      {/* Top Header Bar following Logs & Redis layout */}
+      {/* Top Header Bar */}
       <div className="flex-none px-6 py-4 border-b border-white/[0.06] bg-zinc-950/60 backdrop-blur-md">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 max-w-7xl mx-auto">
           <div className="flex items-center gap-3.5">
@@ -350,14 +335,43 @@ export const AiConfigPage: FC = () => {
                 </span>
               </div>
               <p className="text-xs text-zinc-400 mt-0.5">
-                Encrypted LLM inference API credentials, provider priorities, and keyring configurations
+                Encrypted LLM inference API credentials, global priority sequence, and failover management
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Groq and Gemini Sub-Tabs */}
+            {/* Top Sub-Tabs Bar: LLM Management first, followed by individual LLM tabs */}
             <div className="flex items-center p-1 rounded-xl bg-zinc-900/80 border border-white/[0.08] self-start sm:self-auto shadow-inner">
+              {/* Separate LLM Management Tab */}
+              <button
+                type="button"
+                id="tab-btn-llm-management"
+                onClick={() => navigate("/configurations/ai-config/management")}
+                className={cn(
+                  "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
+                  isManagementActive
+                    ? "bg-gradient-to-r from-cyan-600 to-indigo-600 text-white shadow-sm font-semibold shadow-cyan-950/60"
+                    : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
+                )}
+              >
+                <Workflow className="w-3.5 h-3.5" />
+                <span>LLM Management</span>
+                <span
+                  className={cn(
+                    "ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-mono",
+                    isManagementActive
+                      ? "bg-white/20 text-white font-bold"
+                      : "bg-white/[0.06] text-zinc-400"
+                  )}
+                >
+                  {orderedProviders.length}
+                </span>
+              </button>
+
+              <div className="h-4 w-px bg-white/10 mx-1" />
+
+              {/* Individual LLM Tab: Groq */}
               <button
                 type="button"
                 id="tab-btn-groq"
@@ -385,6 +399,7 @@ export const AiConfigPage: FC = () => {
 
               <div className="h-4 w-px bg-white/10 mx-1" />
 
+              {/* Individual LLM Tab: Gemini */}
               <button
                 type="button"
                 id="tab-btn-gemini"
@@ -409,6 +424,42 @@ export const AiConfigPage: FC = () => {
                   {geminiKeysCount}
                 </span>
               </button>
+
+              {/* Any additional dynamically registered providers */}
+              {otherProviders.map((provider) => {
+                const meta = getProviderMeta(provider);
+                const isActive = currentSubTab === provider.toLowerCase();
+                const count = configsMap[provider.toLowerCase()]?.keys?.length ?? 0;
+                return (
+                  <div key={provider} className="flex items-center">
+                    <div className="h-4 w-px bg-white/10 mx-1" />
+                    <button
+                      type="button"
+                      id={`tab-btn-${provider}`}
+                      onClick={() => navigate(`/configurations/ai-config/${provider.toLowerCase()}`)}
+                      className={cn(
+                        "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
+                        isActive
+                          ? "bg-indigo-600 text-white shadow-sm font-semibold shadow-indigo-950/60"
+                          : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
+                      )}
+                    >
+                      <Cpu className="w-3.5 h-3.5" />
+                      <span>{meta.name}</span>
+                      <span
+                        className={cn(
+                          "ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-mono",
+                          isActive
+                            ? "bg-white/20 text-white font-bold"
+                            : "bg-white/[0.06] text-zinc-400"
+                        )}
+                      >
+                        {count}
+                      </span>
+                    </button>
+                  </div>
+                );
+              })}
             </div>
 
             <button
@@ -440,59 +491,87 @@ export const AiConfigPage: FC = () => {
             </div>
           ) : (
             <Routes>
-              <Route path="/" element={<Navigate to="groq" replace />} />
+              {/* Default redirect to the new LLM Management tab */}
+              <Route path="/" element={<Navigate to="management" replace />} />
+              {/* Global LLM Management View */}
+              <Route
+                path="management"
+                element={
+                  <LlmManagementView
+                    providers={orderedProviders}
+                    priorities={priorities}
+                    configsMap={configsMap}
+                    onSavePriorities={handleSavePriorities}
+                    onSelectProvider={(p) => navigate(`/configurations/ai-config/${p.toLowerCase()}`)}
+                    isUpdating={updatePrioritiesMutation.isPending}
+                  />
+                }
+              />
+              <Route
+                path="llm-management"
+                element={<Navigate to="../management" replace />}
+              />
+              {/* Individual Model Configuration: Groq */}
               <Route
                 path="groq"
                 element={
                   <ProviderTabContent
                     provider="groq"
                     config={groqConfig}
-                    orderedProviders={orderedProviders}
-                    priorities={priorities}
-                    configsMap={configsMap}
                     onScrollToAdd={handleScrollToAdd}
                     onSetAsActive={handleSetAsActive}
                     onUpdateKey={handleUpdateKey}
                     onRemoveKey={handleRemoveKey}
                     onAddKey={handleAddKey}
-                    onSavePriorities={handleSavePriorities}
-                    onSelectProvider={(p) => navigate(`/configurations/ai-config/${p.toLowerCase()}`)}
                     isUpdating={updateMutation.isPending}
-                    isPrioritiesUpdating={updatePrioritiesMutation.isPending}
                   />
                 }
               />
+              {/* Individual Model Configuration: Gemini */}
               <Route
                 path="gemini"
                 element={
                   <ProviderTabContent
                     provider="gemini"
                     config={geminiConfig}
-                    orderedProviders={orderedProviders}
-                    priorities={priorities}
-                    configsMap={configsMap}
                     onScrollToAdd={handleScrollToAdd}
                     onSetAsActive={handleSetAsActive}
                     onUpdateKey={handleUpdateKey}
                     onRemoveKey={handleRemoveKey}
                     onAddKey={handleAddKey}
-                    onSavePriorities={handleSavePriorities}
-                    onSelectProvider={(p) => navigate(`/configurations/ai-config/${p.toLowerCase()}`)}
                     isUpdating={updateMutation.isPending}
-                    isPrioritiesUpdating={updatePrioritiesMutation.isPending}
                   />
                 }
               />
-              <Route path="*" element={<Navigate to="groq" replace />} />
+              {/* Dynamic routes for any additional providers */}
+              {otherProviders.map((p) => (
+                <Route
+                  key={p}
+                  path={p}
+                  element={
+                    <ProviderTabContent
+                      provider={p}
+                      config={configsMap[p]}
+                      onScrollToAdd={handleScrollToAdd}
+                      onSetAsActive={handleSetAsActive}
+                      onUpdateKey={handleUpdateKey}
+                      onRemoveKey={handleRemoveKey}
+                      onAddKey={handleAddKey}
+                      isUpdating={updateMutation.isPending}
+                    />
+                  }
+                />
+              ))}
+              <Route path="*" element={<Navigate to="management" replace />} />
             </Routes>
           )}
 
           <div className="pt-4 pb-2 text-center text-xs text-zinc-500 font-mono flex items-center justify-center gap-2">
             <span>MIRA Vault Engine</span>
             <span>•</span>
-            <span>AI Keyring Manager</span>
+            <span>Global LLM Management</span>
             <span>•</span>
-            <span>Provider Priority Sequence</span>
+            <span>Multi-Model Keyring Security</span>
           </div>
         </div>
       </div>
