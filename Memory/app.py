@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
 
@@ -55,10 +55,15 @@ class JobProcessRequest(BaseModel):
 class KBSearchRequest(BaseModel):
     query_vector: list[float] = Field(..., min_length=1)
     limit: int = Field(5, ge=1, le=100)
-    app_name: Optional[str] = None
+    app_name: Optional[Union[str, list[str]]] = None
     os: Optional[str] = None
     start_timestamp: Optional[int] = None
     end_timestamp: Optional[int] = None
+    timestamp_gt: Optional[int] = None
+    timestamp_gte: Optional[int] = None
+    timestamp_lt: Optional[int] = None
+    timestamp_lte: Optional[int] = None
+    text_query: Optional[str] = None
 
 class KBJobIngestItem(BaseModel):
     app_name: Optional[str] = "Unknown"
@@ -112,7 +117,7 @@ async def get_kb_status():
     return {
         "status": "online",
         "workers": kb_worker_manager.get_status(),
-        "monthly_knowledge_bases": kb_storage.list_knowledge_bases(),
+        "daily_knowledge_bases": kb_storage.list_knowledge_bases(),
     }
 
 @app.post("/knowledge-base/workers/start", status_code=status.HTTP_200_OK)
@@ -136,6 +141,11 @@ async def search_kb(req: KBSearchRequest):
             os_name=req.os,
             start_timestamp=req.start_timestamp,
             end_timestamp=req.end_timestamp,
+            timestamp_gt=req.timestamp_gt,
+            timestamp_gte=req.timestamp_gte,
+            timestamp_lt=req.timestamp_lt,
+            timestamp_lte=req.timestamp_lte,
+            text_query=req.text_query,
         )
         return {"status": "success", "count": len(results), "results": results}
     except Exception as e:
@@ -143,6 +153,7 @@ async def search_kb(req: KBSearchRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": f"Search failed: {str(e)}"}
         )
+
 
 @app.post("/knowledge-base/batch-ingest", status_code=status.HTTP_200_OK)
 async def batch_ingest_kb(req: KBIngestBatchRequest):

@@ -279,7 +279,10 @@ async def get_jobs_from_stream(consumer_key: str, count: int = 1) -> List[Dict[s
                     job_obj[k] = json.loads(v)
                 except Exception:
                     job_obj[k] = v
+            job_obj["_stream_id"] = str(entry_id)
             jobs.append(job_obj)
+
+
 
     return jobs
 

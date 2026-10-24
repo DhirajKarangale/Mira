@@ -62,3 +62,7 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Knowledge Base vector databases
+knowledge_base/
+**/knowledge_base/**

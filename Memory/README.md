@@ -10,8 +10,8 @@ The **Memory** module is the screenshot extraction, OCR text processing, visual 
 - **Image Comparison**: Compares consecutive frames using OpenCV difference comparisons to filter unchanged frames.
 - **OCR Text Extraction**: Extracts structured text using Tesseract OCR and Windows UI Automation.
 - **Context Enrichment**: Publishes extracted screen context to the `ocr_summarization` stream for downstream AI workflows.
-- **Knowledge Base Vector Store**: Ingests summarized contextual embedding jobs from `embedding_memory` in parallel batches into Qdrant vector databases organized monthly (`kb_DD_MM_YYYY`).
-- **Encrypted Local Storage**: Encrypts stored Knowledge Base payloads using Vault encryption, keeping keys internal to Vault and never exposing them through APIs.
+- **Knowledge Base Vector Store**: Ingests summarized contextual embedding jobs from `embedding_memory` in parallel batches into Qdrant vector databases organized daily (`kb_DD_MM_YYYY`).
+- **Direct Storage**: Stored directly in `vault/system/knowledge_base/` with same-day reuse and efficient indexing for semantic vector retrieval, app filtering, and timestamp range queries.
 
 ---
 
@@ -37,13 +37,13 @@ Memory/
 ├── knowledge_base/             # Knowledge base vector store submodule
 │   ├── __init__.py             # Submodule public API exports
 │   ├── config.py               # KB-specific batch constants and broker/vault URLs
-│   ├── encryption.py           # Vault-backed encryption & decryption client
-│   ├── storage.py              # Monthly knowledge base directory management (kb_DD_MM_YYYY)
-│   ├── qdrant_store.py         # Local Qdrant client, collection & payload indexing
-│   ├── broker_client.py        # Message Broker polling & job acknowledgment
+│   ├── encryption.py           # Vault-backed encryption & decryption client (reserved)
+│   ├── storage.py              # Daily knowledge base directory management (kb_DD_MM_YYYY)
+│   ├── qdrant_store.py         # Local Qdrant client, collections, payload & text indexing
+│   ├── broker_client.py        # Message Broker polling & job acknowledgment/removal
 │   └── worker.py               # Parallel KB workers & batch ingestion orchestration
 └── tests/                      # Unit and integration tests for Memory module
-    ├── test_knowledge_base.py  # Tests for KB storage, Qdrant, encryption, and workers
+    ├── test_knowledge_base.py  # Tests for daily KB storage, Qdrant, filtering, and workers
     ├── test_memory_api.py      # Tests for Memory endpoints
     ├── test_pipeline_integration.py
     └── test_screenshot_processing.py
@@ -58,27 +58,30 @@ Memory/
 - Each worker continuously polls `CONSUMER_GROUP_EMBEDDING_MEMORY` through Message Broker.
 - Retrieves up to 10 jobs per poll (configurable via `KB_BATCH_SIZE`).
 - Ingests records into Qdrant in batches.
-- Input jobs are acknowledged and removed from Message Broker **only after successful storage**. If storage encounters an error, jobs remain in the stream for retry without data loss.
+- Input jobs are acknowledged and removed from Message Broker **only after successful storage in Qdrant**. If storage encounters an error, jobs remain in the stream for retry without data loss.
 
-### 3.2 Monthly Storage Organization
-- Retrieves configured system storage path from Vault (or fallback `MIRA_SYSTEM_DIR`).
+### 3.2 Daily Storage Organization
+- Stored directly in `vault/system/knowledge_base/` under names formatted as `kb_DD_MM_YYYY` (e.g. `kb_24_10_2026`).
 - Automatically creates `<system_storage_path>/knowledge_base` if not present.
-- Reuses existing knowledge base created during current month (matching `kb_DD_MM_YYYY`); otherwise creates a new one using the current system date.
+- Reuses the existing Knowledge Base for that day. When the day advances, a new daily directory is created automatically.
 
-### 3.3 Qdrant Vector Storage & Payload Indexing
-- Embedded local Qdrant instance per monthly knowledge base directory (`path=.../knowledge_base/kb_DD_MM_YYYY`).
+### 3.3 Qdrant Storage Optimization & Indexing
+- Embedded local Qdrant instance per daily knowledge base directory (`path=vault/system/knowledge_base/kb_DD_MM_YYYY`).
 - Stored fields:
   - `app_name`: String (Payload index: `KEYWORD`)
   - `os`: String (Payload index: `KEYWORD`)
-  - `timestamp`: Integer unix timestamp (Payload index: `INTEGER`)
-  - `summarized_text`: Vault-encrypted base64 ciphertext
+  - `timestamp`: Integer Unix timestamp in seconds (Payload index: `INTEGER`)
+  - `summarized_text`: Plaintext string (Text index: `TEXT` with lowercase word tokenizer)
   - `embedding`: Float vector directly stored (no re-embedding)
-  - `job_id`: Ignored when storing records.
+  - `job_id`: Ignored when storing records in Qdrant.
 
-### 3.4 Encryption Guarantee
-- Stored `summarized_text` is encrypted using Vault's internal encryption mechanism before Qdrant ingestion.
-- Decrypted automatically upon retrieval when querying the Knowledge Base.
-- Encryption keys remain strictly internal to Vault and are never exposed across APIs.
+### 3.4 Efficient Search and Filtering
+- **Vector search**: Cosine similarity vector search on `summarized_text` embeddings.
+- **App filtering**: Exact match on single `app_name` or multiple app names (`MatchAny`).
+- **Timestamp filtering**: Strict Unix timestamp validation supporting:
+  - Greater than (`timestamp_gt` or `timestamp_gte`)
+  - Less than (`timestamp_lt` or `timestamp_lte`)
+  - Between (`timestamp_gte` & `timestamp_lte` or `timestamp_between=(min_ts, max_ts)`)
 
 ---
 
@@ -109,7 +112,7 @@ Memory/
     "total_jobs_processed": 0,
     "active_knowledge_base": "kb_24_10_2026",
     "active_kb_path": "E:\\FullStack\\Mira\\Vault\\system\\knowledge_base\\kb_24_10_2026",
-    "total_points_in_active_kb": 2
+    "total_points_in_active_kb": 3
   },
   "image_diff_threshold": 0.008
 }
@@ -127,7 +130,7 @@ Memory/
 {
   "status": "online",
   "workers": { ... },
-  "monthly_knowledge_bases": [
+  "daily_knowledge_bases": [
     { "name": "kb_24_10_2026", "day": 24, "month": 10, "year": 2026 }
   ]
 }
@@ -141,9 +144,8 @@ Memory/
     "query_vector": [0.01, -0.05, ...],
     "limit": 5,
     "app_name": "Google Chrome",
-    "os": "Windows 11",
-    "start_timestamp": 1729760000,
-    "end_timestamp": 1729770000
+    "timestamp_gte": 1729760000,
+    "timestamp_lte": 1729770000
   }
   ```
 - **Response (`200 OK`):**
