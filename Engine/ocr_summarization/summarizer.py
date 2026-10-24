@@ -51,13 +51,22 @@ Analyze the following OCR text record captured from a user screen.
 The record represents a single user activity.
 
 Provide:
-1. "app_name": The actual, real human-readable application name (e.g. "Microsoft Edge", "Visual Studio Code", "Google Chrome", "Spotify", "Terminal"). Determine the real name from the extracted text, window titles, or context. Do NOT use raw executable filenames like "msedge.exe" or "code.exe".
+1. "app_name": The actual, human-readable application name. Determine the real application name from the extracted text, window titles, or context instead of raw executable filenames.
 2. "summary": A complete, accurate description of what the user is doing.
 
 Strict Rules for the summary:
-- Describe what the user is doing completely, clearly, and accurately. The summary can be comprehensive and detailed based on the available text, with no arbitrary length limit.
-- Focus on meaningful actions and context; avoid unnecessary fluff, meta-commentary, or repetitive filler phrases.
-- Must include the real application name in the summary (e.g., "... in Microsoft Edge").
+- Describe what the user is doing completely, clearly, and accurately based on the available text, with no arbitrary length limit.
+- Focus on meaningful actions, topics, and substantive content; avoid unnecessary fluff, repetitive filler phrases, or enumerating generic UI navigation/action buttons (e.g., "Share", "Learning", "Home", "Help", "Settings").
+- Active Focus vs. Secondary Context (Applies across all applications):
+  * Primary Focus: Focus predominantly on the active foreground view, current tab, open file, document, channel, or main workspace the user is currently viewing, reading, typing in, or interacting with.
+  * Secondary Context: If other open tabs, background files, channels, or secondary panes are visible in tab bars, title bars, or sidebars, mention them smoothly at the end of the summary as secondary context (e.g. "Secondary open tabs include..."). Do NOT insert awkward parenthetical interruptions in the middle of sentences, and do NOT let secondary items overshadow the primary activity.
+- Platform & Service Identification (URL, Domain, Branding & UI Context):
+  * Avoid vague generic placeholders (such as "a chat interface", "a messaging platform", "a web application", "a video website", "a code repository") when the specific platform, website, or service name is visible in the extracted text.
+  * Grounding in Direct Evidence: Identify the active platform or website strictly from the address/URL bar, domain name, window/tab title, branding logos, or interface headers.
+  * NO Hallucinations or Guesses: NEVER guess, assume, or invent third-party communication platforms or servers simply because words like "voice", "server", "channel", "group", or "room" appear in conversation topics, project titles, or event names. Only identify a platform if its actual brand name, domain, or official client title directly hosts the active viewport.
+  * Conversational AI & Assistant Services: When the active screen displays prompt-and-response exchanges, AI controls (such as "Think" or "Ask"), or conversational assistant interfaces, recognize the main workspace as an interaction with that AI assistant. Treat thread headings as the title or topic of that conversation, NOT as a channel or room on an unrelated platform.
+  * Clearly incorporate the identified application and any specific platform or service in the summary.
+- Must include the real application name in the summary.
 - Avoid assumptions and hallucinations.
 - If the activity cannot be determined from the text, state: "User has <app_name> open, but the specific activity is unclear."
 
@@ -184,13 +193,22 @@ Each record represents a separate, independent user activity.
 You must process each record independently without merging information between records.
 
 For each record, provide:
-1. "app_name": The actual, real human-readable application name (e.g. "Microsoft Edge", "Visual Studio Code", "Google Chrome", "Spotify", "Terminal"). Determine the real name from the extracted text, window titles, or context. Do NOT use raw executable filenames like "msedge.exe" or "code.exe".
+1. "app_name": The actual, human-readable application name. Determine the real application name from the extracted text, window titles, or context instead of raw executable filenames.
 2. "summary": A complete, accurate description of what the user is doing.
 
 Strict Rules for the summary:
-- Describe what the user is doing completely, clearly, and accurately. The summary can be comprehensive and detailed based on the available text, with no arbitrary length limit.
-- Focus on meaningful actions and context; avoid unnecessary fluff, meta-commentary, or repetitive filler phrases.
-- Must include the real application name in the summary (e.g., "... in Microsoft Edge").
+- Describe what the user is doing completely, clearly, and accurately based on the available text, with no arbitrary length limit.
+- Focus on meaningful actions, topics, and substantive content; avoid unnecessary fluff, repetitive filler phrases, or enumerating generic UI navigation/action buttons (e.g., "Share", "Learning", "Home", "Help", "Settings").
+- Active Focus vs. Secondary Context (Applies across all applications):
+  * Primary Focus: Focus predominantly on the active foreground view, current tab, open file, document, channel, or main workspace the user is currently viewing, reading, typing in, or interacting with.
+  * Secondary Context: If other open tabs, background files, channels, or secondary panes are visible in tab bars, title bars, or sidebars, mention them smoothly at the end of the summary as secondary context (e.g. "Secondary open tabs include..."). Do NOT insert awkward parenthetical interruptions in the middle of sentences, and do NOT let secondary items overshadow the primary activity.
+- Platform & Service Identification (URL, Domain, Branding & UI Context):
+  * Avoid vague generic placeholders (such as "a chat interface", "a messaging platform", "a web application", "a video website", "a code repository") when the specific platform, website, or service name is visible in the extracted text.
+  * Grounding in Direct Evidence: Identify the active platform or website strictly from the address/URL bar, domain name, window/tab title, branding logos, or interface headers.
+  * NO Hallucinations or Guesses: NEVER guess, assume, or invent third-party communication platforms or servers simply because words like "voice", "server", "channel", "group", or "room" appear in conversation topics, project titles, or event names. Only identify a platform if its actual brand name, domain, or official client title directly hosts the active viewport.
+  * Conversational AI & Assistant Services: When the active screen displays prompt-and-response exchanges, AI controls (such as "Think" or "Ask"), or conversational assistant interfaces, recognize the main workspace as an interaction with that AI assistant. Treat thread headings as the title or topic of that conversation, NOT as a channel or room on an unrelated platform.
+  * Clearly incorporate the identified application and any specific platform or service in the summary.
+- Must include the real application name in the summary.
 - Avoid assumptions and hallucinations.
 - If the activity cannot be determined from the text, state: "User has <app_name> open, but the specific activity is unclear."
 
