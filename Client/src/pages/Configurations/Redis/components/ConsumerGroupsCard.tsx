@@ -354,7 +354,7 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
                 <th className="py-3 px-3 text-center">PEL Messages</th>
                 <th className="py-3 px-3 text-center">Total in Stream</th>
                 <th className="py-3 px-4">Last Delivered ID</th>
-                <th className="py-3 px-4 text-right">Actions</th>
+                <th className="py-3 px-4 text-right whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.04]">
@@ -462,18 +462,18 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
                         </span>
                       </td>
 
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
                           {hasPending && (
                             <button
                               type="button"
                               onClick={() => setCleanPelTarget(group)}
                               disabled={actionLoading}
-                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-amber-300 hover:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/25 transition-colors cursor-pointer disabled:cursor-not-allowed shadow-[0_0_8px_rgba(245,158,11,0.1)]"
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0 text-amber-300 hover:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/25 transition-colors cursor-pointer disabled:cursor-not-allowed shadow-[0_0_8px_rgba(245,158,11,0.1)]"
                               title={`Clean ${group.pending_messages_count} pending message(s) (PEL) for ${group.group_name}`}
                             >
-                              <Flame className="w-3.5 h-3.5 text-amber-400" />
-                              Clean PEL
+                              <Flame className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                              <span>Clean PEL</span>
                             </button>
                           )}
 
@@ -481,22 +481,22 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
                             type="button"
                             onClick={() => setCleanTarget(group)}
                             disabled={actionLoading}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-cyan-300 hover:text-cyan-200 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/25 transition-colors cursor-pointer disabled:cursor-not-allowed shadow-[0_0_8px_rgba(6,182,212,0.1)]"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0 text-cyan-300 hover:text-cyan-200 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/25 transition-colors cursor-pointer disabled:cursor-not-allowed shadow-[0_0_8px_rgba(6,182,212,0.1)]"
                             title="Clean stream and messages for this group"
                           >
-                            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                            Clean Stream
+                            <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                            <span>Clean Stream</span>
                           </button>
 
                           <button
                             type="button"
                             onClick={() => setDeleteTarget(group)}
                             disabled={actionLoading}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-300 hover:text-red-200 bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 transition-colors cursor-pointer disabled:cursor-not-allowed shadow-[0_0_8px_rgba(239,68,68,0.1)]"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0 text-red-300 hover:text-red-200 bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 transition-colors cursor-pointer disabled:cursor-not-allowed shadow-[0_0_8px_rgba(239,68,68,0.1)]"
                             title="Delete this consumer group"
                           >
-                            <Trash2 className="w-3.5 h-3.5 text-red-400" />
-                            Delete
+                            <Trash2 className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                            <span>Delete</span>
                           </button>
                         </div>
                       </td>

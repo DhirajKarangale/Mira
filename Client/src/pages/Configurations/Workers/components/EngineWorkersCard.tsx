@@ -243,8 +243,15 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
         </div>
 
         <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+          {isLoading && !config && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[11px] font-mono text-violet-300 bg-violet-500/10 border border-violet-500/20">
+              <Loader2 className="w-3 h-3 animate-spin text-violet-400" />
+              <span>Syncing with Vault...</span>
+            </span>
+          )}
+
           {justSaved && !isSaving && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[11px] font-mono font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 animate-in fade-in">
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[11px] font-mono font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
               <CheckCircle2 className="w-3 h-3 text-emerald-400" />
               <span>Synced to Vault</span>
             </span>
