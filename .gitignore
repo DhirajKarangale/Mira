@@ -64,5 +64,7 @@ Thumbs.db
 *.sw?
 
 # Knowledge Base vector databases
-knowledge_base/
-**/knowledge_base/**
+Vault/system/knowledge_base/
+**/Vault/system/knowledge_base/**
+!Memory/knowledge_base/
+!Memory/knowledge_base/**

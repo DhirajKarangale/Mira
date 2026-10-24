@@ -60,10 +60,14 @@ Memory/
 - Ingests records into Qdrant in batches.
 - Input jobs are acknowledged and removed from Message Broker **only after successful storage in Qdrant**. If storage encounters an error, jobs remain in the stream for retry without data loss.
 
-### 3.2 Daily Storage Organization
-- Stored directly in `vault/system/knowledge_base/` under names formatted as `kb_DD_MM_YYYY` (e.g. `kb_24_10_2026`).
+### 3.2 Monthly Storage Organization
+- Stored directly in `vault/system/knowledge_base/` under names formatted as `kb-DD_MM_YYYY-DD_MM_YYYY` (e.g. `kb-01_10_2026-24_10_2026`).
 - Automatically creates `<system_storage_path>/knowledge_base` if not present.
-- Reuses the existing Knowledge Base for that day. When the day advances, a new daily directory is created automatically.
+- Retrieves all existing Knowledge Bases and selects/reuses the Knowledge Base whose date range belongs to the current month.
+- If none exists for the current month, creates a new Knowledge Base named `kb-currentdate-currentdate`.
+- Keeps the start date constant after creation.
+- Updates the end date to the current date only when new data is successfully ingested into Qdrant.
+- Uses Qdrant local storage without encryption.
 
 ### 3.3 Qdrant Storage Optimization & Indexing
 - Embedded local Qdrant instance per daily knowledge base directory (`path=vault/system/knowledge_base/kb_DD_MM_YYYY`).
