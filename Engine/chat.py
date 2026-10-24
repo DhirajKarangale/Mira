@@ -15,6 +15,9 @@ from llm import call_llm
 logger = logging.getLogger("mira.engine.chat")
 router = APIRouter(prefix="", tags=["Chat"])
 
+CONSUMER_KEY_LLM_CHAT: str = "llm_chat"
+CONSUMER_GROUP_LLM_CHAT: str = "CONSUMER_GROUP_LLM_CHAT"
+
 # ==============================================================================
 # Models
 # ==============================================================================

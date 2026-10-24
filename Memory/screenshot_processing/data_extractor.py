@@ -49,7 +49,7 @@ def is_browser_application(app_name: str) -> bool:
 
 def is_mira_self_page(text: str, app_name: str='') -> bool:
     t_lower = text.lower()
-    mira_indicators = ('127.0.0.1:9004', 'localhost:9004', '/activity/redis', '/activity/logs', '/activity/captured-data', '/activity/configurations', 'consumer_group_ocr_extraction', 'consumer_group_ocr_text_summarization', 'mira:stream:ocr_', 'real-time redis telemetry', 'vault managed')
+    mira_indicators = ('127.0.0.1:9004', 'localhost:9004', '/activity/redis', '/activity/logs', '/activity/captured-data', '/activity/configurations', 'consumer_group_ocr_extraction', 'consumer_group_ocr_text_summarization', 'consumer_group_llm_chat', 'mira:stream:ocr_', 'mira:stream:llm_chat', 'real-time redis telemetry', 'vault managed')
     return any((ind in t_lower for ind in mira_indicators))
 
 def clean_ocr_text(text: str) -> str:
@@ -269,6 +269,10 @@ def reconstruct_markdown_tables(lines: List[Dict[str, Any]]) -> Tuple[List[str],
                     if 'SUMMARIZATION' not in added_keys:
                         rows_md.append('| CONSUMER_GROUP_OCR_TEXT_SUMMARIZATION | mira:stream:ocr_summarization | 0 | 0 | - | Clean / Delete |')
                         added_keys.add('SUMMARIZATION')
+                elif 'CHAT' in txt.upper() or 'LLM' in txt.upper():
+                    if 'CHAT' not in added_keys:
+                        rows_md.append('| CONSUMER_GROUP_LLM_CHAT | mira:stream:llm_chat | 0 | 0 | - | Clean / Delete |')
+                        added_keys.add('CHAT')
                 else:
                     parts = txt.split()
                     padded = parts + ['-'] * max(0, len(cols) - len(parts))

@@ -39,6 +39,8 @@ def get_service_url(module_name: str, default: Optional[str]=None) -> Optional[s
     return None
 VAULT_URL: Optional[str] = os.getenv('VAULT_URL', get_service_url('vault', 'http://127.0.0.1:9001'))
 MESSAGE_BROKER_URL: Optional[str] = os.getenv('MESSAGE_BROKER_URL', get_service_url('message_broker', 'http://127.0.0.1:9002'))
+CONSUMER_KEY_LLM_CHAT: str = 'llm_chat'
+CONSUMER_GROUP_LLM_CHAT: str = 'CONSUMER_GROUP_LLM_CHAT'
 _engine_url = os.getenv('ENGINE_URL', SERVICES.get('engine', ''))
 _parsed_engine_host: Optional[str] = None
 _parsed_engine_port: Optional[int] = None
@@ -208,6 +210,22 @@ class EngineMemoryConfig:
     def get_workers_config(self) -> Dict[str, Any]:
         with self._lock:
             return dict(self.workers)
+
+    def get_chat_workers_count(self) -> int:
+        workers_cfg = self.get_workers_config()
+        count = workers_cfg.get('chat_workers', 1)
+        try:
+            return max(1, min(int(count), 50))
+        except (ValueError, TypeError):
+            return 1
+
+    def get_chat_workers_poll_time(self) -> float:
+        workers_cfg = self.get_workers_config()
+        poll = workers_cfg.get('chat_workers_poll_time', 1.0)
+        try:
+            return max(0.1, min(float(poll), 1800.0))
+        except (ValueError, TypeError):
+            return 1.0
 CONFIG = EngineMemoryConfig()
 try:
     CONFIG.fetch_from_vault()

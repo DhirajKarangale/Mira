@@ -69,6 +69,7 @@ export const ConfigurationsPage: FC = () => {
         activeKey={activeSubTab}
         onSelect={(key) => navigate(`/configurations/${key}`)}
         title="Configurations"
+        icon={Sliders}
         defaultCollapsed={false}
         className="border-r border-white/[0.06] bg-zinc-950/60"
       />

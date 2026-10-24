@@ -17,6 +17,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Sparkles,
   User,
   MessageSquare,
+  Sliders,
   Cpu: Sliders,
   Monitor,
   Activity,
