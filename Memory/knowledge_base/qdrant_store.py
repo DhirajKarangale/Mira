@@ -26,6 +26,7 @@ from .config import (
 )
 from .storage import KnowledgeBaseStorage, kb_storage
 from .encryption import vault_crypto, IntegrityVerificationError, ENCRYPTION_PREFIX
+from .protection import kb_protector
 
 logger = logging.getLogger("mira.memory.knowledge_base.qdrant")
 
@@ -252,6 +253,12 @@ class QdrantVectorStore:
                     before_rename_cb=self.close,
                     after_rename_cb=self.reopen,
                 )
+
+                # Encrypt whole folder database snapshot in vault_storage.enc
+                try:
+                    kb_protector.encrypt_folder_snapshot(self.storage.get_active_knowledge_base())
+                except Exception:
+                    pass
 
                 if return_job_ids:
                     return (len(points), successful_job_ids)

@@ -45,6 +45,13 @@ from .encryption import (
     IntegrityVerificationError,
     ENCRYPTION_PREFIX,
 )
+from .protection import (
+    FolderProtectionManager,
+    kb_protector,
+    MANIFEST_FILENAME,
+    LOCK_FILENAME,
+    VAULT_SNAPSHOT_FILENAME,
+)
 
 __all__ = [
     "KnowledgeBaseStorage",
@@ -62,6 +69,11 @@ __all__ = [
     "decrypt_text",
     "IntegrityVerificationError",
     "ENCRYPTION_PREFIX",
+    "FolderProtectionManager",
+    "kb_protector",
+    "MANIFEST_FILENAME",
+    "LOCK_FILENAME",
+    "VAULT_SNAPSHOT_FILENAME",
     "DEFAULT_KB_BATCH_SIZE",
     "MAX_KB_BATCH_SIZE",
     "CONSUMER_KEY_EMBEDDING_MEMORY",

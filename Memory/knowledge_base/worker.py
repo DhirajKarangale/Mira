@@ -21,6 +21,7 @@ from .config import (
 from .storage import KnowledgeBaseStorage, kb_storage
 from .qdrant_store import QdrantVectorStore
 from .broker_client import poll_jobs, acknowledge_batch
+from .protection import kb_protector
 
 class KnowledgeBaseWorkerManager:
     """Orchestrates parallel background workers polling and ingesting embedding jobs into Qdrant.
@@ -145,6 +146,12 @@ class KnowledgeBaseWorkerManager:
         except Exception as e:
             log_error(f"[KnowledgeBaseWorkerManager] Failed startup retention cleanup: {e}")
 
+        # Protect, self-heal, snapshot, and lock ALL Knowledge Base folders on startup
+        try:
+            await asyncio.to_thread(kb_protector.sync_and_protect_all, self.storage.base_dir)
+        except Exception as e:
+            log_error(f"[KnowledgeBaseWorkerManager] Failed to protect all KB folders on startup: {e}")
+
         self.refresh_config()
         self.is_running = True
         self._stop_event.clear()
@@ -171,6 +178,9 @@ class KnowledgeBaseWorkerManager:
 
         # Close vector store client connection
         self.vector_store.close()
+
+        # Release runtime folder handles cleanly
+        kb_protector.unlock_all_folders()
         log("All knowledge base workers stopped")
 
     def get_status(self) -> Dict[str, Any]:

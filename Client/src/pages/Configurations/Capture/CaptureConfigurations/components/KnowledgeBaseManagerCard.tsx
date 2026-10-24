@@ -16,6 +16,7 @@ import {
   ChevronDown,
   CheckCircle2,
   Loader2,
+  ShieldCheck,
 } from "lucide-react";
 import {
   useKnowledgeBasesQuery,
@@ -396,35 +397,31 @@ export const KnowledgeBaseManagerCard: FC = () => {
       ) : (
         <div className="space-y-3.5">
           {knowledgeBases.map((kb: KnowledgeBaseItem) => {
-            const isCurrentMonth = kb.is_current_month || kb.is_active;
-
             return (
               <div
                 key={kb.name}
-                className={cn(
-                  "p-5 sm:p-6 rounded-2xl border transition-all duration-200 relative overflow-hidden group shadow-md",
-                  isCurrentMonth
-                    ? "bg-zinc-950/80 border-cyan-500/30 hover:border-cyan-500/50 shadow-[0_0_20px_rgba(6,182,212,0.06)]"
-                    : "bg-zinc-950/60 border-white/[0.06] hover:border-white/[0.12] hover:bg-zinc-950/80"
-                )}
+                className="p-5 sm:p-6 rounded-2xl border transition-all duration-200 relative overflow-hidden group shadow-md bg-zinc-950/80 border-cyan-500/30 hover:border-cyan-500/50 shadow-[0_0_20px_rgba(6,182,212,0.06)]"
               >
                 {/* Background accent */}
-                {isCurrentMonth && (
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/5 rounded-full blur-2xl pointer-events-none" />
-                )}
+                <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/5 rounded-full blur-2xl pointer-events-none" />
 
                 {/* Top Info Row */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/[0.06]">
                   <div className="flex items-center gap-2.5 flex-wrap">
                     <div className="flex items-center gap-2 font-mono text-xs sm:text-sm font-bold text-white tracking-tight">
-                      <Database className={cn("w-4 h-4", isCurrentMonth ? "text-cyan-400" : "text-zinc-500")} />
+                      <Database className="w-4 h-4 text-cyan-400" />
                       <span>{kb.name}</span>
                     </div>
 
-                    {isCurrentMonth && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.15)]">
-                        <Sparkles className="w-3 h-3 text-emerald-400" />
-                        <span>Active Month</span>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.15)]">
+                      <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                      <span>Active & Protected</span>
+                    </span>
+
+                    {kb.is_current_month && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                        <Sparkles className="w-3 h-3 text-cyan-400" />
+                        <span>Current Month</span>
                       </span>
                     )}
 

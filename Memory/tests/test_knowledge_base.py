@@ -5,6 +5,7 @@ import shutil
 import sys
 import tempfile
 import time
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -32,6 +33,13 @@ from knowledge_base.encryption import (
     vault_crypto,
     IntegrityVerificationError,
     ENCRYPTION_PREFIX,
+)
+from knowledge_base.protection import (
+    kb_protector,
+    FolderProtectionManager,
+    MANIFEST_FILENAME,
+    LOCK_FILENAME,
+    VAULT_SNAPSHOT_FILENAME,
 )
 
 @pytest.fixture
@@ -681,5 +689,162 @@ class TestKnowledgeBaseEncryption:
         deleted = vector_store.delete_knowledge_base(active_kb_name)
         assert deleted is True
         assert not kb_path.exists()
+
+
+class TestFolderProtectionAndIntegrity:
+    """Tests for folder protection, preventing unauthorized rename/delete, encrypted manifests, and whole-folder snapshots."""
+
+    def test_mandatory_folder_lock_prevents_renaming(self, temp_kb_dir):
+        kb_path = temp_kb_dir / "kb-01_10_2026-10_10_2026"
+        kb_path.mkdir(parents=True, exist_ok=True)
+
+        protector = FolderProtectionManager()
+        locked = protector.lock_folder(kb_path)
+        assert locked is True
+
+        # On Windows, attempting to rename the locked directory must be blocked by the OS kernel
+        if os.name == "nt":
+            with pytest.raises(PermissionError):
+                kb_path.rename(temp_kb_dir / "kb-renamed-forbidden")
+
+        # After clean unlocking, rename must be permitted
+        protector.unlock_folder(kb_path)
+        new_path = temp_kb_dir / "kb-renamed-permitted"
+        kb_path.rename(new_path)
+        assert new_path.exists()
+        assert not kb_path.exists()
+
+    def test_encrypted_manifest_self_heals_unauthorized_rename(self, temp_kb_dir):
+        canonical_name = "kb-15_10_2026-20_10_2026"
+        kb_path = temp_kb_dir / canonical_name
+        kb_path.mkdir(parents=True, exist_ok=True)
+
+        protector = FolderProtectionManager()
+        protector.create_or_update_manifest(kb_path, canonical_name)
+
+        # Verify encrypted manifest exists and starts with encryption prefix
+        manifest_file = kb_path / MANIFEST_FILENAME
+        assert manifest_file.exists()
+        raw_manifest = manifest_file.read_text(encoding="utf-8")
+        assert raw_manifest.startswith(ENCRYPTION_PREFIX)
+
+        # Simulate user manually renaming folder on disk while MIRA is offline
+        tampered_path = temp_kb_dir / "my_secret_screen_records"
+        kb_path.rename(tampered_path)
+        assert tampered_path.exists()
+
+        # Run verification and self-healing
+        healed_path = protector.verify_and_restore_canonical_name(tampered_path)
+        assert healed_path.name == canonical_name
+        assert healed_path.exists()
+        assert not tampered_path.exists()
+
+        protector.unlock_all_folders()
+
+    def test_encrypted_folder_snapshot(self, temp_kb_dir):
+        storage = KnowledgeBaseStorage(base_dir=temp_kb_dir)
+        vector_store = QdrantVectorStore(storage=storage)
+
+        vector_store.ingest_batch([
+            {
+                "job_id": "snap-1",
+                "app_name": "SecureApp",
+                "os": "Windows 11",
+                "timestamp": 1729760000,
+                "summarized_text": "Classified system configuration",
+                "embedding": [0.1, 0.2, 0.3, 0.4],
+            }
+        ])
+
+        active_path = storage.get_active_knowledge_base()
+        snapshot_file = active_path / VAULT_SNAPSHOT_FILENAME
+        assert snapshot_file.exists()
+
+        # Verify snapshot is encrypted at rest with Vault's AEAD
+        raw_snapshot = snapshot_file.read_text(encoding="utf-8")
+        assert raw_snapshot.startswith(ENCRYPTION_PREFIX)
+
+        # Decrypt snapshot and verify it matches SQLite binary format
+        import base64
+        dec_b64 = vault_crypto.decrypt(raw_snapshot)
+        sqlite_bytes = base64.b64decode(dec_b64)
+        assert sqlite_bytes.startswith(b"SQLite format 3\x00")
+
+        vector_store.close()
+        kb_protector.unlock_all_folders()
+
+    def test_all_kbs_are_considered_active(self, temp_kb_dir):
+        storage = KnowledgeBaseStorage(base_dir=temp_kb_dir)
+
+        # Create two distinct monthly KBs
+        kb1 = temp_kb_dir / "kb-01_08_2026-15_08_2026"
+        kb1.mkdir(parents=True, exist_ok=True)
+        kb2 = temp_kb_dir / "kb-01_10_2026-24_10_2026"
+        kb2.mkdir(parents=True, exist_ok=True)
+
+        kbs = storage.list_knowledge_bases()
+        assert len(kbs) == 2
+        # Verify ALL Knowledge Bases are active
+        for kb in kbs:
+            assert kb["is_active"] is True
+
+        paginated = storage.get_knowledge_bases_paginated()
+        for kb in paginated["knowledge_bases"]:
+            assert kb["is_active"] is True
+
+        kb_protector.unlock_all_folders()
+
+    def test_cross_platform_macos_lock_and_unlock_dispatch(self, temp_kb_dir, monkeypatch):
+        kb_path = temp_kb_dir / "kb-10_10_2026-24_10_2026"
+        kb_path.mkdir(parents=True, exist_ok=True)
+
+        invoked_commands = []
+        def mock_subprocess_run(cmd, *args, **kwargs):
+            invoked_commands.append(cmd)
+            class MockRes:
+                returncode = 0
+                stdout = b""
+                stderr = b""
+            return MockRes()
+
+        monkeypatch.setattr("knowledge_base.protection.subprocess.run", mock_subprocess_run)
+
+        protector = FolderProtectionManager()
+        protector._lock_macos(kb_path)
+
+        # Confirm chflags uchg and chmod +a were dispatched
+        cmd_strs = [" ".join(c) if isinstance(c, list) else str(c) for c in invoked_commands]
+        assert any("chflags uchg" in s for s in cmd_strs)
+        assert any("chmod +a" in s for s in cmd_strs)
+
+        # Test unlock removes chflags and chmod
+        invoked_commands.clear()
+        protector._unlock_macos(kb_path, remove_acl=True)
+        unlock_strs = [" ".join(c) if isinstance(c, list) else str(c) for c in invoked_commands]
+        assert any("chflags nouchg" in s for s in unlock_strs)
+        assert any("chmod -a" in s for s in unlock_strs)
+
+    def test_windows_persistent_acl_locking(self, temp_kb_dir):
+        if os.name != "nt":
+            pytest.skip("Windows-specific test")
+
+        kb_path = temp_kb_dir / "kb-05_10_2026-24_10_2026"
+        kb_path.mkdir(parents=True, exist_ok=True)
+
+        protector = FolderProtectionManager()
+        protector.lock_folder(kb_path)
+
+        # Attempt to rename must fail at Windows OS level
+        new_path = temp_kb_dir / "kb-05_10_2026-24_10_2026-tampered"
+        with pytest.raises(PermissionError):
+            kb_path.rename(new_path)
+
+        # Unlock must allow rename
+        protector.unlock_folder(kb_path)
+        kb_path.rename(new_path)
+        assert new_path.exists()
+        assert not kb_path.exists()
+
+
 
 

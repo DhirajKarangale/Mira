@@ -18,6 +18,7 @@ if str(_memory_dir) not in sys.path:
 
 from vault_logger import log, log_error
 from .config import get_knowledge_base_dir, get_kb_retention_period
+from .protection import kb_protector
 
 KB_NAME_PATTERN = re.compile(r"^kb-(\d{2})_(\d{2})_(\d{4})-(\d{2})_(\d{2})_(\d{4})$")
 
@@ -178,11 +179,16 @@ class KnowledgeBaseStorage:
         }
 
     def list_knowledge_bases(self) -> List[Dict[str, Any]]:
-        """Retrieves all existing Knowledge Bases formatted as kb-DD_MM_YYYY-DD_MM_YYYY."""
+        """Retrieves all existing Knowledge Bases formatted as kb-DD_MM_YYYY-DD_MM_YYYY,
+        verifying canonical names and ensuring active folder protection.
+        """
         with self._lock:
             kb_dir = self.base_dir
             if not kb_dir.exists():
                 return []
+
+            # Self-heal any unauthorized offline folder renames and lock all folders
+            kb_protector.sync_and_protect_all(kb_dir)
 
             results: List[Dict[str, Any]] = []
             for item in kb_dir.iterdir():
@@ -190,6 +196,7 @@ class KnowledgeBaseStorage:
                     parsed = self.parse_kb_name(item.name)
                     if parsed:
                         parsed["path"] = str(item.resolve())
+                        parsed["is_active"] = True  # Consider all Knowledge Bases active
                         results.append(parsed)
 
             # Sort by end_datetime descending, then start_datetime descending (newest first)
@@ -205,10 +212,9 @@ class KnowledgeBaseStorage:
         limit: int = 10,
         get_point_count_cb: Optional[Callable[[Path], int]] = None,
     ) -> Dict[str, Any]:
-        """Lists Knowledge Bases with date-based filtering and pagination metadata."""
+        """Lists Knowledge Bases with date-based filtering and pagination metadata, treating all KBs as active."""
         with self._lock:
             all_kbs = self.list_knowledge_bases()
-            active_name = self._active_kb_name or (self.get_active_kb_name() if all_kbs else "")
 
             q_start = parse_query_date(start_date)
             q_end = parse_query_date(end_date)
@@ -240,7 +246,6 @@ class KnowledgeBaseStorage:
 
                 kb_path = Path(kb["path"])
                 days_coverage = max(1, (kb_end - kb_start).days + 1)
-                is_active = (kb["name"] == active_name)
 
                 # Point count via callback if provided
                 points_count = 0
@@ -260,7 +265,7 @@ class KnowledgeBaseStorage:
                     "end_date_formatted": kb_end.strftime("%Y-%m-%d"),
                     "days_coverage": days_coverage,
                     "is_current_month": kb["is_current_month"],
-                    "is_active": is_active,
+                    "is_active": True,  # All Knowledge Bases are considered active
                     "points_count": points_count,
                     "size_bytes": size_bytes,
                     "path": kb["path"],
@@ -314,6 +319,9 @@ class KnowledgeBaseStorage:
                     before_delete_cb()
                 except Exception as e:
                     log_error(f"[KnowledgeBaseStorage] Callback before delete failed: {e}")
+
+            # Unlock folder sharing lock so Windows kernel permits deletion
+            kb_protector.unlock_folder(target_dir)
 
             if is_active:
                 self._active_kb_path = None
@@ -412,6 +420,8 @@ class KnowledgeBaseStorage:
                 self._active_kb_name = selected["name"]
                 self._start_date_str = selected["start_date"]
                 self._end_date_str = selected["end_date"]
+                kb_protector.create_or_update_manifest(self._active_kb_path, self._active_kb_name)
+                kb_protector.lock_folder(self._active_kb_path)
                 log(f"[KnowledgeBaseStorage] Reusing Knowledge Base for current month: {self._active_kb_name}")
                 return self._active_kb_path
 
@@ -425,6 +435,11 @@ class KnowledgeBaseStorage:
             self._active_kb_name = new_kb_name
             self._start_date_str = current_date_str
             self._end_date_str = current_date_str
+
+            # Create encrypted manifest and apply mandatory folder lock
+            kb_protector.create_or_update_manifest(new_kb_path, new_kb_name)
+            kb_protector.lock_folder(new_kb_path)
+
             log(f"[KnowledgeBaseStorage] Created new Knowledge Base for current month: {new_kb_name}")
             return self._active_kb_path
 
@@ -463,17 +478,22 @@ class KnowledgeBaseStorage:
             new_kb_path = self.base_dir / new_kb_name
 
             if new_kb_path.exists() and new_kb_path != active_path:
+                kb_protector.unlock_folder(active_path)
                 if before_rename_cb:
                     before_rename_cb()
                 self._active_kb_path = new_kb_path
                 self._active_kb_name = new_kb_name
                 self._start_date_str = start_date_str
                 self._end_date_str = today_str
+                kb_protector.create_or_update_manifest(new_kb_path, new_kb_name)
+                kb_protector.lock_folder(new_kb_path)
+                kb_protector.encrypt_folder_snapshot(new_kb_path)
                 if after_rename_cb:
                     after_rename_cb(new_kb_path)
                 log(f"[KnowledgeBaseStorage] Switched active KB to existing target path: {new_kb_name}")
                 return new_kb_path
 
+            kb_protector.unlock_folder(active_path)
             if before_rename_cb:
                 try:
                     before_rename_cb()
@@ -486,9 +506,13 @@ class KnowledgeBaseStorage:
                 self._active_kb_name = new_kb_name
                 self._start_date_str = start_date_str
                 self._end_date_str = today_str
+                kb_protector.create_or_update_manifest(new_kb_path, new_kb_name)
+                kb_protector.lock_folder(new_kb_path)
+                kb_protector.encrypt_folder_snapshot(new_kb_path)
                 log(f"[KnowledgeBaseStorage] Updated Knowledge Base end date: '{parsed['name']}' -> '{new_kb_name}'")
             except Exception as e:
                 log_error(f"[KnowledgeBaseStorage] Failed to rename '{active_path}' to '{new_kb_path}': {e}")
+                kb_protector.lock_folder(active_path)
                 return active_path
             finally:
                 if after_rename_cb:
