@@ -12,11 +12,12 @@ import { cn } from "@/lib/utils";
 
 export interface SidebarItem {
   key: string;
-  name: string;
+  name: string | ReactNode;
   icon: ComponentType<{ className?: string }> | ReactNode;
   badge?: string | number;
   disabled?: boolean;
 }
+
 
 export interface SidebarProps {
   items: readonly SidebarItem[] | SidebarItem[];
@@ -33,6 +34,7 @@ export interface SidebarProps {
   header?: ReactNode;
   footer?: ReactNode;
   className?: string;
+  onScroll?: (e: React.UIEvent<HTMLElement>) => void;
 }
 
 export const Sidebar: FC<SidebarProps> = ({
@@ -50,6 +52,7 @@ export const Sidebar: FC<SidebarProps> = ({
   header,
   footer,
   className,
+  onScroll,
 }) => {
   const isSmallScreenAuto = useMediaQuery(overlayBreakpoint);
   const isOverlayMode =
@@ -137,7 +140,12 @@ export const Sidebar: FC<SidebarProps> = ({
             className
           )}
         >
-          <div className="flex items-center justify-between h-12 px-3 border-b border-white/[0.06] overflow-hidden">
+          <div
+            className={cn(
+              "flex items-center justify-between px-3 border-b border-white/[0.06]",
+              header ? "min-h-12 py-2" : "h-12 overflow-hidden"
+            )}
+          >
             {header ? (
               header
             ) : (
@@ -160,6 +168,7 @@ export const Sidebar: FC<SidebarProps> = ({
           </div>
 
           <nav
+            onScroll={onScroll}
             className="flex-1 py-2 px-2 space-y-1 overflow-y-auto no-scrollbar"
             role="menu"
           >
@@ -222,21 +231,31 @@ export const Sidebar: FC<SidebarProps> = ({
     <aside
       aria-label="Sidebar navigation"
       className={cn(
-        "relative flex flex-col h-full bg-zinc-950/80 backdrop-blur-md border-r border-white/[0.08] text-zinc-300 transition-[width] duration-300 ease-in-out select-none z-20 shrink-0",
-        isCollapsed ? "w-16" : "w-60",
+        "relative flex flex-col h-full bg-zinc-950/80 backdrop-blur-md border-r border-white/[0.08] text-zinc-300 transition-[width] duration-300 ease-in-out select-none z-20 shrink-0 overflow-hidden",
+        isCollapsed ? "w-16" : "w-64",
         className
       )}
     >
-      <div className="flex items-center justify-between h-12 px-3 border-b border-white/[0.06] overflow-hidden">
+      <div
+        className={cn(
+          "flex items-center justify-between border-b border-white/[0.06] transition-[height,padding] duration-300 ease-in-out overflow-hidden shrink-0",
+          header
+            ? (isCollapsed ? "h-14 px-2" : "h-[88px] px-3 py-2.5")
+            : "h-14 px-3"
+        )}
+      >
         {header ? (
           header
         ) : (
-          <>
-            {!isCollapsed && (
-              <span className="font-semibold text-xs tracking-wider text-zinc-100 uppercase truncate">
-                {title || "Navigation"}
-              </span>
-            )}
+          <div className="flex items-center justify-between w-full h-full overflow-hidden">
+            <span
+              className={cn(
+                "font-semibold text-xs tracking-wider text-zinc-100 uppercase truncate transition-all duration-300",
+                isCollapsed ? "opacity-0 max-w-0" : "opacity-100 max-w-full"
+              )}
+            >
+              {title || "Navigation"}
+            </span>
             <button
               type="button"
               id="sidebar-toggle-button"
@@ -244,7 +263,7 @@ export const Sidebar: FC<SidebarProps> = ({
               title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
               aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
               className={cn(
-                "flex items-center justify-center h-8 w-8 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-white/10 transition-colors cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-cyan-400",
+                "flex items-center justify-center h-8 w-8 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-white/10 transition-colors cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-cyan-400 shrink-0",
                 isCollapsed && "mx-auto"
               )}
             >
@@ -254,12 +273,13 @@ export const Sidebar: FC<SidebarProps> = ({
                 <PanelLeftClose className="h-4 w-4" />
               )}
             </button>
-          </>
+          </div>
         )}
       </div>
 
       <nav
-        className="flex-1 py-2 px-2 space-y-1 overflow-y-auto no-scrollbar"
+        onScroll={onScroll}
+        className="flex-1 py-2 px-2 space-y-1 overflow-y-auto overflow-x-hidden no-scrollbar"
         role="menu"
       >
         {items.map((item) => {
@@ -272,13 +292,13 @@ export const Sidebar: FC<SidebarProps> = ({
               role="menuitem"
               aria-current={isActive ? "page" : undefined}
               disabled={item.disabled}
-              title={isCollapsed ? item.name : undefined}
+              title={isCollapsed && typeof item.name === "string" ? item.name : undefined}
               onClick={() => handleItemClick(item.key, item.disabled)}
               className={cn(
-                "group relative flex items-center w-full rounded-md text-xs font-medium transition-all duration-150 cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-cyan-400 disabled:opacity-40 disabled:cursor-not-allowed",
+                "group relative flex items-center w-full rounded-md text-xs font-medium cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-cyan-400 disabled:opacity-40 disabled:cursor-not-allowed h-9 overflow-hidden transition-all duration-200",
                 isCollapsed
-                  ? "justify-center h-10 px-0"
-                  : "justify-start h-9 px-3 gap-3",
+                  ? "justify-center px-0"
+                  : "justify-start px-2.5",
                 isActive
                   ? "bg-cyan-950/40 text-cyan-300 border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.12)] font-semibold"
                   : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5 border border-transparent"
@@ -286,7 +306,7 @@ export const Sidebar: FC<SidebarProps> = ({
             >
               <span
                 className={cn(
-                  "transition-colors",
+                  "transition-colors shrink-0 flex items-center justify-center w-5 h-5",
                   isActive
                     ? "text-cyan-400"
                     : "text-zinc-400 group-hover:text-zinc-200"
@@ -295,12 +315,22 @@ export const Sidebar: FC<SidebarProps> = ({
                 {renderIcon(item.icon)}
               </span>
 
-              {!isCollapsed && (
-                <span className="truncate tracking-wide">{item.name}</span>
-              )}
+              <span
+                className={cn(
+                  "truncate tracking-wide flex-1 whitespace-nowrap overflow-hidden transition-[opacity,max-width,margin] duration-300 text-left",
+                  isCollapsed ? "opacity-0 max-w-0 ml-0 pointer-events-none" : "opacity-100 max-w-[180px] ml-2.5"
+                )}
+              >
+                {item.name}
+              </span>
 
-              {!isCollapsed && item.badge !== undefined && (
-                <span className="ml-auto px-1.5 py-0.5 rounded text-[10px] font-mono bg-white/10 text-zinc-300 border border-white/5">
+              {item.badge !== undefined && (
+                <span
+                  className={cn(
+                    "ml-auto px-1.5 py-0.5 rounded text-[10px] font-mono bg-white/10 text-zinc-300 border border-white/5 shrink-0 whitespace-nowrap transition-[opacity,max-width] duration-300",
+                    isCollapsed ? "opacity-0 max-w-0 p-0 border-0 pointer-events-none" : "opacity-100 max-w-[50px]"
+                  )}
+                >
                   {item.badge}
                 </span>
               )}
@@ -308,10 +338,7 @@ export const Sidebar: FC<SidebarProps> = ({
               {isActive && (
                 <span
                   className={cn(
-                    "absolute bg-cyan-400 rounded-full",
-                    isCollapsed
-                      ? "left-0 top-2 bottom-2 w-[3px]"
-                      : "left-0 top-1.5 bottom-1.5 w-[3px]"
+                    "absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-cyan-400 rounded-full transition-all duration-200"
                   )}
                 />
               )}
@@ -321,7 +348,7 @@ export const Sidebar: FC<SidebarProps> = ({
       </nav>
 
       {footer && (
-        <div className="p-2 border-t border-white/[0.06] overflow-hidden">
+        <div className="p-2 border-t border-white/[0.06] overflow-hidden whitespace-nowrap shrink-0">
           {footer}
         </div>
       )}

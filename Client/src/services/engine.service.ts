@@ -1,4 +1,4 @@
-import { engineApi } from "@/lib/api";
+import { engineApi, vaultApi } from "@/lib/api";
 
 export interface EngineHealth {
   service: string;
@@ -125,10 +125,21 @@ export const engineService = {
     limit?: number;
     offset?: number;
   }): Promise<ChatSessionsResponse> {
-    const response = await engineApi.get<ChatSessionsResponse>("/chats/sessions", {
-      params,
-    });
-    return response.data;
+    try {
+      const response = await engineApi.get<ChatSessionsResponse>("/chats/sessions", {
+        params,
+      });
+      return response.data;
+    } catch (err) {
+      try {
+        const fallback = await vaultApi.get<ChatSessionsResponse>("/chats/sessions", {
+          params,
+        });
+        return fallback.data;
+      } catch {
+        throw err;
+      }
+    }
   },
 
   async getChatsBySession(
@@ -140,23 +151,58 @@ export const engineService = {
       offset?: number;
     }
   ): Promise<ChatMessagesResponse> {
-    const response = await engineApi.get<ChatMessagesResponse>(
-      `/chats/sessions/${encodeURIComponent(sessionId)}`,
-      { params }
-    );
-    return response.data;
+    try {
+      const response = await engineApi.get<ChatMessagesResponse>(
+        `/chats/sessions/${encodeURIComponent(sessionId)}`,
+        { params }
+      );
+      return response.data;
+    } catch (err) {
+      try {
+        const fallback = await vaultApi.get<ChatMessagesResponse>(
+          `/chats/sessions/${encodeURIComponent(sessionId)}`,
+          { params }
+        );
+        return fallback.data;
+      } catch {
+        throw err;
+      }
+    }
   },
 
   async sendChatMessage(payload: SendChatMessageRequest): Promise<SendChatMessageResponse> {
-    const response = await engineApi.post<SendChatMessageResponse>("/chats/message", payload);
-    return response.data;
+    try {
+      const response = await engineApi.post<SendChatMessageResponse>("/chats/message", payload);
+      return response.data;
+    } catch (err) {
+      try {
+        const userMsg = await vaultApi.post<ChatMessage>("/chats", {
+          session_id: payload.session_id,
+          role: payload.role || "user",
+          content: payload.content,
+          chat_name: payload.chat_name,
+        });
+        return {
+          session_id: userMsg.data.session_id,
+          user_message: userMsg.data,
+        };
+      } catch {
+        throw err;
+      }
+    }
   },
 
   async seedDemoChats(count: number = 12): Promise<{ status: string; seeded_count: number }> {
-    const response = await engineApi.post<{ status: string; seeded_count: number }>("/chats/seed", null, {
-      params: { count },
-    });
-    return response.data;
+    try {
+      const response = await engineApi.post<{ status: string; seeded_count: number }>("/chats/seed", null, {
+        params: { count },
+      });
+      return response.data;
+    } catch {
+      // Fallback
+      return { status: "success", seeded_count: 0 };
+    }
   },
 };
+
 

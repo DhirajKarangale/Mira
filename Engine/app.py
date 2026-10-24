@@ -33,8 +33,18 @@ async def lifespan(app: FastAPI):
         await stop_ocr_summarization()
     except Exception as e:
         log_error(f'Error stopping OCR Summarization module: {e}')
+from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(title='MIRA Engine Service', description='LLM orchestration, model execution, provider fallback, and AI workflow coordination', version='1.0.0', lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=['*'],
+    allow_credentials=True,
+    allow_methods=['*'],
+    allow_headers=['*'],
+    expose_headers=['*'],
+)
 app.include_router(chat_router)
+
 
 
 class LLMCallRequest(BaseModel):
