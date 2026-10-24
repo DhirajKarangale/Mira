@@ -1,21 +1,18 @@
 from __future__ import annotations
-
 import json
 from pathlib import Path
 from typing import Dict, List, Optional
-
-CONFIG_FILE_PATH = Path(__file__).resolve().parent / "consumer_groups.json"
-
+CONFIG_FILE_PATH = Path(__file__).resolve().parent / 'consumer_groups.json'
 _CONSUMER_GROUPS_CACHE: Dict[str, str] = {}
 _CONFIG_MTIME: float = 0.0
 
 def _load_consumer_groups() -> Dict[str, str]:
     global _CONSUMER_GROUPS_CACHE, _CONFIG_MTIME
     if not CONFIG_FILE_PATH.exists():
-        raise FileNotFoundError(f"Consumer groups configuration file not found: {CONFIG_FILE_PATH}")
+        raise FileNotFoundError(f'Consumer groups configuration file not found: {CONFIG_FILE_PATH}')
     current_mtime = CONFIG_FILE_PATH.stat().st_mtime
     if not _CONSUMER_GROUPS_CACHE or current_mtime != _CONFIG_MTIME:
-        with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
+        with open(CONFIG_FILE_PATH, 'r', encoding='utf-8') as f:
             _CONSUMER_GROUPS_CACHE = json.load(f)
         _CONFIG_MTIME = current_mtime
     return _CONSUMER_GROUPS_CACHE
@@ -35,15 +32,15 @@ def get_all_consumer_groups() -> List[str]:
 def get_stream_for_consumer_key(consumer_key: str) -> Optional[str]:
     groups = _load_consumer_groups()
     if consumer_key in groups:
-        return f"mira:stream:{consumer_key}"
+        return f'mira:stream:{consumer_key}'
     for k, v in groups.items():
         if v == consumer_key:
-            return f"mira:stream:{k}"
+            return f'mira:stream:{k}'
     return None
 
 def get_stream_for_consumer_group(consumer_group: str) -> Optional[str]:
     mappings = _load_consumer_groups()
     for key, group in mappings.items():
         if group == consumer_group:
-            return f"mira:stream:{key}"
+            return f'mira:stream:{key}'
     return None

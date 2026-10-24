@@ -15,6 +15,7 @@ import {
 import {
   useDeleteConsumerGroupMutation,
   useCleanPendingMessagesMutation,
+  useCleanAllPelsMutation,
   useFormatRedisMutation,
 } from "../queries";
 import { ConfirmModal } from "./ConfirmModal";
@@ -41,14 +42,20 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
 
   const deleteMutation = useDeleteConsumerGroupMutation();
   const cleanMutation = useCleanPendingMessagesMutation();
+  const cleanAllPelsMutation = useCleanAllPelsMutation();
   const formatMutation = useFormatRedisMutation();
 
   const actionLoading =
-    deleteMutation.isPending || cleanMutation.isPending || formatMutation.isPending;
+    deleteMutation.isPending ||
+    cleanMutation.isPending ||
+    cleanAllPelsMutation.isPending ||
+    formatMutation.isPending;
 
   const [deleteTarget, setDeleteTarget] = useState<ConsumerGroup | null>(null);
   const [cleanTarget, setCleanTarget] = useState<ConsumerGroup | null>(null);
-  const [isCleanAllOpen, setIsCleanAllOpen] = useState(false);
+  const [cleanPelTarget, setCleanPelTarget] = useState<ConsumerGroup | null>(null);
+  const [isCleanAllPelsOpen, setIsCleanAllPelsOpen] = useState(false);
+  const [isCleanAllStreamsOpen, setIsCleanAllStreamsOpen] = useState(false);
   const [isFormatOpen, setIsFormatOpen] = useState(false);
 
   const showFeedback = (type: "success" | "error", text: string) => {
@@ -77,6 +84,11 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
 
   const totalActive = useMemo(
     () => groups.reduce((acc, g) => acc + (g.active_messages_count || 0), 0),
+    [groups]
+  );
+
+  const totalStreamMessages = useMemo(
+    () => groups.reduce((acc, g) => acc + (g.total_messages_count || 0), 0),
     [groups]
   );
 
@@ -110,34 +122,74 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
       const res: CleanResult = await cleanMutation.mutateAsync({
         groupName: cleanTarget.group_name,
         streamName: cleanTarget.stream_name,
+        resetStream: true,
       });
       showFeedback(
         "success",
-        res.message || `Cleaned messages for ${cleanTarget.group_name}`
+        res.message || `Cleaned stream for ${cleanTarget.group_name}`
       );
       setCleanTarget(null);
     } catch (err: any) {
       console.error("Clean failed:", err);
       showFeedback(
         "error",
-        err?.response?.data?.detail?.message || `Failed to clean ${cleanTarget.group_name}`
+        err?.response?.data?.detail?.message || `Failed to clean stream for ${cleanTarget.group_name}`
       );
     }
   };
 
-  const handleConfirmCleanAll = async () => {
+  const handleConfirmCleanSinglePel = async () => {
+    if (!cleanPelTarget) return;
     try {
-      const res: CleanResult = await cleanMutation.mutateAsync({});
+      const res: CleanResult = await cleanMutation.mutateAsync({
+        groupName: cleanPelTarget.group_name,
+        streamName: cleanPelTarget.stream_name,
+        resetStream: false,
+      });
       showFeedback(
         "success",
-        res.message || "Cleaned pending and unprocessed messages across all consumer groups."
+        res.message || `Cleaned PEL for ${cleanPelTarget.group_name}`
       );
-      setIsCleanAllOpen(false);
+      setCleanPelTarget(null);
     } catch (err: any) {
-      console.error("Clean all failed:", err);
+      console.error("Clean PEL failed:", err);
       showFeedback(
         "error",
-        err?.response?.data?.detail?.message || "Failed to clean all pending messages."
+        err?.response?.data?.detail?.message || `Failed to clean PEL for ${cleanPelTarget.group_name}`
+      );
+    }
+  };
+
+  const handleConfirmCleanAllPels = async () => {
+    try {
+      const res: CleanResult = await cleanAllPelsMutation.mutateAsync();
+      showFeedback(
+        "success",
+        res.message || "Cleaned all pending messages (PEL) across all consumer groups."
+      );
+      setIsCleanAllPelsOpen(false);
+    } catch (err: any) {
+      console.error("Clean all PELs failed:", err);
+      showFeedback(
+        "error",
+        err?.response?.data?.detail?.message || "Failed to clean all PELs."
+      );
+    }
+  };
+
+  const handleConfirmCleanAllStreams = async () => {
+    try {
+      const res: CleanResult = await cleanMutation.mutateAsync({ resetStream: true });
+      showFeedback(
+        "success",
+        res.message || "Cleaned all streams and consumer groups."
+      );
+      setIsCleanAllStreamsOpen(false);
+    } catch (err: any) {
+      console.error("Clean all streams failed:", err);
+      showFeedback(
+        "error",
+        err?.response?.data?.detail?.message || "Failed to clean all streams."
       );
     }
   };
@@ -161,39 +213,65 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
 
   return (
     <div className="w-full space-y-5">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
         <div className="rounded-xl border border-white/[0.08] bg-zinc-900/50 backdrop-blur-sm p-4 relative overflow-hidden">
           <div className="flex items-center justify-between text-zinc-400 mb-2">
             <span className="text-xs font-medium uppercase tracking-wider">Consumer Groups</span>
             <Layers className="w-4 h-4 text-zinc-500" />
           </div>
           <div className="text-2xl font-bold text-white tracking-tight">{groups.length}</div>
-          <div className="text-[11px] text-zinc-500 mt-1">Configured in Message Broker</div>
+          <div className="text-[11px] text-zinc-500 mt-1">Configured & active in Redis</div>
         </div>
 
         <div className="rounded-xl border border-white/[0.08] bg-zinc-900/50 backdrop-blur-sm p-4 relative overflow-hidden">
           <div className="flex items-center justify-between text-zinc-400 mb-2">
-            <span className="text-xs font-medium uppercase tracking-wider">Active Messages</span>
+            <span className="text-xs font-medium uppercase tracking-wider">Active in Stream</span>
             <Radio className="w-4 h-4 text-cyan-400" />
           </div>
           <div className="text-2xl font-bold text-cyan-300 tracking-tight">{totalActive}</div>
-          <div className="text-[11px] text-zinc-500 mt-1">Across all Redis stream entries</div>
+          <div className="text-[11px] text-zinc-500 mt-1">Unconsumed messages waiting in stream</div>
+        </div>
+
+        <div className="rounded-xl border border-white/[0.08] bg-zinc-900/50 backdrop-blur-sm p-4 relative overflow-hidden flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-zinc-400 mb-2">
+              <span className="text-xs font-medium uppercase tracking-wider">PEL Messages</span>
+              <Flame className={cn("w-4 h-4", totalPending > 0 ? "text-amber-400 animate-pulse" : "text-zinc-500")} />
+            </div>
+            <div
+              className={cn(
+                "text-2xl font-bold tracking-tight",
+                totalPending > 0 ? "text-amber-400" : "text-zinc-300"
+              )}
+            >
+              {totalPending}
+            </div>
+            <div className="text-[11px] text-zinc-500 mt-1">Delivered, awaiting ACK (PEL)</div>
+          </div>
+          {totalPending > 0 && (
+            <div className="mt-3 pt-2.5 border-t border-white/[0.06] flex items-center justify-end">
+              <button
+                type="button"
+                id="btn-quick-clean-pels"
+                onClick={() => setIsCleanAllPelsOpen(true)}
+                disabled={actionLoading}
+                className="text-[11px] font-medium text-amber-300 hover:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 px-2.5 py-1 rounded-md border border-amber-500/30 transition-colors flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed shadow-[0_0_8px_rgba(245,158,11,0.1)]"
+                title="Clean all pending messages (PELs)"
+              >
+                <Flame className="w-3 h-3 text-amber-400" />
+                Clean All PELs
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="rounded-xl border border-white/[0.08] bg-zinc-900/50 backdrop-blur-sm p-4 relative overflow-hidden">
           <div className="flex items-center justify-between text-zinc-400 mb-2">
-            <span className="text-xs font-medium uppercase tracking-wider">Pending Messages</span>
-            <Flame className={cn("w-4 h-4", totalPending > 0 ? "text-amber-400" : "text-zinc-500")} />
+            <span className="text-xs font-medium uppercase tracking-wider">Total in Stream</span>
+            <Layers className="w-4 h-4 text-emerald-400" />
           </div>
-          <div
-            className={cn(
-              "text-2xl font-bold tracking-tight",
-              totalPending > 0 ? "text-amber-400" : "text-zinc-300"
-            )}
-          >
-            {totalPending}
-          </div>
-          <div className="text-[11px] text-zinc-500 mt-1">Awaiting consumer acknowledgment</div>
+          <div className="text-2xl font-bold text-emerald-300 tracking-tight">{totalStreamMessages}</div>
+          <div className="text-[11px] text-zinc-500 mt-1">Total entries in Redis stream (XLEN)</div>
         </div>
       </div>
 
@@ -229,23 +307,37 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
 
           <button
             type="button"
-            onClick={() => setIsCleanAllOpen(true)}
+            id="btn-clean-all-pels"
+            onClick={() => setIsCleanAllPelsOpen(true)}
             disabled={actionLoading}
-            className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition-colors cursor-pointer disabled:cursor-not-allowed shadow-[0_0_12px_rgba(245,158,11,0.1)]"
-            title="Clean pending or unprocessed messages"
+            className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium text-amber-300 hover:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition-colors cursor-pointer disabled:cursor-not-allowed shadow-[0_0_12px_rgba(245,158,11,0.15)]"
+            title="Clean all unacknowledged pending messages (PEL) across all consumer groups"
           >
-            <Sparkles className="w-3.5 h-3.5" />
-            Clean All Pending
+            <Flame className="w-3.5 h-3.5 text-amber-400" />
+            Clean All PELs
           </button>
 
           <button
             type="button"
+            id="btn-clean-all-streams"
+            onClick={() => setIsCleanAllStreamsOpen(true)}
+            disabled={actionLoading}
+            className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium text-cyan-300 hover:text-cyan-200 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 transition-colors cursor-pointer disabled:cursor-not-allowed shadow-[0_0_12px_rgba(6,182,212,0.15)]"
+            title="Clean all streams and messages across all consumer groups"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+            Clean All Streams
+          </button>
+
+          <button
+            type="button"
+            id="btn-format-redis"
             onClick={() => setIsFormatOpen(true)}
             disabled={actionLoading}
-            className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 transition-colors cursor-pointer disabled:cursor-not-allowed shadow-[0_0_12px_rgba(239,68,68,0.1)]"
+            className="flex items-center gap-1.5 px-3 h-9 rounded-xl text-xs font-medium text-red-300 hover:text-red-200 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 transition-colors cursor-pointer disabled:cursor-not-allowed shadow-[0_0_12px_rgba(239,68,68,0.15)]"
             title="Clear all Redis streams and related data"
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            <Trash2 className="w-3.5 h-3.5 text-red-400" />
             Format Redis
           </button>
         </div>
@@ -258,8 +350,9 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
               <tr className="border-b border-white/[0.08] bg-white/[0.02] text-zinc-400 font-semibold tracking-wider uppercase text-[11px]">
                 <th className="py-3 px-4">Consumer Group</th>
                 <th className="py-3 px-4">Stream Name</th>
-                <th className="py-3 px-3 text-center">Active Messages</th>
-                <th className="py-3 px-3 text-center">Pending Messages</th>
+                <th className="py-3 px-3 text-center">Active in Stream</th>
+                <th className="py-3 px-3 text-center">PEL Messages</th>
+                <th className="py-3 px-3 text-center">Total in Stream</th>
                 <th className="py-3 px-4">Last Delivered ID</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
@@ -267,14 +360,14 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
             <tbody className="divide-y divide-white/[0.04]">
               {loading && groups.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-zinc-400">
+                  <td colSpan={7} className="py-12 text-center text-zinc-400">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-red-500" />
                     Loading consumer groups...
                   </td>
                 </tr>
               ) : filteredGroups.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-zinc-500">
+                  <td colSpan={7} className="py-12 text-center text-zinc-500">
                     {searchQuery
                       ? "No consumer groups match your search criteria."
                       : "No Redis consumer groups found."}
@@ -284,6 +377,7 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
                 filteredGroups.map((group) => {
                   const hasPending = (group.pending_messages_count || 0) > 0;
                   const hasActive = (group.active_messages_count || 0) > 0;
+                  const totalStream = group.total_messages_count ?? 0;
 
                   return (
                     <tr
@@ -327,6 +421,7 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
                               ? "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30"
                               : "bg-white/[0.04] text-zinc-500"
                           )}
+                          title={`${group.active_messages_count ?? 0} unconsumed message(s) waiting in stream`}
                         >
                           {group.active_messages_count ?? 0}
                         </span>
@@ -340,8 +435,23 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
                               ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-[0_0_10px_rgba(245,158,11,0.2)] animate-pulse"
                               : "bg-white/[0.04] text-zinc-500"
                           )}
+                          title={`${group.pending_messages_count ?? 0} pending message(s) in PEL (awaiting ACK)`}
                         >
                           {group.pending_messages_count ?? 0}
+                        </span>
+                      </td>
+
+                      <td className="py-3 px-3 text-center">
+                        <span
+                          className={cn(
+                            "inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-full font-mono text-xs font-semibold",
+                            totalStream > 0
+                              ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
+                              : "bg-white/[0.04] text-zinc-500"
+                          )}
+                          title={`${totalStream} total message(s) in stream (XLEN)`}
+                        >
+                          {totalStream}
                         </span>
                       </td>
 
@@ -354,25 +464,38 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
 
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {hasPending && (
+                            <button
+                              type="button"
+                              onClick={() => setCleanPelTarget(group)}
+                              disabled={actionLoading}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-amber-300 hover:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/25 transition-colors cursor-pointer disabled:cursor-not-allowed shadow-[0_0_8px_rgba(245,158,11,0.1)]"
+                              title={`Clean ${group.pending_messages_count} pending message(s) (PEL) for ${group.group_name}`}
+                            >
+                              <Flame className="w-3.5 h-3.5 text-amber-400" />
+                              Clean PEL
+                            </button>
+                          )}
+
                           <button
                             type="button"
                             onClick={() => setCleanTarget(group)}
                             disabled={actionLoading}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-amber-300 hover:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/25 transition-colors cursor-pointer disabled:cursor-not-allowed"
-                            title="Clean pending or unprocessed messages for this group"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-cyan-300 hover:text-cyan-200 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/25 transition-colors cursor-pointer disabled:cursor-not-allowed shadow-[0_0_8px_rgba(6,182,212,0.1)]"
+                            title="Clean stream and messages for this group"
                           >
-                            <Sparkles className="w-3 h-3" />
-                            Clean
+                            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                            Clean Stream
                           </button>
 
                           <button
                             type="button"
                             onClick={() => setDeleteTarget(group)}
                             disabled={actionLoading}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-300 hover:text-red-200 bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-300 hover:text-red-200 bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 transition-colors cursor-pointer disabled:cursor-not-allowed shadow-[0_0_8px_rgba(239,68,68,0.1)]"
                             title="Delete this consumer group"
                           >
-                            <Trash2 className="w-3 h-3" />
+                            <Trash2 className="w-3.5 h-3.5 text-red-400" />
                             Delete
                           </button>
                         </div>
@@ -410,13 +533,36 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
       />
 
       <ConfirmModal
+        isOpen={Boolean(cleanPelTarget)}
+        onClose={() => setCleanPelTarget(null)}
+        onConfirm={handleConfirmCleanSinglePel}
+        title="Clean Consumer Group PEL"
+        description={
+          <div>
+            Are you sure you want to clean the Pending Entries List (PEL) for{" "}
+            <span className="font-mono font-semibold text-white">
+              {cleanPelTarget?.group_name}
+            </span>
+            ? This will acknowledge and remove{" "}
+            <span className="font-semibold text-amber-300">
+              {cleanPelTarget?.pending_messages_count || 0}
+            </span>{" "}
+            pending message(s) from the PEL without deleting other stream messages.
+          </div>
+        }
+        confirmText="Clean PEL"
+        variant="warning"
+        isLoading={actionLoading}
+      />
+
+      <ConfirmModal
         isOpen={Boolean(cleanTarget)}
         onClose={() => setCleanTarget(null)}
         onConfirm={handleConfirmCleanSingle}
-        title="Clean Messages"
+        title="Clean Stream"
         description={
           <div>
-            Clean all active and pending messages for{" "}
+            Clean stream and all active and pending messages for{" "}
             <span className="font-mono font-semibold text-white">
               {cleanTarget?.group_name}
             </span>
@@ -424,34 +570,54 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
             <span className="font-semibold text-cyan-300">
               {cleanTarget?.active_messages_count || 0}
             </span>{" "}
-            active message(s) and{" "}
+            active message(s) in stream and{" "}
             <span className="font-semibold text-amber-300">
               {cleanTarget?.pending_messages_count || 0}
             </span>{" "}
-            pending message(s) will be cleared.
+            PEL message(s) will be cleared.
           </div>
         }
-        confirmText="Clean Messages"
+        confirmText="Clean Stream"
+        variant="default"
+        isLoading={actionLoading}
+      />
+
+      <ConfirmModal
+        isOpen={isCleanAllPelsOpen}
+        onClose={() => setIsCleanAllPelsOpen(false)}
+        onConfirm={handleConfirmCleanAllPels}
+        title="Clean All PELs"
+        description={
+          <div>
+            Are you sure you want to clean all Pending Entries Lists (PELs)? This will acknowledge and remove all pending unacknowledged messages across all{" "}
+            <span className="font-semibold text-white">{groups.length}</span> consumer groups without deleting active stream data.
+            <div className="mt-2 text-xs text-amber-300/90 font-mono">
+              Total PEL messages to clear: <span className="font-bold">{totalPending}</span>
+            </div>
+          </div>
+        }
+        confirmText="Clean All PELs"
         variant="warning"
         isLoading={actionLoading}
       />
 
       <ConfirmModal
-        isOpen={isCleanAllOpen}
-        onClose={() => setIsCleanAllOpen(false)}
-        onConfirm={handleConfirmCleanAll}
-        title="Clean All Consumer Groups"
+        isOpen={isCleanAllStreamsOpen}
+        onClose={() => setIsCleanAllStreamsOpen(false)}
+        onConfirm={handleConfirmCleanAllStreams}
+        title="Clean All Streams"
         description={
           <div>
-            This operation will clear all active and pending messages across{" "}
+            This operation will clean and clear all active and PEL messages across{" "}
             <span className="font-semibold text-white">{groups.length}</span> consumer groups.
-            Total active messages:{" "}
-            <span className="font-semibold text-cyan-300">{totalActive}</span>, pending:{" "}
-            <span className="font-semibold text-amber-300">{totalPending}</span>.
+            Total active in stream:{" "}
+            <span className="font-semibold text-cyan-300">{totalActive}</span>, PEL pending:{" "}
+            <span className="font-semibold text-amber-300">{totalPending}</span>, total in stream:{" "}
+            <span className="font-semibold text-emerald-300">{totalStreamMessages}</span>.
           </div>
         }
-        confirmText="Clean All"
-        variant="warning"
+        confirmText="Clean All Streams"
+        variant="default"
         isLoading={actionLoading}
       />
 

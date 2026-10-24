@@ -116,7 +116,6 @@ export const AiConfigPage: FC = () => {
   const lastErrorRef = useRef<string | null>(null);
 
   const pathSegments = location.pathname.split("/").filter(Boolean);
-  // URL pattern: /configurations/ai-config/:tab (e.g. management, groq, gemini)
   const currentSubTab = (pathSegments[2] || "management").toLowerCase();
   const isManagementActive = currentSubTab === "management" || currentSubTab === "llm-management";
   const isGroqActive = currentSubTab === "groq";

@@ -35,7 +35,6 @@ export const LlmManagementView: FC<LlmManagementViewProps> = ({
   onSelectProvider,
   isUpdating,
 }) => {
-  // Determine primary and secondary providers based on current sequence
   const primaryProvider = providers[0] || "groq";
   const secondaryProvider = providers[1] || "gemini";
 
@@ -48,7 +47,6 @@ export const LlmManagementView: FC<LlmManagementViewProps> = ({
   const secondaryConfig = configsMap[secondaryProvider.toLowerCase()];
   const secondaryKeysCount = secondaryConfig?.total_keys ?? secondaryConfig?.keys?.length ?? 0;
 
-  // Aggregate stats
   const totalKeysAcrossAll = useMemo(() => {
     return Object.values(configsMap).reduce((sum, cfg) => {
       const count = cfg?.total_keys ?? cfg?.keys?.length ?? 0;

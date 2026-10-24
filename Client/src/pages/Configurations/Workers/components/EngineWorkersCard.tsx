@@ -32,13 +32,11 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
   onSave,
   disabled = false,
 }) => {
-  // Concurrency states
   const [llmWorkers, setLlmWorkers] = useState<string>("1");
   const [screenshotExtractionWorkers, setScreenshotExtractionWorkers] = useState<string>("1");
   const [screenshotSummarizationWorkers, setScreenshotSummarizationWorkers] = useState<string>("1");
   const [embeddingVectorStoreWorkers, setEmbeddingVectorStoreWorkers] = useState<string>("1");
 
-  // Poll time states (in seconds)
   const [screenshotExtractionPollTime, setScreenshotExtractionPollTime] = useState<string>("5");
   const [screenshotSummarizationPollTime, setScreenshotSummarizationPollTime] = useState<string>("5");
   const [embeddingVectorStoreWorkersPollTime, setEmbeddingVectorStoreWorkersPollTime] = useState<string>("1");
@@ -46,7 +44,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
 
-  // Sync state whenever external config updates
   useEffect(() => {
     if (config) {
       setLlmWorkers(String(config.llm_workers ?? 1));

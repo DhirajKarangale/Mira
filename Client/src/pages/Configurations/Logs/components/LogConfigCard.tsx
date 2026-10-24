@@ -92,7 +92,6 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
   const [config, setConfig] = useState<LogConfig | null>(serverConfig ?? null);
   const [originalConfig, setOriginalConfig] = useState<LogConfig | null>(serverConfig ?? null);
 
-  // Manual Log Deletion state
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [activeDeleteTarget, setActiveDeleteTarget] = useState<{ id: string; name: string }>({
     id: "all",
@@ -205,7 +204,6 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
     }
   };
 
-  // Manual Delete Handlers
   const handleOpenDeleteModal = (moduleId: string, moduleName: string) => {
     setActiveDeleteTarget({ id: moduleId, name: moduleName });
     setIsDeleteModalOpen(true);

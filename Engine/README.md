@@ -1,157 +1,34 @@
 # Engine
 
-The **Engine** module coordinates LLM orchestration, model executions, provider fallbacks, and AI workflows for MIRA.
+The **Engine** module coordinates LLM orchestration, model execution, provider fallback, and AI workflows for MIRA.
 
 ---
 
 ## 1. Purpose
 
-- **LLM Coordination & Orchestration**: Centrally manages prompt dispatching and execution across multiple AI providers.
-- **Dynamic Vault Integration**: Fetches LLM provider priorities, API keys, active key indices, and worker settings from Vault at startup and stores them in memory.
-- **Provider & Model Fallback**: Automatically rotates API keys on key expiration/invalidation, tries fallback models in configured order on model availability errors, and falls back across providers according to Vault's priority sequence.
-- **Response Normalization**: Normalizes responses by stripping internal thinking tags (`<think>`, `<thought>`, `<reasoning>`) and provider-specific metadata.
-- **Security & Key Masking**: Guarantees API keys and raw error traces are masked and never exposed in logs or user-facing messages.
+- **LLM Orchestration**: Coordinates prompt dispatching and execution across AI providers (Gemini, Groq).
+- **Dynamic Vault Integration**: Synchronizes AI priorities, API keys, and worker concurrency limits from Vault.
+- **Provider & Model Fallback**: Rotates invalid API keys and falls back across models and providers automatically.
+- **Response Normalization**: Strips internal reasoning tags (`<think>`, `<thought>`) from completions.
+- **OCR Summarization Pipeline**: Pulls extracted screen text from Message Broker, generates summaries and embeddings, and pushes to Knowledge Base queues.
 
 ---
 
-## 2. Directory Structure
+## 2. API Endpoints
 
-Engine/
-├── __init__.py
-├── start.py                   # General startup script: initializes config, starts OCR Summarization & web server
-├── app.py                     # FastAPI service exposing /health, /status, /llm/call, /config/sync, /summarization/*, /embedding/*
-├── config.py                  # In-memory configuration store & Vault HTTP fetcher
-├── requirements.txt           # Module dependencies
-├── vault_logger.py            # Centralized logging to Vault with API key redaction
-├── tests/
-│   ├── test_api.py            # FastAPI endpoint tests
-│   ├── test_llm.py            # LLM caller, parser, error analysis, and fallback tests
-│   ├── test_embedding.py      # Embedding submodule and Qwen model tests
-│   └── test_ocr_summarization.py # OCR summarization, individual processing, and worker tests
-├── embedding/
-│   ├── __init__.py            # Exposes get_embedding(text) -> List[float], initialize_embedding_model, EmbeddingModelManager
-│   ├── init_embedding.py      # Dedicated initialization script (SentenceTransformer & Qwen model manager, CLI runnable)
-│   └── model.py               # Singleton inference caller delegating to EmbeddingModelManager
-├── ocr_summarization/
-│   ├── __init__.py            # Public startup function start_ocr_summarization()
-│   ├── broker_client.py       # Message Broker polling, publishing, and acknowledgement
-│   ├── config.py              # Consumer group mappings & batch size constants
-│   ├── summarizer.py          # Prompt formatting, LLM summarization, and output mapping
-│   └── worker.py              # Parallel non-blocking summarization & embedding workers
-└── llm/
-    ├── __init__.py            # Main public exports
-    ├── caller.py              # Main LLM caller: call_llm(prompt, work)
-    ├── config.json            # Model fallback lists & temperatures per work category
-    ├── config.py              # Work configuration loader & Vault config coordinator
-    ├── error_analysis.py      # Error classifier (Key, Model, Provider, Other) & key masker
-    ├── gemini.py              # Google Gemini provider implementation
-    ├── groq.py                # Groq provider implementation
-    ├── main.py                # CLI runner and public wrapper
-    └── response_parser.py     # Text extractor and reasoning tag stripper
-```
-
----
-
-## 3. Work & Model Configuration (`llm/config.json`)
-
-Supported works, temperatures, and ordered model fallback lists:
-
-```json
-{
-  "summarization": {
-    "temperature": 0.1,
-    "gemini": [
-      "gemini-2.5-flash",
-      "gemini-3.8-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-1.5-flash"
-    ],
-    "groq": [
-      "llama-3.3-70b-versatile",
-      "qwen/qwen3.8-27b",
-      "openai/gpt-oss-120b",
-      "openai/gpt-oss-20b",
-      "llama-3.1-8b-instant"
-    ]
-  },
-  "chat": {
-    "temperature": 0.7,
-    "gemini": [
-      "gemini-2.5-flash",
-      "gemini-3.8-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-1.5-flash"
-    ],
-    "groq": [
-      "llama-3.3-70b-versatile",
-      "qwen/qwen3.8-27b",
-      "openai/gpt-oss-120b",
-      "llama-3.1-8b-instant"
-    ]
-  },
-  "extraction": {
-    "temperature": 0.0,
-    "gemini": [
-      "gemini-2.5-flash",
-      "gemini-3.8-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-1.5-flash"
-    ],
-    "groq": [
-      "llama-3.3-70b-versatile",
-      "qwen/qwen3.8-27b",
-      "openai/gpt-oss-120b",
-      "llama-3.1-8b-instant"
-    ]
-  }
-}
-```
-
----
-
-## 4. LLM Calling Flow & Fallback Architecture
-
-```text
-               call_llm(prompt, work)
-                         │
-                         ▼
-             Vault Priority Sequence (e.g. Gemini -> Groq)
-                         │
-        ┌────────────────┴────────────────┐
-        ▼                                 ▼
-   [Try Gemini]                      [Try Groq]
-        │                                 │
-  Model Fallback                    Model Fallback
-  1. gemini-2.5-flash               1. llama-3.3-70b-versatile
-  2. gemini-3.8-flash               2. qwen/qwen3.8-27b
-  3. gemini-2.5-flash-lite          3. openai/gpt-oss-120b
-        │                                 │
-  Key Rotation                      Key Rotation
-  (Rotates on 401/Invalid/Expired)  (Rotates on 401/Invalid/Expired)
-        │                                 │
-        ▼ (if all fail)                   ▼ (if all fail)
-  Shift to Next Provider ──────────► Final Friendly Failure Message
-```
-
-### Error Classification Rules:
-- **`api_key_expired_or_invalid`**: Rotates to the next available API key in Vault configuration and retries the model. If all keys fail, returns control to the caller to switch to the next provider.
-- **`model_unavailable`**: Automatically shifts to the next configured fallback model in `config.json`.
-- **`provider_unavailable`**: Immediately returns control to the caller to switch to the next provider in the priority sequence.
-- **All Providers Exhausted**: Returns `"The AI request could not be completed because no configured provider is currently available."`
-
----
-
-## 5. API Endpoints
-
-### 5.1 Health Check
+### 2.1 Health Check
 `GET /health`
+
 - **Response (`200 OK`):**
   ```json
   { "service": "Engine", "status": "online" }
   ```
 
-### 5.2 Status
+---
+
+### 2.2 Status
 `GET /status`
+
 - **Response (`200 OK`):**
   ```json
   {
@@ -159,18 +36,67 @@ Supported works, temperatures, and ordered model fallback lists:
     "status": "online",
     "active_provider": "gemini",
     "ai_priorities": ["gemini", "groq"],
-    "workers": {
-      "llm_workers": 1,
-      "screenshot_extraction_workers": 1,
-      "screenshot_summarization_workers": 1,
-      "screenshot_extraction_poll_time": 5.0,
-      "screenshot_summarization_poll_time": 5.0
-    }
+    "workers": { "llm_workers": 1, "screenshot_summarization_workers": 1 },
+    "ocr_summarization": { "running": true, "total_jobs_processed": 0 },
+    "embedding_model": { "status": "ready", "model_name": "Qwen/Qwen3-Embedding-0.6B" }
   }
   ```
 
-### 5.3 Execute LLM Call
+---
+
+### 2.3 Embedding Status
+`GET /embedding/status`
+
+- **Response (`200 OK`):**
+  ```json
+  { "status": "ready", "model_name": "Qwen/Qwen3-Embedding-0.6B" }
+  ```
+
+---
+
+### 2.4 OCR Summarization Status
+`GET /summarization/status`
+
+- **Response (`200 OK`):**
+  ```json
+  { "running": true, "num_workers": 1, "batch_size": 10, "total_jobs_processed": 0 }
+  ```
+
+---
+
+### 2.5 Start OCR Summarization
+`POST /summarization/start`
+
+- **Response (`200 OK`):**
+  ```json
+  { "status": "started", "details": { "running": true } }
+  ```
+
+---
+
+### 2.6 Stop OCR Summarization
+`POST /summarization/stop`
+
+- **Response (`200 OK`):**
+  ```json
+  { "status": "stopped", "details": { "running": false } }
+  ```
+
+---
+
+### 2.7 Synchronize Configuration
+`POST /config/sync`
+
+- **Response (`200 OK`):**
+  ```json
+  { "status": "success", "active_provider": "gemini", "ai_priorities": ["gemini", "groq"] }
+  ```
+
+---
+
+### 2.8 Execute LLM Call
 `POST /llm/call`
+
 - **Request Body (JSON):**
   ```json
   {
@@ -181,77 +107,26 @@ Supported works, temperatures, and ordered model fallback lists:
 - **Response (`200 OK`):**
   ```json
   {
-    "response": "The screen shows a code editor with Python files...",
+    "response": "The screen shows a code editor...",
     "work": "summarization",
-    "provider": "groq"
+    "provider": "gemini"
   }
   ```
-
-### 5.4 Synchronize Config from Vault
-`POST /config/sync`
-- **Response (`200 OK`):**
-  ```json
-  {
-    "status": "success",
-    "active_provider": "gemini",
-    "ai_priorities": ["gemini", "groq"]
-  }
-  ```
-
-### 5.5 OCR Summarization Status
-`GET /summarization/status`
-- **Response (`200 OK`):**
-  ```json
-  {
-    "running": true,
-    "num_workers": 1,
-    "configured_workers": 1,
-    "batch_size": 10,
-    "poll_interval": 5.0,
-    "total_jobs_processed": 0
-  }
-  ```
-
-### 5.6 Control OCR Summarization Workers
-- `POST /summarization/start` — Starts the background worker pool.
-- `POST /summarization/stop` — Gracefully stops all active workers.
 
 ---
 
-## 6. OCR Summarization & Embedding Pipeline Architecture
+## 3. Installation & Startup
 
-```text
-Message Broker (CONSUMER_GROUP_OCR_TEXT_SUMMARIZATION)
-                         │
-                         ▼
-             Parallel Workers Polling
-        (screenshot_summarization_workers)
-                         │
-                         ▼
-        Individual Job Processing Loop
-        For each job in retrieved batch:
-                         │
-                         ▼
-             1. Sanitize Job Input
-             [app_name, os, extracted_text]
-                         │
-                         ▼
-             2. Individual LLM Call (call_llm)
-             work="summarization" -> real app_name & clean summary
-                         │
-                         ▼
-             3. Embedding Generation
-             get_embedding(summarized_text) using Qwen/Qwen3-Embedding-0.6B
-                         │
-                         ▼
-             4. Build Output Object
-             [job_id (new UUID), app_name, os, timestamp, summarized_text, embedding]
-                         │
-                         ▼
-             5. Publish to Message Broker (embedding_memory stream)
-                         │
-                 (If publish successful)
-                         ▼
-             6. Acknowledge & Delete from CONSUMER_GROUP_OCR_TEXT_SUMMARIZATION
+### Install Dependencies
+```bash
+pip install -r requirements.txt
 ```
 
+### Start Server
+```bash
+python app.py
+```
+Or with Uvicorn:
+```bash
+uvicorn app:app --host 127.0.0.1 --port 9007
+```

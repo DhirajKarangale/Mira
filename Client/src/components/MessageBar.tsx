@@ -39,7 +39,7 @@ export interface MessageToastOptions {
   message: ReactNode;
   type?: MessageType;
   color?: MessageBarColor | `${MessageBarColor}` | string;
-  duration?: number; // default: 5000 ms
+  duration?: number;
   icon?: ReactNode;
   onDismiss?: () => void;
   className?: string;
@@ -218,7 +218,6 @@ function resolveTheme(
   return THEME_STYLES[key] || THEME_STYLES[type || "cyan"] || THEME_STYLES.cyan;
 }
 
-// Global subscriber listeners for imperative toast calls outside of React render tree
 type ToastListener = (toast: InternalToast) => void;
 type DismissListener = (id: string) => void;
 type ClearListener = () => void;
@@ -402,7 +401,6 @@ export const MessageProvider: FC<{ children: ReactNode }> = ({ children }) => {
     };
 
     setToasts((prev) => {
-      // Keep up to 5 concurrent toasts to prevent screen overflowing
       const filtered = prev.filter((t) => t.id !== id);
       return [...filtered.slice(-4), newToast];
     });
@@ -480,13 +478,9 @@ export const MessageProvider: FC<{ children: ReactNode }> = ({ children }) => {
   );
 };
 
-/**
- * useMessage & useToast Hooks
- */
 export const useMessage = (): MessageContextValue => {
   const ctx = useContext(MessageContext);
   if (!ctx) {
-    // Graceful fallback to imperative toast if called outside MessageProvider
     return {
       toasts: [],
       showMessage: toast.show,

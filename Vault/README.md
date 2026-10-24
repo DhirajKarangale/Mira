@@ -6,10 +6,11 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 ## 1. Purpose
 
-- **Encrypted Configurations**: Stores system configurations (`logs`, `message_broker`, `operator`, `user_details`, `ai_configs`, `engine_workers`) in an encrypted SQLite database.
-- **Audit Logging**: Collects encrypted audit logs with search, pagination, and automated retention cleanup.
-- **App Permissions**: Stores and manages per-application screenshot capture permissions.
-- **AI & Concurrency Management**: Manages LLM API keys, provider priorities, and worker concurrency limits.
+- **Encrypted Configurations**: Stores configurations in an encrypted SQLite database.
+- **Audit Logging**: Collects and queries encrypted audit logs with retention cleanup.
+- **Application Permissions**: Manages per-application capture permissions.
+- **AI Management**: Stores AI credentials, provider priorities, and concurrency limits.
+- **Cryptography Services**: Encrypts and decrypts sensitive data in transit and at rest.
 
 ---
 
@@ -43,10 +44,10 @@ The **Vault** is the centralized security, secret management, encrypted configur
 `GET /logs`
 
 - **Query Parameters:**
-  - `module_name` (string, optional, default: `"all"`): Module filter.
+  - `module_name` (string, optional, default: `"all"`): Filter by module.
   - `search` (string, optional): Text search query.
-  - `start_date` / `end_date` (string, optional): Date filter (`YYYY-MM-DD`).
-  - `limit` (integer, optional, default: `50`): Max logs.
+  - `start_date` / `end_date` (string, optional): Filter by date (`YYYY-MM-DD`).
+  - `limit` (integer, optional, default: `50`): Max logs to retrieve.
   - `page` (integer, optional): Page number.
   - `envelope` (boolean, optional, default: `false`): Include pagination wrapper.
 - **Response (`200 OK`):**
@@ -61,21 +62,33 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 ---
 
-### 2.4 Retention Cleanup
-`POST /retention/cleanup`
+### 2.4 Delete Logs
+`DELETE /logs`
 
+- **Query Parameters:**
+  - `module_name` (string, optional): Target module, or omit for all.
 - **Response (`200 OK`):**
   ```json
-  { "status": "success", "deleted_expired_count": 0, "retained_count": 1 }
+  { "status": "success", "message": "Logs deleted successfully", "deleted_count": 5 }
   ```
 
 ---
 
-### 2.5 Get Configuration by Key
+### 2.5 Retention Cleanup
+`POST /retention/cleanup`
+
+- **Response (`200 OK`):**
+  ```json
+  { "deleted_expired_count": 0, "deleted_invalid_count": 0, "retained_count": 1 }
+  ```
+
+---
+
+### 2.6 Get Configuration by Key
 `GET /config/{key}`
 
 - **Path Parameters:**
-  - `key` (string, required): Configuration key (e.g. `logs`, `message_broker`, `operator`, `user_details`).
+  - `key` (string, required): `logs`, `message_broker`, `operator`, `user_details`.
 - **Response (`200 OK`):**
   ```json
   { "CAPTURE_INTERVAL_SECS": 10, "AUTO_START": false }
@@ -83,7 +96,7 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 ---
 
-### 2.6 Update Logs Configuration
+### 2.7 Update Logs Configuration
 `POST /config/logs`
 
 - **Request Body (JSON):**
@@ -97,7 +110,7 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 ---
 
-### 2.7 Update Message Broker Configuration
+### 2.8 Update Message Broker Configuration
 `POST /config/message_broker`
 
 - **Request Body (JSON):**
@@ -111,7 +124,7 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 ---
 
-### 2.8 Update Operator Configuration
+### 2.9 Update Operator Configuration
 `POST /config/operator`
 
 - **Request Body (JSON):**
@@ -125,7 +138,7 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 ---
 
-### 2.9 Get User Details
+### 2.10 Get User Details
 `GET /user`
 
 - **Response (`200 OK`):**
@@ -135,7 +148,7 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 ---
 
-### 2.10 Save User Details
+### 2.11 Save User Details
 `POST /user`
 
 - **Request Body (JSON):**
@@ -149,7 +162,7 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 ---
 
-### 2.11 OS Detection
+### 2.12 OS Detection
 `GET /os`
 
 - **Response (`200 OK`):**
@@ -157,22 +170,17 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 ---
 
-### 2.12 Get Services Registry
+### 2.13 Services Registry
 `GET /services`
-
 - **Response (`200 OK`):**
   ```json
   { "vault": "http://127.0.0.1:9001", "operator": "http://127.0.0.1:9003" }
   ```
 
----
-
-### 2.13 Update Services Registry
 `POST /services`
-
 - **Request Body (JSON):**
   ```json
-  { "vault": "http://127.0.0.1:9001", "operator": "http://127.0.0.1:9003" }
+  { "vault": "http://127.0.0.1:9001" }
   ```
 - **Response (`200 OK`):**
   ```json
@@ -181,32 +189,26 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 ---
 
-### 2.14 Get Stored App Permissions
+### 2.14 Get Applications & Permissions
 `GET /apps`
 
 - **Response (`200 OK`):**
   ```json
-  [
-    { "app_name": "Visual Studio Code", "app_id": "code.exe", "allowed_to_capture": true }
-  ]
+  [{ "app_name": "Code", "app_id": "code.exe", "allowed_to_capture": true }]
   ```
 
 ---
 
-### 2.15 Refresh App Permissions Batch
+### 2.15 Refresh Application Permissions
 `POST /apps/refresh`
 
 - **Request Body (JSON):**
   ```json
-  [
-    { "app_name": "Visual Studio Code", "app_id": "code.exe" }
-  ]
+  [{ "app_name": "Code", "app_id": "code.exe" }]
   ```
 - **Response (`200 OK`):**
   ```json
-  [
-    { "app_name": "Visual Studio Code", "app_id": "code.exe", "allowed_to_capture": true }
-  ]
+  [{ "app_name": "Code", "app_id": "code.exe", "allowed_to_capture": true }]
   ```
 
 ---
@@ -220,50 +222,28 @@ The **Vault** is the centralized security, secret management, encrypted configur
   ```
 - **Response (`200 OK`):**
   ```json
-  { "status": "success", "message": "App permission updated successfully", "app": { "app_id": "chrome.exe", "allowed_to_capture": false } }
+  { "status": "success", "message": "App permission updated successfully" }
   ```
 
 ---
 
-### 2.17 Get AI Providers
+### 2.17 AI Providers & Configurations
 `GET /ai/providers`
+- **Response (`200 OK`):** `["Groq", "Gemini", "OpenAI"]`
 
-- **Response (`200 OK`):**
-  ```json
-  ["Groq", "Gemini", "OpenAI"]
-  ```
-
----
-
-### 2.18 Get All AI Configurations
 `GET /ai/configs`
-
 - **Response (`200 OK`):**
   ```json
-  [
-    { "llm_provider": "Groq", "total_keys": 1, "current_key": 0, "keys": ["gsk_..."] }
-  ]
+  [{ "llm_provider": "Groq", "total_keys": 1, "current_key": 0, "keys": ["gsk_..."] }]
   ```
 
----
-
-### 2.19 Get AI Configuration by Provider
 `GET /ai/configs/{provider}`
-
-- **Path Parameters:**
-  - `provider` (string, required): Provider name.
 - **Response (`200 OK`):**
   ```json
   { "llm_provider": "Groq", "total_keys": 1, "current_key": 0, "keys": ["gsk_..."] }
   ```
 
----
-
-### 2.20 Update AI Configuration
 `POST /ai/configs/{provider}`
-
-- **Path Parameters:**
-  - `provider` (string, required): Provider name.
 - **Request Body (JSON):**
   ```json
   { "keys": ["gsk_..."], "current_key": 0 }
@@ -273,13 +253,7 @@ The **Vault** is the centralized security, secret management, encrypted configur
   { "llm_provider": "Groq", "total_keys": 1, "current_key": 0, "keys": ["gsk_..."] }
   ```
 
----
-
-### 2.21 Delete AI Configuration
 `DELETE /ai/configs/{provider}`
-
-- **Path Parameters:**
-  - `provider` (string, required): Provider name.
 - **Response (`200 OK`):**
   ```json
   { "status": "success", "message": "Deleted AI configuration for Groq" }
@@ -287,33 +261,18 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 ---
 
-### 2.22 Get AI Priorities
+### 2.18 AI Priorities
 `GET /ai/priorities`
+- **Response (`200 OK`):** `["Groq", "Gemini"]`
 
-- **Response (`200 OK`):**
-  ```json
-  ["Groq", "Gemini", "OpenAI"]
-  ```
-
----
-
-### 2.23 Update AI Priorities
 `PUT /ai/priorities`
-
-- **Request Body (JSON):**
-  ```json
-  ["Groq", "Gemini", "OpenAI"]
-  ```
-- **Response (`200 OK`):**
-  ```json
-  ["Groq", "Gemini", "OpenAI"]
-  ```
+- **Request Body (JSON):** `["Groq", "Gemini"]`
+- **Response (`200 OK`):** `["Groq", "Gemini"]`
 
 ---
 
-### 2.24 Get Engine Workers Concurrency
+### 2.19 Engine Workers Concurrency
 `GET /engine/workers`
-
 - **Response (`200 OK`):**
   ```json
   {
@@ -327,27 +286,37 @@ The **Vault** is the centralized security, secret management, encrypted configur
   }
   ```
 
----
-
-### 2.25 Update Engine Workers Concurrency
 `PUT /engine/workers`
-
 - **Request Body (JSON):**
   ```json
-  { "screenshot_extraction_workers": 2, "screenshot_extraction_poll_time": 3.0, "embedding_vector_store_workers": 2, "embedding_vector_store_workers_poll_time": 1.5 }
+  { "screenshot_extraction_workers": 2 }
   ```
 - **Response (`200 OK`):**
   ```json
+  { "screenshot_extraction_workers": 2, ... }
+  ```
+
+---
+
+### 2.20 System Storage Paths
+`GET /system/storage`
+
+- **Response (`200 OK`):**
+  ```json
   {
-    "llm_workers": 1,
-    "screenshot_extraction_workers": 2,
-    "screenshot_summarization_workers": 1,
-    "embedding_vector_store_workers": 2,
-    "screenshot_extraction_poll_time": 3.0,
-    "screenshot_summarization_poll_time": 5.0,
-    "embedding_vector_store_workers_poll_time": 1.5
+    "system_storage_path": "E:/FullStack/Mira/Vault/system",
+    "knowledge_base_path": "E:/FullStack/Mira/Vault/system/knowledge_base",
+    "logs_path": "E:/FullStack/Mira/Vault/system/logs"
   }
   ```
+
+---
+
+### 2.21 Cryptography Endpoints
+- `POST /crypto/encrypt` -> Body: `{"data": "secret"}` -> `{"ciphertext": "..."}`
+- `POST /crypto/decrypt` -> Body: `{"ciphertext": "..."}` -> `{"data": "secret"}`
+- `POST /crypto/encrypt-batch` -> Body: `{"items": ["..."]}` -> `{"ciphertexts": ["..."]}`
+- `POST /crypto/decrypt-batch` -> Body: `{"ciphertexts": ["..."]}` -> `{"items": ["..."]}`
 
 ---
 
@@ -359,7 +328,6 @@ pip install -r requirements.txt
 ```
 
 ### Start Server
-Run from the `Vault/` directory:
 ```bash
 python app.py
 ```

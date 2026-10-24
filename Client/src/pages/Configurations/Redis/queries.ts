@@ -43,12 +43,30 @@ export function useDeleteConsumerGroupMutation() {
   });
 }
 
+export function useCleanAllPelsMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => brokerService.cleanAllPels(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.redis.consumerGroups });
+    },
+  });
+}
+
 export function useCleanPendingMessagesMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ groupName, streamName }: { groupName?: string; streamName?: string } = {}) =>
-      brokerService.cleanPendingMessages(groupName, streamName),
+    mutationFn: ({
+      groupName,
+      streamName,
+      resetStream = false,
+    }: {
+      groupName?: string;
+      streamName?: string;
+      resetStream?: boolean;
+    } = {}) => brokerService.cleanPendingMessages(groupName, streamName, resetStream),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.redis.consumerGroups });
     },

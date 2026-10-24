@@ -6,8 +6,8 @@ interface LogDeleteConfirmModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: () => Promise<void>;
-  targetModule: string; // "all" or specific module id like "vault", "engine", etc.
-  moduleName: string; // "All Modules", "Vault", etc.
+  targetModule: string;
+  moduleName: string;
   isDeleting: boolean;
 }
 

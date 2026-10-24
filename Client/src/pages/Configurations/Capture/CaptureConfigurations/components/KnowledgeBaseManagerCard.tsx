@@ -35,7 +35,6 @@ import { cn } from "@/lib/utils";
 const formatReadableDate = (dateStr: string) => {
   if (!dateStr) return "N/A";
   try {
-    // Handle both YYYY-MM-DD and DD_MM_YYYY
     let d: Date;
     if (dateStr.includes("-")) {
       const parts = dateStr.split("-");

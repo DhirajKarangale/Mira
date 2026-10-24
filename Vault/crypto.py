@@ -1,132 +1,100 @@
 from __future__ import annotations
-
 import hashlib
 import logging
 import os
 import secrets
 from typing import Optional
-
 import keyring
 import nacl.bindings as nb
-
 from pathlib import Path
 try:
     from Vault import config
-    if not hasattr(config, "KEYRING_SERVICE_NAME"):
-        raise AttributeError("Loaded wrong config module")
+    if not hasattr(config, 'KEYRING_SERVICE_NAME'):
+        raise AttributeError('Loaded wrong config module')
 except (ImportError, AttributeError):
     import importlib.util
-    _vault_config_path = Path(__file__).resolve().parent / "config.py"
-    _spec = importlib.util.spec_from_file_location("vault_config", _vault_config_path)
+    _vault_config_path = Path(__file__).resolve().parent / 'config.py'
+    _spec = importlib.util.spec_from_file_location('vault_config', _vault_config_path)
     config = importlib.util.module_from_spec(_spec)
     _spec.loader.exec_module(config)
-
-logger = logging.getLogger("mira.vault.crypto")
-
-
+logger = logging.getLogger('mira.vault.crypto')
 _CREDENTIAL_KEY: Optional[str] = None
 _DERIVED_KEY: Optional[bytes] = None
 
-def derive_key_from_credential(
-    credential_key: str,
-    prefix: Optional[str] = None,
-    suffix: Optional[str] = None
-) -> bytes:
+def derive_key_from_credential(credential_key: str, prefix: Optional[str]=None, suffix: Optional[str]=None) -> bytes:
     if prefix is None:
         prefix = config.KEY_PREFIX
     if suffix is None:
         suffix = config.KEY_SUFFIX
-
-    combined_material = f"{prefix}{credential_key}{suffix}"
-    return hashlib.sha256(combined_material.encode("utf-8")).digest()
+    combined_material = f'{prefix}{credential_key}{suffix}'
+    return hashlib.sha256(combined_material.encode('utf-8')).digest()
 
 def init_encryption_key() -> None:
     global _CREDENTIAL_KEY, _DERIVED_KEY
-
     service_name = config.KEYRING_SERVICE_NAME
     key_name = config.KEYRING_KEY_NAME
-
-    logger.info(
-        f"Checking OS credential store (service='{service_name}', key='{key_name}')..."
-    )
-
+    logger.info(f"Checking OS credential store (service='{service_name}', key='{key_name}')...")
     try:
         cred = keyring.get_password(service_name, key_name)
     except Exception as e:
-        logger.warning(f"Error querying OS credential store: {e}. Falling back to generation.")
+        logger.warning(f'Error querying OS credential store: {e}. Falling back to generation.')
         cred = None
-
     if not cred:
-        logger.info("No encryption key found in OS credential store. Generating a new cryptographically secure key...")
+        logger.info('No encryption key found in OS credential store. Generating a new cryptographically secure key...')
         cred = secrets.token_hex(32)
         try:
             keyring.set_password(service_name, key_name, cred)
-            logger.info("Successfully saved encryption key to OS credential store.")
+            logger.info('Successfully saved encryption key to OS credential store.')
         except Exception as e:
-            logger.error(f"Failed to persist key to OS credential store: {e}")
+            logger.error(f'Failed to persist key to OS credential store: {e}')
     else:
-        logger.info("Existing encryption key retrieved from OS credential store.")
-
+        logger.info('Existing encryption key retrieved from OS credential store.')
     _CREDENTIAL_KEY = cred
     _DERIVED_KEY = derive_key_from_credential(cred)
-
-    logger.info(
-        f"Derived final 256-bit encryption key successfully ({len(_DERIVED_KEY)} bytes in memory, kept strictly internal)."
-    )
+    logger.info(f'Derived final 256-bit encryption key successfully ({len(_DERIVED_KEY)} bytes in memory, kept strictly internal).')
 
 def _get_internal_key() -> bytes:
     global _DERIVED_KEY
     if _DERIVED_KEY is None:
         init_encryption_key()
     if _DERIVED_KEY is None:
-        raise RuntimeError("Failed to initialize internal encryption key in Vault.")
+        raise RuntimeError('Failed to initialize internal encryption key in Vault.')
     return _DERIVED_KEY
 
-def encrypt_log_data(data: bytes, key: Optional[bytes] = None) -> bytes:
+def encrypt_log_data(data: bytes, key: Optional[bytes]=None) -> bytes:
     if key is None:
         key = _get_internal_key()
-
     nonce_len = nb.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES
     nonce = os.urandom(nonce_len)
     ciphertext = nb.crypto_aead_xchacha20poly1305_ietf_encrypt(data, None, nonce, key)
     return nonce + ciphertext
 
-def decrypt_log_data(encrypted_data: bytes, key: Optional[bytes] = None) -> bytes:
+def decrypt_log_data(encrypted_data: bytes, key: Optional[bytes]=None) -> bytes:
     if key is None:
         key = _get_internal_key()
-
     nonce_len = nb.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES
     mac_len = nb.crypto_aead_xchacha20poly1305_ietf_ABYTES
     min_len = nonce_len + mac_len
-
     if len(encrypted_data) < min_len:
-        raise ValueError(
-            f"Encrypted data is too short ({len(encrypted_data)} bytes). Minimum required is {min_len} bytes."
-        )
-
+        raise ValueError(f'Encrypted data is too short ({len(encrypted_data)} bytes). Minimum required is {min_len} bytes.')
     nonce = encrypted_data[:nonce_len]
     ciphertext = encrypted_data[nonce_len:]
     return nb.crypto_aead_xchacha20poly1305_ietf_decrypt(ciphertext, None, nonce, key)
 
-def encrypt_text(data: str, key: Optional[bytes] = None) -> str:
-    """Encrypts plaintext string into base64 ciphertext using internal Vault key."""
+def encrypt_text(data: str, key: Optional[bytes]=None) -> str:
     import base64
-    raw_bytes = data.encode("utf-8")
+    raw_bytes = data.encode('utf-8')
     enc_bytes = encrypt_log_data(raw_bytes, key=key)
-    return base64.b64encode(enc_bytes).decode("ascii")
+    return base64.b64encode(enc_bytes).decode('ascii')
 
-def decrypt_text(ciphertext_b64: str, key: Optional[bytes] = None) -> str:
-    """Decrypts base64 ciphertext string into plaintext using internal Vault key."""
+def decrypt_text(ciphertext_b64: str, key: Optional[bytes]=None) -> str:
     import base64
-    enc_bytes = base64.b64decode(ciphertext_b64.encode("ascii"))
+    enc_bytes = base64.b64decode(ciphertext_b64.encode('ascii'))
     dec_bytes = decrypt_log_data(enc_bytes, key=key)
-    return dec_bytes.decode("utf-8")
+    return dec_bytes.decode('utf-8')
 
-def encrypt_batch(items: list[str], key: Optional[bytes] = None) -> list[str]:
-    """Encrypts a list of plaintext strings into base64 ciphertexts."""
+def encrypt_batch(items: list[str], key: Optional[bytes]=None) -> list[str]:
     return [encrypt_text(item, key=key) for item in items]
 
-def decrypt_batch(ciphertexts: list[str], key: Optional[bytes] = None) -> list[str]:
-    """Decrypts a list of base64 ciphertexts into plaintext strings."""
+def decrypt_batch(ciphertexts: list[str], key: Optional[bytes]=None) -> list[str]:
     return [decrypt_text(ct, key=key) for ct in ciphertexts]
-
