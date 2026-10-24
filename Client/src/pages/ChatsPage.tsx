@@ -68,7 +68,6 @@ export const ChatsPage: FC = () => {
   const [messagesError, setMessagesError] = useState<string | null>(null);
   const [messagesPage, setMessagesPage] = useState<number>(1);
   const [messagesTotalPages, setMessagesTotalPages] = useState<number>(1);
-  const [messagesTotalCount, setMessagesTotalCount] = useState<number>(0);
   const [messagesCursor, setMessagesCursor] = useState<string | null>(null);
   const [messagesHasMore, setMessagesHasMore] = useState<boolean>(false);
   const [loadingMoreMessages, setLoadingMoreMessages] = useState<boolean>(false);
@@ -113,6 +112,39 @@ export const ChatsPage: FC = () => {
     }, 2500);
     return () => clearInterval(timer);
   }, [isSending]);
+
+  // Guarantee clean message stream: filter out any repeating user query that appears right after an AI reply
+  const cleanMessages = useMemo(() => {
+    const result: ChatMessage[] = [];
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      if (msg.role === "user") {
+        const trimmedContent = msg.content.trim();
+        // If immediately preceding message is an identical user message, skip
+        if (
+          result.length > 0 &&
+          result[result.length - 1].role === "user" &&
+          result[result.length - 1].content.trim() === trimmedContent
+        ) {
+          continue;
+        }
+        // If this user query appears directly after an AI response that answered the exact same user query, skip
+        if (result.length >= 2) {
+          const prevMsg = result[result.length - 1]; // ai message
+          const prevPrevMsg = result[result.length - 2]; // original user message
+          if (
+            prevMsg.role === "ai" &&
+            prevPrevMsg.role === "user" &&
+            prevPrevMsg.content.trim() === trimmedContent
+          ) {
+            continue;
+          }
+        }
+      }
+      result.push(msg);
+    }
+    return result;
+  }, [messages]);
 
   // ============================================================================
   // Format Date Helper (Displays in User's Local Time)
@@ -174,14 +206,36 @@ export const ChatsPage: FC = () => {
           limit: 10,
         });
 
+        const rawSessions = data.sessions || [];
+        // Resolve clean message counts for each session to eliminate any DB duplicate inflation
+        const cleanSessions = await Promise.all(
+          rawSessions.map(async (s) => {
+            try {
+              const msgData = await engineService.getChatsBySession(s.session_id, { limit: 30 });
+              const deduped: ChatMessage[] = [];
+              for (const m of msgData.messages || []) {
+                const isDup = deduped.some(
+                  (p) => p.id === m.id || (p.role === "user" && m.role === "user" && p.content === m.content)
+                );
+                if (!isDup) {
+                  deduped.push(m);
+                }
+              }
+              return { ...s, message_count: deduped.length };
+            } catch {
+              return s;
+            }
+          })
+        );
+
         if (append) {
           setSessions((prev) => {
             const existingIds = new Set(prev.map((s) => s.session_id));
-            const newItems = data.sessions.filter((s) => !existingIds.has(s.session_id));
+            const newItems = cleanSessions.filter((s) => !existingIds.has(s.session_id));
             return [...prev, ...newItems];
           });
         } else {
-          setSessions(data.sessions || []);
+          setSessions(cleanSessions);
         }
 
         setSessionsPage(data.current_page || pageToLoad);
@@ -238,6 +292,7 @@ export const ChatsPage: FC = () => {
           limit: 30,
         });
 
+        let currentMessagesCount = 0;
         if (append) {
           setMessages((prev) => {
             const existingIds = new Set(prev.map((m) => m.id));
@@ -246,7 +301,9 @@ export const ChatsPage: FC = () => {
                 !existingIds.has(m.id) &&
                 !prev.some((p) => p.role === "user" && m.role === "user" && p.content === m.content)
             );
-            return [...prev, ...newItems];
+            const combined = [...prev, ...newItems];
+            currentMessagesCount = combined.length;
+            return combined;
           });
         } else {
           // Clean up any historical duplicate user messages from DB
@@ -259,20 +316,16 @@ export const ChatsPage: FC = () => {
               deduped.push(m);
             }
           }
+          currentMessagesCount = deduped.length;
           setMessages(deduped);
         }
 
-        const fetchedCount = Math.max(
-          data.total_messages ?? 0,
-          append ? messages.length + (data.messages?.length || 0) : (data.messages?.length || 0)
-        );
         setMessagesPage(data.current_page || pageToLoad);
         setMessagesTotalPages(data.total_pages || 1);
-        setMessagesTotalCount(fetchedCount);
         setSessions((prev) =>
           prev.map((s) =>
             s.session_id === sessionId
-              ? { ...s, message_count: fetchedCount }
+              ? { ...s, message_count: currentMessagesCount || s.message_count }
               : s
           )
         );
@@ -309,7 +362,6 @@ export const ChatsPage: FC = () => {
       setMessages([]);
       setMessagesPage(1);
       setMessagesTotalPages(1);
-      setMessagesTotalCount(0);
       setMessagesCursor(null);
       setMessagesHasMore(false);
     }
@@ -327,16 +379,15 @@ export const ChatsPage: FC = () => {
 
   // Keep active session message count in sidebar and top header synchronized in real-time
   useEffect(() => {
-    if (!selectedSessionId || messages.length === 0) return;
-    setMessagesTotalCount((prev) => Math.max(prev, messages.length));
+    if (!selectedSessionId || cleanMessages.length === 0) return;
     setSessions((prev) =>
       prev.map((s) =>
         s.session_id === selectedSessionId
-          ? { ...s, message_count: Math.max(s.message_count || 0, messages.length) }
+          ? { ...s, message_count: cleanMessages.length }
           : s
       )
     );
-  }, [messages.length, selectedSessionId]);
+  }, [cleanMessages.length, selectedSessionId]);
 
   // Connect to Engine WebSocket for real-time response delivery
   useEffect(() => {
@@ -564,44 +615,11 @@ export const ChatsPage: FC = () => {
     return sessions.find((s) => s.session_id === selectedSessionId) || null;
   }, [sessions, selectedSessionId]);
 
-  // Guarantee clean message stream: filter out any repeating user query that appears right after an AI reply
-  const cleanMessages = useMemo(() => {
-    const result: ChatMessage[] = [];
-    for (let i = 0; i < messages.length; i++) {
-      const msg = messages[i];
-      if (msg.role === "user") {
-        const trimmedContent = msg.content.trim();
-        // If immediately preceding message is an identical user message, skip
-        if (
-          result.length > 0 &&
-          result[result.length - 1].role === "user" &&
-          result[result.length - 1].content.trim() === trimmedContent
-        ) {
-          continue;
-        }
-        // If this user query appears directly after an AI response that answered the exact same user query, skip
-        if (result.length >= 2) {
-          const prevMsg = result[result.length - 1]; // ai message
-          const prevPrevMsg = result[result.length - 2]; // original user message
-          if (
-            prevMsg.role === "ai" &&
-            prevPrevMsg.role === "user" &&
-            prevPrevMsg.content.trim() === trimmedContent
-          ) {
-            continue;
-          }
-        }
-      }
-      result.push(msg);
-    }
-    return result;
-  }, [messages]);
-
   // Issue 1 & 2: Map chats to SidebarItem with real-time active message count
   const sidebarItems: SidebarItem[] = useMemo(() => {
     return filteredSessions.map((s) => {
       const isCurrent = s.session_id === selectedSessionId;
-      const count = isCurrent ? Math.max(s.message_count || 0, cleanMessages.length) : s.message_count;
+      const count = isCurrent ? cleanMessages.length : (s.message_count || 0);
       return {
         key: s.session_id,
         name: s.chat_name || s.session_id,
@@ -741,13 +759,10 @@ export const ChatsPage: FC = () => {
                   <h1 className="text-xs sm:text-sm font-semibold text-zinc-100 truncate">
                     {activeSession?.chat_name || "Conversation"}
                   </h1>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
-                    Active
-                  </span>
-                  {Math.max(messagesTotalCount, cleanMessages.length) > 0 && (
+                  {cleanMessages.length > 0 && (
                     <span className="text-[11px] text-zinc-500 font-mono hidden sm:inline">
-                      • {Math.max(messagesTotalCount, cleanMessages.length)}{" "}
-                      {Math.max(messagesTotalCount, cleanMessages.length) === 1 ? "message" : "messages"}
+                      • {cleanMessages.length}{" "}
+                      {cleanMessages.length === 1 ? "message" : "messages"}
                     </span>
                   )}
                 </div>

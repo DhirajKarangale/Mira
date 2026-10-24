@@ -69,7 +69,7 @@ async def process_chat_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
             "Please check your configured AI provider keys in Configurations > AI Config."
         )
 
-    # Step 3: Store AI response in Vault chats table (and user query only if not already saved)
+    # Step 3: Resolve user message reference and store AI response in Vault
     now_str = time.strftime("%Y-%m-%d %H:%M:%S")
     pre_saved_user = job.get("user_message")
     user_msg_id = job.get("user_message_id")
@@ -86,23 +86,14 @@ async def process_chat_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
             "created_at": now_str,
         }
     else:
-        # Fallback: Save user message only if not already saved by router
-        saved_user = await asyncio.to_thread(
-            save_chat_to_vault,
-            session_id=session_id,
-            role="user",
-            content=user_query,
-            chat_name=chat_name,
-        )
-        if not saved_user:
-            saved_user = {
-                "id": str(uuid.uuid4()),
-                "session_id": session_id,
-                "role": "user",
-                "content": user_query,
-                "chat_name": chat_name,
-                "created_at": now_str,
-            }
+        saved_user = {
+            "id": str(uuid.uuid4()),
+            "session_id": session_id,
+            "role": "user",
+            "content": user_query,
+            "chat_name": chat_name,
+            "created_at": now_str,
+        }
 
     saved_ai = await asyncio.to_thread(
         save_chat_to_vault,

@@ -677,6 +677,7 @@ async def delete_vault_chat_session(session_id: str):
             detail={'message': f'Failed to delete chat session: {str(e)}'}
         )
 
+@router.get('/chats/cleanup', status_code=status.HTTP_200_OK)
 @router.post('/chats/cleanup', status_code=status.HTTP_200_OK)
 async def cleanup_vault_chats():
     try:

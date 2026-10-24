@@ -191,25 +191,8 @@ export const engineService = {
   },
 
   async sendChatMessage(payload: SendChatMessageRequest): Promise<SendChatMessageResponse> {
-    try {
-      const response = await engineApi.post<SendChatMessageResponse>("/chats/message", payload);
-      return response.data;
-    } catch (err) {
-      try {
-        const userMsg = await vaultApi.post<ChatMessage>("/chats", {
-          session_id: payload.session_id,
-          role: payload.role || "user",
-          content: payload.content,
-          chat_name: payload.chat_name,
-        });
-        return {
-          session_id: userMsg.data.session_id,
-          user_message: userMsg.data,
-        };
-      } catch {
-        throw err;
-      }
-    }
+    const response = await engineApi.post<SendChatMessageResponse>("/chats/message", payload);
+    return response.data;
   },
 
   async seedDemoChats(count: number = 12): Promise<{ status: string; seeded_count: number }> {

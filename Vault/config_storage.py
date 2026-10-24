@@ -772,7 +772,7 @@ def save_chat_message(
             (clean_chat_name, session_id)
         )
 
-    # Deduplication check: return existing if an identical message in this session was saved recently
+    # Strict deduplication check: never store duplicate message in the same session
     existing_row = _DB_CONN.execute(
         """
         SELECT id, session_id, chat_name, role, content, created_at
@@ -784,11 +784,31 @@ def save_chat_message(
         (session_id, role, content)
     ).fetchone()
     if existing_row:
+        # Check if this exact message is already the latest message of this role in the session
+        latest_role_row = _DB_CONN.execute(
+            """
+            SELECT id, role, content FROM chats
+            WHERE session_id = ? AND role = ?
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """,
+            (session_id, role)
+        ).fetchone()
+        if latest_role_row and latest_role_row[2] == content:
+            return {
+                "id": existing_row[0],
+                "session_id": existing_row[1],
+                "chat_name": existing_row[2] or clean_chat_name,
+                "role": existing_row[3],
+                "content": existing_row[4],
+                "created_at": existing_row[5],
+            }
+        # Also return existing if saved within 120 seconds
         existing_ts = existing_row[5]
         try:
             ex_dt = datetime.strptime(existing_ts, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
             now_dt = datetime.strptime(created_at, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
-            if abs((now_dt - ex_dt).total_seconds()) <= 15:
+            if abs((now_dt - ex_dt).total_seconds()) <= 120:
                 return {
                     "id": existing_row[0],
                     "session_id": existing_row[1],
@@ -798,7 +818,14 @@ def save_chat_message(
                     "created_at": existing_row[5],
                 }
         except Exception:
-            pass
+            return {
+                "id": existing_row[0],
+                "session_id": existing_row[1],
+                "chat_name": existing_row[2] or clean_chat_name,
+                "role": existing_row[3],
+                "content": existing_row[4],
+                "created_at": existing_row[5],
+            }
 
     _DB_CONN.execute(
         """
