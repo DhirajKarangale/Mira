@@ -149,3 +149,30 @@ EMBEDDING_VECTOR_STORE_WORKERS_POLL_TIME: float = _initial_worker_cfg.get("embed
 SYSTEM_STORAGE_PATH: Path = fetch_system_storage_path()
 KNOWLEDGE_BASE_DIR: Path = SYSTEM_STORAGE_PATH / "knowledge_base"
 
+def fetch_operator_config(vault_base_url: Optional[str] = None) -> Dict[str, Any]:
+    """Fetches operator configurations including Knowledge Base retention policy from Vault."""
+    vault_url = vault_base_url or VAULT_URL or get_service_url("vault")
+    default_config = {
+        "CAPTURE_INTERVAL_SECS": 10,
+        "AUTO_START": False,
+        "KNOWLEDGE_BASE_RETENTION_PERIOD": "Never auto delete",
+    }
+    if not vault_url:
+        return default_config
+
+    try:
+        resp = requests.get(f"{vault_url.rstrip('/')}/config/operator", timeout=3.0)
+        if resp.status_code == 200:
+            data = resp.json()
+            return {
+                "CAPTURE_INTERVAL_SECS": int(data.get("CAPTURE_INTERVAL_SECS") or 10),
+                "AUTO_START": bool(data.get("AUTO_START")),
+                "KNOWLEDGE_BASE_RETENTION_PERIOD": str(
+                    data.get("KNOWLEDGE_BASE_RETENTION_PERIOD") or "Never auto delete"
+                ).strip(),
+            }
+    except Exception:
+        pass
+    return default_config
+
+

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -119,10 +120,30 @@ class KnowledgeBaseWorkerManager:
 
         log(f"[KBWorker-{worker_id}] Embedding vector store worker stopped cleanly")
 
+    def cleanup_expired_knowledge_bases(
+        self,
+        retention_period: Optional[str] = None,
+        now: Optional[datetime] = None
+    ) -> List[str]:
+        """Cleans up expired Knowledge Bases using delete_knowledge_base to safely close connections."""
+        return self.storage.cleanup_expired_knowledge_bases(
+            retention_period=retention_period,
+            now=now,
+            delete_fn=self.delete_knowledge_base
+        )
+
     async def start(self) -> None:
-        """Starts the configured number of parallel workers."""
+        """Starts the configured number of parallel workers and executes startup retention cleanup."""
         if self.is_running:
             return
+
+        # Perform startup retention cleanup based on Vault policy
+        try:
+            deleted = await asyncio.to_thread(self.cleanup_expired_knowledge_bases)
+            if deleted:
+                log(f"[KnowledgeBaseWorkerManager] Startup cleanup removed {len(deleted)} expired Knowledge Base(s): {', '.join(deleted)}")
+        except Exception as e:
+            log_error(f"[KnowledgeBaseWorkerManager] Failed startup retention cleanup: {e}")
 
         self.refresh_config()
         self.is_running = True

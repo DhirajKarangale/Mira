@@ -17,11 +17,13 @@ from .config import (
     get_knowledge_base_dir,
     get_system_storage_path,
     get_worker_config,
+    get_kb_retention_period,
 )
 from .storage import (
     KnowledgeBaseStorage,
     kb_storage,
     KB_NAME_PATTERN,
+    calculate_retention_cutoff,
 )
 from .qdrant_store import (
     QdrantVectorStore,
@@ -65,4 +67,6 @@ __all__ = [
     "get_knowledge_base_dir",
     "get_system_storage_path",
     "get_worker_config",
+    "get_kb_retention_period",
+    "calculate_retention_cutoff",
 ]

@@ -128,9 +128,21 @@ async def update_message_broker_config(request: RedisConfigUpdateRequest):
             detail={"message": f"Failed to update Redis configurations: {str(e)}"}
         )
 
+VALID_KB_RETENTIONS = [
+    "Never auto delete",
+    "5 years",
+    "3 years",
+    "1 year",
+    "9 months",
+    "6 months",
+    "3 months",
+]
+
 class OperatorConfigUpdateRequest(BaseModel):
     CAPTURE_INTERVAL_SECS: Optional[int] = Field(None, ge=1, le=3600)
     AUTO_START: Optional[bool] = None
+    KNOWLEDGE_BASE_RETENTION_PERIOD: Optional[str] = None
+    knowledge_base_retention_period: Optional[str] = None
 
 @router.post(
     "/config/operator",
@@ -139,9 +151,32 @@ class OperatorConfigUpdateRequest(BaseModel):
 async def update_operator_config(request: OperatorConfigUpdateRequest):
     try:
         updates = request.model_dump(exclude_unset=True)
+        if "knowledge_base_retention_period" in updates:
+            val = updates.pop("knowledge_base_retention_period")
+            if "KNOWLEDGE_BASE_RETENTION_PERIOD" not in updates and val is not None:
+                updates["KNOWLEDGE_BASE_RETENTION_PERIOD"] = val
+
+        if "KNOWLEDGE_BASE_RETENTION_PERIOD" in updates and updates["KNOWLEDGE_BASE_RETENTION_PERIOD"] is not None:
+            retention_val = str(updates["KNOWLEDGE_BASE_RETENTION_PERIOD"]).strip()
+            matched = False
+            for valid in VALID_KB_RETENTIONS:
+                if retention_val.lower() == valid.lower():
+                    updates["KNOWLEDGE_BASE_RETENTION_PERIOD"] = valid
+                    matched = True
+                    break
+            if not matched:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={
+                        "message": f"Invalid Knowledge Base retention period '{retention_val}'. Must be one of: {', '.join(VALID_KB_RETENTIONS)}"
+                    }
+                )
+
         if not updates:
             return config_storage.get_configuration("operator")
         return config_storage.update_configuration("operator", updates)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

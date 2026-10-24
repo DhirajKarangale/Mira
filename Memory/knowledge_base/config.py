@@ -49,6 +49,16 @@ def get_worker_config() -> Dict[str, Any]:
     """Fetches embedding vector store worker configurations from Vault."""
     return memory_config.fetch_worker_config(get_vault_base_url())
 
+def get_kb_retention_period() -> str:
+    """Fetches the configured Knowledge Base retention period from Vault."""
+    try:
+        cfg = memory_config.fetch_operator_config(get_vault_base_url())
+        return cfg.get("KNOWLEDGE_BASE_RETENTION_PERIOD", "Never auto delete")
+    except Exception as e:
+        log_error(f"[KnowledgeBaseConfig] Failed to fetch retention period from Vault: {e}")
+        return "Never auto delete"
+
+
 def to_unix_timestamp(ts: Any) -> int:
     """Converts any timestamp input exclusively to an integer Unix timestamp."""
     if ts is None:

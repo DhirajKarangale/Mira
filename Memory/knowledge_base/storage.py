@@ -7,7 +7,7 @@ import shutil
 import sys
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -17,7 +17,7 @@ if str(_memory_dir) not in sys.path:
     sys.path.insert(0, str(_memory_dir))
 
 from vault_logger import log, log_error
-from .config import get_knowledge_base_dir
+from .config import get_knowledge_base_dir, get_kb_retention_period
 
 KB_NAME_PATTERN = re.compile(r"^kb-(\d{2})_(\d{2})_(\d{4})-(\d{2})_(\d{2})_(\d{4})$")
 
@@ -58,6 +58,66 @@ def get_dir_size_bytes(dir_path: Path) -> int:
         return total
     except Exception:
         return 0
+
+def calculate_retention_cutoff(
+    retention_str: Optional[str],
+    now: Optional[datetime] = None
+) -> Optional[datetime]:
+    """Calculates the cutoff datetime for a Knowledge Base retention policy.
+    
+    Knowledge Bases with end_datetime < cutoff are considered expired.
+    Returns None if 'Never auto delete', empty, or disabled.
+    """
+    if not retention_str:
+        return None
+
+    clean = str(retention_str).strip().lower()
+    if clean in ("never auto delete", "never", "none", "disabled", "0"):
+        return None
+
+    ref = now or datetime.now()
+
+    if "5 year" in clean:
+        try:
+            return ref.replace(year=ref.year - 5)
+        except ValueError:
+            return ref - timedelta(days=5 * 365 + 1)
+    elif "3 year" in clean:
+        try:
+            return ref.replace(year=ref.year - 3)
+        except ValueError:
+            return ref - timedelta(days=3 * 365)
+    elif "1 year" in clean:
+        try:
+            return ref.replace(year=ref.year - 1)
+        except ValueError:
+            return ref - timedelta(days=365)
+    elif "9 month" in clean:
+        month = ref.month - 9
+        year = ref.year
+        while month <= 0:
+            month += 12
+            year -= 1
+        day = min(ref.day, 28)
+        return datetime(year, month, day, ref.hour, ref.minute, ref.second)
+    elif "6 month" in clean:
+        month = ref.month - 6
+        year = ref.year
+        while month <= 0:
+            month += 12
+            year -= 1
+        day = min(ref.day, 28)
+        return datetime(year, month, day, ref.hour, ref.minute, ref.second)
+    elif "3 month" in clean:
+        month = ref.month - 3
+        year = ref.year
+        while month <= 0:
+            month += 12
+            year -= 1
+        day = min(ref.day, 28)
+        return datetime(year, month, day, ref.hour, ref.minute, ref.second)
+
+    return None
 
 class KnowledgeBaseStorage:
     """Manages discovery, selection, deletion, and monthly lifecycle of Qdrant Knowledge Bases.
@@ -283,6 +343,52 @@ class KnowledgeBaseStorage:
                     log_error(f"[KnowledgeBaseStorage] Callback after delete failed: {e}")
 
             return True
+
+    def cleanup_expired_knowledge_bases(
+        self,
+        retention_period: Optional[str] = None,
+        now: Optional[datetime] = None,
+        delete_fn: Optional[Callable[[str], None]] = None,
+    ) -> List[str]:
+        """Identifies and automatically deletes Knowledge Bases older than the configured retention period.
+        
+        - If retention is 'Never auto delete' or None, returns without deleting.
+        - Never deletes the active Knowledge Base or current month collection.
+        """
+        with self._lock:
+            if retention_period is None:
+                retention_period = get_kb_retention_period()
+
+            cutoff = calculate_retention_cutoff(retention_period, now=now)
+            if cutoff is None:
+                log(f"[KnowledgeBaseStorage] Knowledge Base retention is set to '{retention_period}'. No automatic deletion performed.")
+                return []
+
+            all_kbs = self.list_knowledge_bases()
+            active_name = self._active_kb_name or (self.get_active_kb_name() if all_kbs else "")
+            deleted_names: List[str] = []
+
+            log(f"[KnowledgeBaseStorage] Checking retention cutoff {cutoff.strftime('%Y-%m-%d')} for policy '{retention_period}'...")
+
+            for kb in all_kbs:
+                kb_name = kb["name"]
+                # Never auto-delete active Knowledge Base or current month
+                if kb_name == active_name or kb.get("is_current_month"):
+                    continue
+
+                kb_end: datetime = kb["end_datetime"]
+                if kb_end < cutoff:
+                    log(f"[KnowledgeBaseStorage] Knowledge Base '{kb_name}' (end_date: {kb_end.strftime('%Y-%m-%d')}) is older than retention period '{retention_period}'. Deleting...")
+                    try:
+                        if delete_fn:
+                            delete_fn(kb_name)
+                        else:
+                            self.delete_knowledge_base(kb_name)
+                        deleted_names.append(kb_name)
+                    except Exception as e:
+                        log_error(f"[KnowledgeBaseStorage] Failed to delete expired Knowledge Base '{kb_name}': {e}")
+
+            return deleted_names
 
     def get_active_knowledge_base(self) -> Path:
         """Selects and reuses the Knowledge Base for the current month, or creates a new one."""

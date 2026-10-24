@@ -322,3 +322,79 @@ class TestWorkerManager:
             await manager.stop()
             assert manager.is_running is False
             vector_store.close()
+
+
+class TestKnowledgeBaseRetention:
+    def test_calculate_retention_cutoff_all_options(self):
+        from knowledge_base.storage import calculate_retention_cutoff
+        now = datetime(2026, 10, 24, 12, 0, 0)
+
+        assert calculate_retention_cutoff("Never auto delete", now) is None
+        assert calculate_retention_cutoff("never", now) is None
+        assert calculate_retention_cutoff(None, now) is None
+
+        c_5y = calculate_retention_cutoff("5 years", now)
+        assert c_5y == datetime(2021, 10, 24, 12, 0, 0)
+
+        c_3y = calculate_retention_cutoff("3 years", now)
+        assert c_3y == datetime(2023, 10, 24, 12, 0, 0)
+
+        c_1y = calculate_retention_cutoff("1 year", now)
+        assert c_1y == datetime(2025, 10, 24, 12, 0, 0)
+
+        c_9m = calculate_retention_cutoff("9 months", now)
+        assert c_9m.year == 2026 and c_9m.month == 1
+
+        c_6m = calculate_retention_cutoff("6 months", now)
+        assert c_6m.year == 2026 and c_6m.month == 4
+
+        c_3m = calculate_retention_cutoff("3 months", now)
+        assert c_3m.year == 2026 and c_3m.month == 7
+
+    def test_cleanup_expired_knowledge_bases_retention(self, temp_kb_dir):
+        storage = KnowledgeBaseStorage(base_dir=temp_kb_dir)
+
+        # Create dummy KBs:
+        # 1. 2 years ago (kb-01_10_2024-15_10_2024) -> Expired under 1 year
+        old_kb = temp_kb_dir / "kb-01_10_2024-15_10_2024"
+        old_kb.mkdir(parents=True, exist_ok=True)
+
+        # 2. 5 months ago (kb-01_05_2026-15_05_2026) -> Kept under 1 year, expired under 3 months
+        med_kb = temp_kb_dir / "kb-01_05_2026-15_05_2026"
+        med_kb.mkdir(parents=True, exist_ok=True)
+
+        # 3. Current month KB (active) -> Always preserved
+        active_kb = temp_kb_dir / "kb-01_10_2026-24_10_2026"
+        active_kb.mkdir(parents=True, exist_ok=True)
+
+        now = datetime(2026, 10, 24, 12, 0, 0)
+
+        # Case A: Never auto delete
+        deleted_never = storage.cleanup_expired_knowledge_bases(
+            retention_period="Never auto delete",
+            now=now
+        )
+        assert deleted_never == []
+        assert old_kb.exists()
+        assert med_kb.exists()
+        assert active_kb.exists()
+
+        # Case B: 1 year retention (should delete old_kb, keep med_kb and active_kb)
+        deleted_1y = storage.cleanup_expired_knowledge_bases(
+            retention_period="1 year",
+            now=now
+        )
+        assert "kb-01_10_2024-15_10_2024" in deleted_1y
+        assert not old_kb.exists()
+        assert med_kb.exists()
+        assert active_kb.exists()
+
+        # Case C: 3 months retention (should delete med_kb, keep active_kb)
+        deleted_3m = storage.cleanup_expired_knowledge_bases(
+            retention_period="3 months",
+            now=now
+        )
+        assert "kb-01_05_2026-15_05_2026" in deleted_3m
+        assert not med_kb.exists()
+        assert active_kb.exists()
+

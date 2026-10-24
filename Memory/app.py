@@ -192,6 +192,34 @@ async def delete_knowledge_base_endpoint(
             detail={"message": f"Failed to delete Knowledge Base '{target_name}': {str(e)}"}
         )
 
+@app.post("/knowledge-base/cleanup", status_code=status.HTTP_200_OK)
+async def cleanup_knowledge_bases_endpoint():
+    try:
+        deleted = await asyncio.to_thread(kb_worker_manager.cleanup_expired_knowledge_bases)
+        return {
+            "status": "success",
+            "deleted_count": len(deleted),
+            "deleted": deleted
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to cleanup expired Knowledge Bases: {str(e)}"}
+        )
+
+@app.get("/knowledge-base/retention", status_code=status.HTTP_200_OK)
+async def get_retention_endpoint():
+    try:
+        from knowledge_base import get_kb_retention_period
+        period = await asyncio.to_thread(get_kb_retention_period)
+        return {"status": "success", "retention_period": period}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to fetch retention period: {str(e)}"}
+        )
+
+
 @app.post("/knowledge-base/workers/start", status_code=status.HTTP_200_OK)
 async def start_kb_workers():
     await kb_worker_manager.start()
