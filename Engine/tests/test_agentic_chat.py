@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 import os
 import sys
 import unittest
@@ -60,15 +61,18 @@ class TestAgenticChatSystem(unittest.IsolatedAsyncioTestCase):
     # 1. LLM Configuration Tests
     # =========================================================================
     def test_llm_config_tasks_and_temperatures(self):
-        """Verify required LLM tasks exist in config.json with appropriate low temperatures."""
+        """Verify required LLM tasks exist in config.json with appropriate temperatures."""
         # Decision must have low temperature (0.0)
         self.assertEqual(get_temperature("decision"), 0.0)
         # Activity retrieval must have low temperature (0.0)
         self.assertEqual(get_temperature("activity_retrieval"), 0.0)
-        # Synthesis must have low temperature (0.2)
-        self.assertAlmostEqual(get_temperature("synthesis"), 0.2)
-        # General must have low temperature (0.2)
-        self.assertAlmostEqual(get_temperature("general"), 0.2)
+        # Synthesis has higher temperature (0.7) for natural, friendly rephrasing
+        self.assertAlmostEqual(get_temperature("synthesis"), 0.7)
+        # General has very low temperature (0.0) for accuracy
+        self.assertEqual(get_temperature("general"), 0.0)
+        # Summarization and chat must have low temperature (0.0)
+        self.assertEqual(get_temperature("summarization"), 0.0)
+        self.assertEqual(get_temperature("chat"), 0.0)
 
         # Provider models must be configured for all tasks
         for task in ("decision", "activity_retrieval", "synthesis", "general"):
@@ -141,6 +145,27 @@ class TestAgenticChatSystem(unittest.IsolatedAsyncioTestCase):
         fmt = format_timestamp_in_tz(1792854969, tz)
         self.assertTrue(len(fmt) > 0)
         self.assertIn("2026", fmt)
+
+        # 6. Today after 2:00 PM
+        s_ts, e_ts, desc = parse_time_expression("tell me what I did today after 2:00pm", tz)
+        self.assertIsNotNone(s_ts)
+        self.assertIsNotNone(e_ts)
+        self.assertTrue(e_ts > s_ts)
+        self.assertIn("after 02:00 PM", desc)
+        # Verify start time is 2:00 PM (14:00)
+        dt_start = datetime.fromtimestamp(s_ts, tz)
+        self.assertEqual(dt_start.hour, 14)
+        self.assertEqual(dt_start.minute, 0)
+
+        # 7. Yesterday before 5:00 PM
+        s_ts, e_ts, desc = parse_time_expression("my work yesterday before 5:00pm", tz)
+        self.assertIsNotNone(s_ts)
+        self.assertIsNotNone(e_ts)
+        self.assertTrue(e_ts > s_ts)
+        self.assertIn("before 05:00 PM", desc)
+        dt_end = datetime.fromtimestamp(e_ts, tz)
+        self.assertEqual(dt_end.hour, 17)
+        self.assertEqual(dt_end.minute, 0)
 
     # =========================================================================
     # 4. Decision Node Routing Tests

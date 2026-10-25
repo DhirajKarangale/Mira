@@ -12,3 +12,4 @@ export {
   useToast,
   toast,
 } from "./MessageBar";
+export { ChatMessageContent } from "./ChatMessageContent";

@@ -1,6 +1,6 @@
 {
   "summarization": {
-    "temperature": 0.1,
+    "temperature": 0.0,
     "groq": [
       "qwen/qwen3.8-27b",
       "openai/gpt-oss-20b",
@@ -15,7 +15,7 @@
     ]
   },
   "chat": {
-    "temperature": 0.7,
+    "temperature": 0.0,
     "groq": [
       "qwen/qwen3.8-27b",
       "openai/gpt-oss-20b",
@@ -45,7 +45,7 @@
     ]
   },
   "general": {
-    "temperature": 0.2,
+    "temperature": 0.0,
     "groq": [
       "qwen/qwen3.8-27b",
       "openai/gpt-oss-20b",
@@ -90,7 +90,7 @@
     ]
   },
   "synthesis": {
-    "temperature": 0.2,
+    "temperature": 0.7,
     "groq": [
       "qwen/qwen3.8-27b",
       "openai/gpt-oss-20b",

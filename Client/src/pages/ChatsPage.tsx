@@ -23,7 +23,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { Sidebar, type SidebarItem, type SidebarRenderItemState } from "@/components/Sidebar";
-import { toast } from "@/components";
+import { toast, ChatMessageContent } from "@/components";
 import {
   engineService,
   type ChatSession,
@@ -1864,13 +1864,13 @@ export const ChatsPage: FC = () => {
 
                       <div
                         className={cn(
-                          "px-4 py-3 rounded-2xl text-xs sm:text-[13px] leading-relaxed shadow-sm break-words whitespace-pre-wrap select-text",
+                          "px-4 py-3 rounded-2xl text-xs sm:text-[13px] leading-relaxed shadow-sm break-words select-text",
                           isUser
                             ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-tr-sm shadow-blue-500/10"
                             : "bg-zinc-900/90 border border-white/[0.08] text-zinc-200 rounded-tl-sm shadow-zinc-950/40"
                         )}
                       >
-                        {msg.content}
+                        <ChatMessageContent content={msg.content} isUser={isUser} />
                       </div>
                     </div>
                   </div>

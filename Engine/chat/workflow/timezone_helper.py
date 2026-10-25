@@ -265,6 +265,44 @@ def _extract_subday_range(
                 return dt1, dt2, f"between {t1.strftime('%I:%M %p')} and {t2.strftime('%I:%M %p')}"
             return dt1, dt2, f"{t1.strftime('%I:%M %p')} to {t2.strftime('%I:%M %p')}"
 
+    # After / Since / Post / From X
+    after_match = re.search(
+        r'\b(?:after|since|post|from)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm|noon|midnight)?(?:\s*onwards?)?)',
+        expr
+    )
+    if after_match:
+        raw_val = re.sub(r'\s*onwards?$', '', after_match.group(1).strip())
+        t = _to_dtime(raw_val)
+        if t:
+            dt1 = datetime.combine(base_date, t, tzinfo=user_tz)
+            dt2 = datetime.combine(base_date, dtime.max, tzinfo=user_tz)
+            return dt1, dt2, f"after {t.strftime('%I:%M %p')}"
+
+    # Before / Until / Till / Prior to / Up to X
+    before_match = re.search(
+        r'\b(?:before|until|till|prior\s+to|up\s+to)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm|noon|midnight)?)',
+        expr
+    )
+    if before_match:
+        t = _to_dtime(before_match.group(1).strip())
+        if t:
+            dt1 = datetime.combine(base_date, dtime.min, tzinfo=user_tz)
+            dt2 = datetime.combine(base_date, t, tzinfo=user_tz)
+            return dt1, dt2, f"before {t.strftime('%I:%M %p')}"
+
+    # Around / At X
+    at_match = re.search(
+        r'\b(?:around|at|approx(?:\.|imately)?)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm|noon|midnight)?)',
+        expr
+    )
+    if at_match:
+        t = _to_dtime(at_match.group(1).strip())
+        if t:
+            center_dt = datetime.combine(base_date, t, tzinfo=user_tz)
+            dt1 = max(datetime.combine(base_date, dtime.min, tzinfo=user_tz), center_dt - timedelta(hours=1))
+            dt2 = min(datetime.combine(base_date, dtime.max, tzinfo=user_tz), center_dt + timedelta(hours=1))
+            return dt1, dt2, f"around {t.strftime('%I:%M %p')} ({dt1.strftime('%I:%M %p')} to {dt2.strftime('%I:%M %p')})"
+
     # Part of day
     if "morning" in expr:
         dt1 = datetime.combine(base_date, dtime(6, 0), tzinfo=user_tz)

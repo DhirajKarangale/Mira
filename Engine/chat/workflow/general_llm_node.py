@@ -13,8 +13,9 @@ def general_llm_node(state: AgentState) -> Dict[str, Any]:
     """
     Step 3: General LLM Node.
     Executes general-purpose LLM completions using the existing LLM implementation
-    and config.json ('general' work configuration, low temperature 0.2).
+    and config.json ('general' work configuration, very low temperature 0.0).
     Includes relevant short-term chat history and user profile information.
+    Answers strictly what the user asked with concise, factual responses.
     """
     user_query = state.get("user_query", "").strip()
     chat_history = state.get("chat_history", [])
@@ -42,13 +43,17 @@ def general_llm_node(state: AgentState) -> Dict[str, Any]:
     history_text = "\n".join(normalized_turns) if normalized_turns else "No previous conversation in this session."
 
     system_preamble = (
-        f"You are MIRA, an intelligent, helpful, and friendly desktop AI companion.\n"
+        f"You are MIRA, a helpful and precise desktop AI companion.\n"
         f"User Profile:\n"
         f"- Name: {user_name}\n"
         f"- Location: {location_str}\n\n"
         f"Conversation History:\n{history_text}\n\n"
         f"Current Query from {user_name}: {user_query}\n\n"
-        f"Please provide a comprehensive, clear, and accurate answer."
+        f"Instructions:\n"
+        f"1. Answer ONLY what the user asked.\n"
+        f"2. Be concise, direct, and factually accurate.\n"
+        f"3. Do NOT include unrelated information, additional explanations, suggestions, assumptions, or unnecessary introductions.\n"
+        f"4. AVOID conversational pleasantries, greetings, or trailing follow-up questions."
     )
 
     try:

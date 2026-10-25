@@ -69,7 +69,16 @@ def user_activity_node(state: AgentState) -> Dict[str, Any]:
             "kbs_searched": [],
             "message": "No Knowledge Base stores found on the system for this period.",
         }
-        return {"retrieved_context": retrieved_context}
+        activity_answer = f"No activity records were found for {time_desc}."
+        current_outputs = dict(state.get("node_outputs") or {})
+        current_outputs["user_activity"] = retrieved_context
+        current_outputs["activity_response"] = activity_answer
+        current_outputs["executed_node"] = "user_activity"
+        return {
+            "retrieved_context": retrieved_context,
+            "node_outputs": current_outputs,
+            "final_response": activity_answer,
+        }
 
     # Step 4D: Vector search on summarized_text + payload filters
     records = _search_across_knowledge_bases(
@@ -97,14 +106,103 @@ def user_activity_node(state: AgentState) -> Dict[str, Any]:
         "message": "Activities successfully retrieved." if records else "No matching activity records found.",
     }
 
+    # Formulate factual activity response using low temperature (0.0)
+    if not records:
+        activity_answer = f"No activity records were found for {time_desc}."
+    else:
+        activity_answer = _formulate_activity_response(
+            user_name=user_profile.get("user_name", "User"),
+            user_query=user_query,
+            time_desc=time_desc,
+            records=records,
+        )
+
     current_outputs = dict(state.get("node_outputs") or {})
     current_outputs["user_activity"] = retrieved_context
+    current_outputs["activity_response"] = activity_answer
     current_outputs["executed_node"] = "user_activity"
 
     return {
         "retrieved_context": retrieved_context,
         "node_outputs": current_outputs,
+        "final_response": activity_answer,
     }
+
+
+def _formulate_activity_response(
+    user_name: str,
+    user_query: str,
+    time_desc: str,
+    records: List[Dict[str, Any]],
+) -> str:
+    """
+    Formulates a factual, concise response explaining user activity using
+    'activity_retrieval' work (temp 0.0) based strictly on verified records.
+    Answers only what was asked with zero assumptions or hallucinations.
+    Budgets evidence tokens to avoid provider rate limit / 413 errors.
+    """
+    sample_records = records[:30]
+    lines: List[str] = []
+    for r in sample_records:
+        ts = r.get("timestamp_formatted", "Unknown Time")
+        ts_end = r.get("timestamp_end_formatted")
+        time_display = f"{ts} - {ts_end}" if ts_end and ts_end != ts else ts
+        app = r.get("app_name", "Unknown App")
+        summary = str(r.get("summarized_text") or "").strip()
+        lines.append(f"- **{time_display}** — **{app}**: {summary}")
+
+    direct_timeline = "\n".join(lines)
+
+    # Budget evidence tokens so prompt never exceeds provider limits (e.g. Groq 7k limit)
+    evidence_items: List[str] = []
+    char_count = 0
+    for idx, r in enumerate(sample_records, start=1):
+        stext = str(r.get("summarized_text") or "").strip()
+        if len(stext) > 220:
+            stext = stext[:220].rstrip() + "..."
+        ts_disp = r.get("timestamp_formatted", "")
+        app_disp = r.get("app_name", "")
+        item = f"{idx}. [{ts_disp}] {app_disp}: {stext}"
+        if char_count + len(item) > 4500:
+            break
+        evidence_items.append(item)
+        char_count += len(item)
+
+    evidence_text = "\n".join(evidence_items)
+
+    prompt = f"""You are the User Activity Agent of MIRA.
+Analyze the user's question and the verified screen activity events below.
+Answer the user's question accurately, concisely, and factually.
+
+User: {user_name}
+Question: "{user_query}"
+Time Range: {time_desc}
+
+Verified Screen Activity Events:
+{evidence_text}
+
+Strict Rules:
+1. Answer ONLY what the user asked regarding their activity.
+2. Explain each activity in simple, clear language based ONLY on the verified data.
+3. For applications and browsers: state the specific document, file, website, tool, or query being used whenever confirmed by the data.
+4. Do NOT confuse project names with Git branch names or UI labels. If 'main', 'master', or a similar label appears, do NOT assume or claim it is a project name or Git branch.
+5. Do NOT autocomplete missing context, make assumptions, invent actions, or hallucinate details. If an activity is unclear, state only what is known.
+6. Chronological & Concise: Present the events chronologically. Do NOT include unrelated information, additional explanations, suggestions, assumptions, or unnecessary introductions.
+7. AVOID greetings, conversational pleasantries, and trailing follow-up questions.
+
+Format:
+- **[Timestamp or Range]** — **[Application]**: [Clear, simple, factual description]
+"""
+    try:
+        raw_ans = call_llm(prompt, work="activity_retrieval").strip()
+        # Accept only if valid text and not JSON parameters or unavailable error
+        if raw_ans and not raw_ans.startswith("{") and "The AI request could not be completed" not in raw_ans:
+            return raw_ans
+    except Exception as e:
+        log_error(f"[UserActivityNode] Factual answer LLM generation failed: {e}")
+
+    # Fallback: direct timeline from verified records
+    return direct_timeline
 
 
 def _understand_activity_query(
@@ -403,6 +501,12 @@ def _search_across_knowledge_bases(
                     sanitized_text = re.sub(r'\bproject named "main"\b', "workspace displaying label 'main'", sanitized_text, flags=re.IGNORECASE)
 
                     pt_ts = int(payload.get("timestamp") or 0)
+                    # Enforce strict Python-side boundary check
+                    if start_ts is not None and pt_ts < start_ts:
+                        continue
+                    if end_ts is not None and pt_ts > end_ts:
+                        continue
+
                     localized_ts = format_timestamp_in_tz(pt_ts, user_tz) if pt_ts else "Unknown Time"
                     score_val = float(getattr(pt, "score", 1.0))
 
