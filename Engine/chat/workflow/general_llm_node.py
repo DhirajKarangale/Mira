@@ -42,11 +42,36 @@ def general_llm_node(state: AgentState) -> Dict[str, Any]:
 
     history_text = "\n".join(normalized_turns) if normalized_turns else "No previous conversation in this session."
 
+    # Query User Knowledge Base for query-relevant preferences, activities, or interests
+    kb_context_text = ""
+    try:
+        from user_knowledge_base import search_knowledge_base
+        relevant_kb = search_knowledge_base(user_query, limit=5)
+        if relevant_kb:
+            kb_lines = []
+            for item in relevant_kb:
+                cat = item.get("_category")
+                if cat == "preferences":
+                    kb_lines.append(f"- Preference: {item.get('item')} ({item.get('preference_type')}) - {item.get('details')}")
+                elif cat == "music_preferences":
+                    kb_lines.append(f"- Music: {item.get('artist') or item.get('genre') or item.get('track_or_album')} on {item.get('platform') or 'music'} - {item.get('details')}")
+                elif cat == "viewing_interests":
+                    kb_lines.append(f"- Viewing ({item.get('media_type')}): {item.get('title_or_topic')} on {item.get('platform') or 'streaming'}")
+                elif cat == "sports_interests":
+                    kb_lines.append(f"- Sports ({item.get('sport_name')}): {item.get('teams_or_players')} ({item.get('interest_level')})")
+                elif cat == "life_and_activities":
+                    kb_lines.append(f"- Life/Activity ({item.get('category')}): {item.get('title')} ({item.get('status')})")
+            if kb_lines:
+                kb_context_text = "Known User Interests & Knowledge:\n" + "\n".join(kb_lines) + "\n\n"
+    except Exception:
+        pass
+
     system_preamble = (
         f"You are MIRA, a helpful and precise desktop AI companion.\n"
         f"User Profile:\n"
         f"- Name: {user_name}\n"
         f"- Location: {location_str}\n\n"
+        f"{kb_context_text}"
         f"Conversation History:\n{history_text}\n\n"
         f"Current Query from {user_name}: {user_query}\n\n"
         f"Instructions:\n"

@@ -186,15 +186,15 @@ export const KnowledgeBaseManagerCard: FC = () => {
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
               <h2 className="text-lg font-bold text-white tracking-tight">
-                Knowledge Base Management
+                Activity Knowledge Base
               </h2>
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
                 <Layers className="w-3 h-3" />
-                <span>{totalKbs} {totalKbs === 1 ? "Knowledge Base" : "Knowledge Bases"}</span>
+                <span>{totalKbs} {totalKbs === 1 ? "Activity KB" : "Activity KBs"}</span>
               </span>
             </div>
             <p className="text-xs text-zinc-400 mt-0.5">
-              Local Qdrant vector databases, activity intervals, semantic memories, and data retention
+              Vector databases storing screen activity, application events, and multimodal embeddings
             </p>
           </div>
         </div>

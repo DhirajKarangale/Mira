@@ -158,6 +158,17 @@ async def save_user_details(request: UserDetailsRequest):
             data = config_storage.get_configuration('user_details')
             return {**data, 'exists': any((v is not None and str(v).strip() != '' for v in data.values()))}
         updated = config_storage.update_configuration('user_details', updates)
+        # Notify Engine so User Knowledge Base updates immediately
+        def _notify_engine(data_to_sync):
+            try:
+                import requests
+                eng_url = config.get_service_url('engine')
+                if eng_url:
+                    requests.post(f"{eng_url.rstrip('/')}/user/profile", json=data_to_sync, timeout=1.5)
+            except Exception:
+                pass
+        import threading
+        threading.Thread(target=_notify_engine, args=(updated,), daemon=True).start()
         return {**updated, 'exists': True, 'message': 'User details saved successfully'}
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to save user details: {str(e)}'})

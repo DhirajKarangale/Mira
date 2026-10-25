@@ -232,37 +232,20 @@ export const ConsumerGroupsCard: FC<ConsumerGroupsCardProps> = ({
           <div className="text-[11px] text-zinc-500 mt-1">Unconsumed messages waiting in stream</div>
         </div>
 
-        <div className="rounded-xl border border-white/[0.08] bg-zinc-900/50 backdrop-blur-sm p-4 relative overflow-hidden flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between text-zinc-400 mb-2">
-              <span className="text-xs font-medium uppercase tracking-wider">PEL Messages</span>
-              <Flame className={cn("w-4 h-4", totalPending > 0 ? "text-amber-400 animate-pulse" : "text-zinc-500")} />
-            </div>
-            <div
-              className={cn(
-                "text-2xl font-bold tracking-tight",
-                totalPending > 0 ? "text-amber-400" : "text-zinc-300"
-              )}
-            >
-              {totalPending}
-            </div>
-            <div className="text-[11px] text-zinc-500 mt-1">Delivered, awaiting ACK (PEL)</div>
+        <div className="rounded-xl border border-white/[0.08] bg-zinc-900/50 backdrop-blur-sm p-4 relative overflow-hidden">
+          <div className="flex items-center justify-between text-zinc-400 mb-2">
+            <span className="text-xs font-medium uppercase tracking-wider">PEL Messages</span>
+            <Flame className={cn("w-4 h-4", totalPending > 0 ? "text-amber-400 animate-pulse" : "text-zinc-500")} />
           </div>
-          {totalPending > 0 && (
-            <div className="mt-3 pt-2.5 border-t border-white/[0.06] flex items-center justify-end">
-              <button
-                type="button"
-                id="btn-quick-clean-pels"
-                onClick={() => setIsCleanAllPelsOpen(true)}
-                disabled={actionLoading}
-                className="text-[11px] font-medium text-amber-300 hover:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 px-2.5 py-1 rounded-md border border-amber-500/30 transition-colors flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed shadow-[0_0_8px_rgba(245,158,11,0.1)]"
-                title="Clean all pending messages (PELs)"
-              >
-                <Flame className="w-3 h-3 text-amber-400" />
-                Clean All PELs
-              </button>
-            </div>
-          )}
+          <div
+            className={cn(
+              "text-2xl font-bold tracking-tight",
+              totalPending > 0 ? "text-amber-400" : "text-zinc-300"
+            )}
+          >
+            {totalPending}
+          </div>
+          <div className="text-[11px] text-zinc-500 mt-1">Delivered, awaiting ACK (PEL)</div>
         </div>
 
         <div className="rounded-xl border border-white/[0.08] bg-zinc-900/50 backdrop-blur-sm p-4 relative overflow-hidden">

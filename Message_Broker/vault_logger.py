@@ -23,3 +23,8 @@ def log(message: str) -> None:
     except Exception as e:
         _last_vault_failure = time.time()
         print(f'[{MODULE_NAME}] (Vault logging delivery fallback: {e}) {log_string}', file=sys.stderr, flush=True)
+
+
+def log_error(message: str) -> None:
+    log(f"ERROR: {message}")
+
