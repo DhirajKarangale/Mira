@@ -15,40 +15,47 @@ export function useGlobalChatSync() {
 
   const wsRef = useRef<WebSocket | null>(null);
 
+  const notifyIfInactive = (
+    targetSid: string,
+    aiContent?: string,
+    userPrompt?: string
+  ) => {
+    const store = useChatStore.getState();
+    const isViewingThisChat =
+      locationRef.current === "/chats" &&
+      store.selectedSessionId === targetSid;
+
+    if (!isViewingThisChat) {
+      // Mark session as unread in store
+      store.markSessionUnread(targetSid);
+
+      const cleanContent = aiContent?.trim();
+      const preview = cleanContent
+        ? cleanContent.length > 90
+          ? `${cleanContent.substring(0, 90)}...`
+          : cleanContent
+        : "Mira responded to your query";
+
+      const matchedSession = store.cachedSessions.find(
+        (s) => s.session_id === targetSid
+      );
+      const promptToUse = userPrompt || store.sendingSessions[targetSid]?.userPrompt;
+      const sessionTitle =
+        matchedSession?.chat_name ||
+        (promptToUse ? `${promptToUse.substring(0, 24)}...` : "Conversation");
+
+      toast.success(preview, {
+        title: `New message in "${sessionTitle}"`,
+        duration: 5000,
+      });
+    }
+  };
+
   // 1. Maintain global WebSocket connection to Engine
   useEffect(() => {
     let socket: WebSocket | null = null;
     let reconnectTimer: any = null;
     let isMounted = true;
-
-    const notifyIfInactive = (targetSid: string, aiContent?: string) => {
-      const store = useChatStore.getState();
-      const isViewingThisChat =
-        locationRef.current === "/chats" &&
-        store.selectedSessionId === targetSid;
-
-      if (!isViewingThisChat) {
-        // Mark session as unread in store
-        store.markSessionUnread(targetSid);
-
-        const cleanContent = aiContent?.trim();
-        const preview = cleanContent
-          ? cleanContent.length > 90
-            ? `${cleanContent.substring(0, 90)}...`
-            : cleanContent
-          : "Mira responded to your query";
-
-        const matchedSession = store.cachedSessions.find(
-          (s) => s.session_id === targetSid
-        );
-        const sessionTitle = matchedSession?.chat_name || "Conversation";
-
-        toast.success(preview, {
-          title: `New message in "${sessionTitle}"`,
-          duration: 5000,
-        });
-      }
-    };
 
     const connectWs = () => {
       if (!isMounted) return;
@@ -69,6 +76,11 @@ export function useGlobalChatSync() {
                     s.session_id === session_id ? { ...s, chat_name } : s
                   )
                 );
+                window.dispatchEvent(
+                  new CustomEvent("mira:chat_rename", {
+                    detail: { session_id, chat_name },
+                  })
+                );
               }
             } else if (data.type === "chat_response") {
               const { job_id, session_id, user_message, ai_message } =
@@ -83,8 +95,9 @@ export function useGlobalChatSync() {
                 );
 
               if (targetSid) {
+                const userPrompt = store.sendingSessions[targetSid]?.userPrompt;
                 store.resolveAiMessage(targetSid, job_id, user_message, ai_message);
-                notifyIfInactive(targetSid, ai_message?.content);
+                notifyIfInactive(targetSid, ai_message?.content, userPrompt);
               }
             }
           } catch (e) {
@@ -131,42 +144,25 @@ export function useGlobalChatSync() {
 
       for (const sid of activeIds) {
         try {
-          const resp = await engineService.getChatsBySession(sid, {
-            page: 1,
-            limit: 10,
+          let resp = await engineService.getChatsBySession(sid, {
+            limit: 100,
           });
+          if (resp.total_pages > 1) {
+            resp = await engineService.getChatsBySession(sid, {
+              page: resp.total_pages,
+              limit: 100,
+            });
+          }
           const msgs = resp.messages || [];
           const lastMsg = msgs[msgs.length - 1];
 
           // If AI response has arrived in Vault
           if (lastMsg && lastMsg.role === "ai") {
+            const sendingInfo = store.sendingSessions[sid];
+            const userPrompt = sendingInfo?.userPrompt;
+            store.resolveAiMessage(sid, sendingInfo?.jobId, null, lastMsg);
             store.setSessionMessages(sid, msgs);
-            store.clearSendingSession(sid);
-
-            const isViewingThisChat =
-              locationRef.current === "/chats" &&
-              store.selectedSessionId === sid;
-
-            if (!isViewingThisChat) {
-              store.markSessionUnread(sid);
-
-              const cleanContent = lastMsg.content?.trim();
-              const preview = cleanContent
-                ? cleanContent.length > 90
-                  ? `${cleanContent.substring(0, 90)}...`
-                  : cleanContent
-                : "Mira responded to your query";
-
-              const matchedSession = store.cachedSessions.find(
-                (s) => s.session_id === sid
-              );
-              const sessionTitle = matchedSession?.chat_name || "Conversation";
-
-              toast.success(preview, {
-                title: `New message in "${sessionTitle}"`,
-                duration: 5000,
-              });
-            }
+            notifyIfInactive(sid, lastMsg.content, userPrompt);
           }
         } catch (e) {
           console.debug("[Global Chat Poller] Polling check error:", e);
@@ -174,7 +170,7 @@ export function useGlobalChatSync() {
       }
     };
 
-    timer = setInterval(pollActiveSessions, 2500);
+    timer = setInterval(pollActiveSessions, 2000);
     return () => clearInterval(timer);
   }, []);
 

@@ -92,18 +92,16 @@ export interface WebSocketChatResponse {
 }
 
 export function getEngineWebSocketUrl(): string {
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const engineBase = SERVICE_ENDPOINTS.engine;
-  if (engineBase) {
-    try {
-      const url = new URL(engineBase);
-      return `${protocol}//${url.hostname || "127.0.0.1"}:${url.port || "9007"}/ws/chat`;
-    } catch {
-      // Fallback
-    }
+  const engineBase = SERVICE_ENDPOINTS.engine || "http://127.0.0.1:9007";
+  try {
+    const url = new URL(engineBase);
+    const protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    const host = url.hostname || "127.0.0.1";
+    const port = url.port || (url.protocol === "https:" ? "443" : "9007");
+    return `${protocol}//${host}:${port}/ws/chat`;
+  } catch {
+    return "ws://127.0.0.1:9007/ws/chat";
   }
-  const host = window.location.hostname || "127.0.0.1";
-  return `${protocol}//${host}:9007/ws/chat`;
 }
 
 export const engineService = {

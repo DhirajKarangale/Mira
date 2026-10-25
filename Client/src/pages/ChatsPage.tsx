@@ -29,7 +29,7 @@ import {
   type ChatSession,
   type ChatMessage,
 } from "@/services/engine.service";
-import { useChatStore } from "@/store/useChatStore";
+import { useChatStore, type SendingSessionDetails } from "@/store/useChatStore";
 import { cn } from "@/lib/utils";
 
 const CHAT_LOADING_MESSAGES: readonly string[] = [
@@ -151,26 +151,85 @@ export const ChatsPage: FC = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isInitialSessionLoadRef = useRef<boolean>(false);
   const isNearBottomRef = useRef<boolean>(true);
+  const isAutoScrollingRef = useRef<boolean>(false);
+  const [isAutoScrolling, setIsAutoScrolling] = useState<boolean>(false);
   const [showScrollBottom, setShowScrollBottom] = useState<boolean>(false);
+  const lastScrollTopRef = useRef<number>(0);
 
   // Track whether the user is scrolled near bottom (< 100px from bottom)
   const handleMessagesScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const currentScrollTop = el.scrollTop;
+    const distanceFromBottom = el.scrollHeight - currentScrollTop - el.clientHeight;
     const nearBottom = distanceFromBottom < 100;
     isNearBottomRef.current = nearBottom;
-    setShowScrollBottom(distanceFromBottom > 160);
+
+    if (nearBottom) {
+      // Reached bottom: clear auto-scrolling state and hide button
+      isAutoScrollingRef.current = false;
+      setIsAutoScrolling(false);
+      setShowScrollBottom(false);
+    } else {
+      // If auto-scrolling was active, but user scrolled up (scrollTop decreased), re-enable button
+      if (isAutoScrollingRef.current && currentScrollTop < lastScrollTopRef.current - 5) {
+        isAutoScrollingRef.current = false;
+        setIsAutoScrolling(false);
+      }
+      setShowScrollBottom(!nearBottom && distanceFromBottom > 180);
+    }
+
+    lastScrollTopRef.current = currentScrollTop;
+  }, []);
+
+  // Detect user manual scroll interruptions (wheel, touchmove, pointer interaction on container)
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const handleUserInterrupt = () => {
+      if (isAutoScrollingRef.current) {
+        isAutoScrollingRef.current = false;
+        setIsAutoScrolling(false);
+      }
+    };
+
+    container.addEventListener("wheel", handleUserInterrupt, { passive: true });
+    container.addEventListener("touchmove", handleUserInterrupt, { passive: true });
+    container.addEventListener("pointerdown", handleUserInterrupt, { passive: true });
+
+    return () => {
+      container.removeEventListener("wheel", handleUserInterrupt);
+      container.removeEventListener("touchmove", handleUserInterrupt);
+      container.removeEventListener("pointerdown", handleUserInterrupt);
+    };
   }, []);
 
   const scrollToBottom = useCallback(() => {
-    isNearBottomRef.current = true;
-    setShowScrollBottom(false);
+    isAutoScrollingRef.current = true;
+    setIsAutoScrolling(true);
+
     if (messagesContainerRef.current) {
       messagesContainerRef.current.scrollTo({
         top: messagesContainerRef.current.scrollHeight,
         behavior: "smooth",
       });
     }
+
+    // Safety timeout in case browser smooth-scroll ends without exact threshold event
+    setTimeout(() => {
+      if (isAutoScrollingRef.current) {
+        isAutoScrollingRef.current = false;
+        setIsAutoScrolling(false);
+        if (messagesContainerRef.current) {
+          const el = messagesContainerRef.current;
+          const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+          if (dist < 100) {
+            isNearBottomRef.current = true;
+            setShowScrollBottom(false);
+          }
+        }
+      }
+    }, 1500);
   }, []);
 
   // Issue 9: Auto-resize input textarea height-wise up to 180px
@@ -280,11 +339,16 @@ export const ChatsPage: FC = () => {
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
 
   const fetchSessions = useCallback(
-    async (pageToLoad: number = 1, cursorToUse?: string | null, append: boolean = false) => {
+    async (
+      pageToLoad: number = 1,
+      cursorToUse?: string | null,
+      append: boolean = false,
+      silent: boolean = false
+    ) => {
       try {
-        if (!append) {
+        if (!append && !silent) {
           setSessionsLoading(true);
-        } else {
+        } else if (append) {
           setLoadingMoreSessions(true);
         }
         setSessionsError(null);
@@ -310,7 +374,59 @@ export const ChatsPage: FC = () => {
             const newItems = fetchedSessions.filter((s) => !existingIds.has(s.session_id));
             return [...prev, ...newItems];
           } else {
-            return [...sendingLocalSessions, ...fetchedSessions];
+            // Update in-place preserving object references where possible to prevent UI flicker
+            const currentSending = sendingSessionsRef.current;
+            const map = new Map<string, ChatSession>();
+
+            for (const s of sendingLocalSessions) {
+              map.set(s.session_id, s);
+            }
+
+            for (const f of fetchedSessions) {
+              const existing = prev.find((p) => p.session_id === f.session_id);
+              // Choose the best available title (prioritize non-UUID / non-null name)
+              const bestChatName =
+                f.chat_name && f.chat_name !== f.session_id
+                  ? f.chat_name
+                  : existing?.chat_name && existing.chat_name !== existing.session_id
+                  ? existing.chat_name
+                  : f.chat_name || f.session_id;
+
+              if (
+                existing &&
+                existing.chat_name === bestChatName &&
+                !currentSending[f.session_id]
+              ) {
+                // Keep the exact same object reference if visible title has not changed
+                map.set(f.session_id, existing);
+              } else {
+                map.set(f.session_id, {
+                  ...f,
+                  chat_name: bestChatName,
+                });
+              }
+            }
+
+            // Preserve older pagination pages from prev that are not in fetchedSessions page 1
+            const fetchedOrSending = new Set(map.keys());
+            for (const old of prev) {
+              if (!fetchedOrSending.has(old.session_id)) {
+                map.set(old.session_id, old);
+              }
+            }
+
+            const next = Array.from(map.values());
+
+            // Reference-level equality check: if next array is identical to prev, return prev to bypass re-renders entirely
+            const hasChanged =
+              prev.length !== next.length ||
+              prev.some((p, i) => p !== next[i]);
+
+            if (!hasChanged) {
+              return prev;
+            }
+
+            return next;
           }
         });
 
@@ -319,13 +435,17 @@ export const ChatsPage: FC = () => {
         setSessionsCursor(data.next_cursor || null);
         setSessionsHasMore(Boolean(data.has_more));
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Failed to load chat sessions";
-        setSessionsError(message);
-        if (!append) {
-          setSessions([]);
+        if (!silent) {
+          const message = err instanceof Error ? err.message : "Failed to load chat sessions";
+          setSessionsError(message);
+          if (!append) {
+            setSessions([]);
+          }
         }
       } finally {
-        setSessionsLoading(false);
+        if (!silent) {
+          setSessionsLoading(false);
+        }
         setLoadingMoreSessions(false);
       }
     },
@@ -500,6 +620,8 @@ export const ChatsPage: FC = () => {
       }
       isInitialSessionLoadRef.current = true;
       isNearBottomRef.current = true;
+      isAutoScrollingRef.current = false;
+      setIsAutoScrolling(false);
       setShowScrollBottom(false);
 
       // Instant display from cache if available
@@ -564,6 +686,21 @@ export const ChatsPage: FC = () => {
     };
   }, [editingSessionId, menuOpenSessionId]);
 
+  // Listen for real-time chat rename events from WebSocket (ChatNamingQueue)
+  useEffect(() => {
+    const handleRenameEvent = (e: Event) => {
+      const customEvent = e as CustomEvent<{ session_id: string; chat_name: string }>;
+      if (!customEvent.detail) return;
+      const { session_id, chat_name } = customEvent.detail;
+      setSessions((prev) =>
+        prev.map((s) => (s.session_id === session_id ? { ...s, chat_name } : s))
+      );
+    };
+
+    window.addEventListener("mira:chat_rename", handleRenameEvent);
+    return () => window.removeEventListener("mira:chat_rename", handleRenameEvent);
+  }, []);
+
   // Synchronize visible messages whenever store's cached messages for selected session update
   useEffect(() => {
     if (!selectedSessionId) return;
@@ -572,36 +709,44 @@ export const ChatsPage: FC = () => {
 
     setMessages((prev) => {
       // Avoid state update if messages list has not actually changed
-      if (
+      const isSame =
         prev === cached ||
         (prev.length === cached.length &&
           prev.length > 0 &&
           prev[prev.length - 1]?.id === cached[cached.length - 1]?.id &&
-          prev[prev.length - 1]?.content === cached[cached.length - 1]?.content)
-      ) {
+          prev[prev.length - 1]?.content === cached[cached.length - 1]?.content);
+
+      if (isSame) {
         return prev;
+      }
+
+      // If user is at or near bottom, keep pinned to bottom smoothly
+      if (isNearBottomRef.current) {
+        requestAnimationFrame(() => {
+          if (messagesContainerRef.current) {
+            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+          }
+        });
       }
       return cached;
     });
-
-    // Only auto-scroll if the user is already at or near bottom
-    if (isNearBottomRef.current) {
-      requestAnimationFrame(() => {
-        if (messagesContainerRef.current) {
-          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-        }
-      });
-    }
   }, [selectedSessionId, sessionMessagesCache]);
 
-  // When sending completes for current session, refresh sessions list in background
-  const wasSendingRef = useRef(isCurrentSessionSending);
+  // When sending completes for ANY session (current or in background), silently refresh sessions list
+  const prevSendingSessionsRef = useRef<Record<string, SendingSessionDetails>>(sendingSessions);
   useEffect(() => {
-    if (wasSendingRef.current && !isCurrentSessionSending) {
-      fetchSessionsRef.current(1, null, false);
+    const prev = prevSendingSessionsRef.current;
+    const current = sendingSessions;
+
+    // Check if any session that was sending is now finished
+    const finishedAny = Object.keys(prev).some((sid) => !current[sid]);
+    if (finishedAny) {
+      // Refresh sessions silently in background with ZERO flicker
+      fetchSessionsRef.current(1, null, false, true);
     }
-    wasSendingRef.current = isCurrentSessionSending;
-  }, [isCurrentSessionSending]);
+
+    prevSendingSessionsRef.current = current;
+  }, [sendingSessions]);
 
   const handleLoadMoreMessages = () => {
     if (!selectedSessionId || loadingMoreMessages || !messagesHasMore) return;
@@ -766,12 +911,31 @@ export const ChatsPage: FC = () => {
       setSessions((prev) => [newSession, ...prev.filter((s) => s.session_id !== targetSessionId)]);
       setSessionsTotalItems((prev) => prev + 1);
 
+      // Also sync into global store cache so global listeners and notifications have access
+      useChatStore.getState().setCachedSessions((prev) => [
+        newSession,
+        ...prev.filter((s) => s.session_id !== targetSessionId),
+      ]);
+
       // Skip the initial wipeout fetch in useEffect([selectedSessionId])
       setSkipInitialFetchSessionId(targetSessionId);
       setSelectedSessionId(targetSessionId);
     } else {
       // For existing session, bump it to the top of the sidebar list
       setSessions((prev) => {
+        const existing = prev.find((s) => s.session_id === targetSessionId);
+        if (existing) {
+          const updated = {
+            ...existing,
+            latest_created_at: nowIso,
+            created_at: nowIso,
+          };
+          return [updated, ...prev.filter((s) => s.session_id !== targetSessionId)];
+        }
+        return prev;
+      });
+
+      useChatStore.getState().setCachedSessions((prev) => {
         const existing = prev.find((s) => s.session_id === targetSessionId);
         if (existing) {
           const updated = {
@@ -799,6 +963,8 @@ export const ChatsPage: FC = () => {
     addOptimisticMessage(targetSessionId, optimisticUserMsg);
 
     isNearBottomRef.current = true;
+    isAutoScrollingRef.current = false;
+    setIsAutoScrolling(false);
     setShowScrollBottom(false);
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -814,7 +980,7 @@ export const ChatsPage: FC = () => {
       // If response returned synchronous ai_message (e.g. fallback or mock)
       if (response.ai_message) {
         resolveAiMessage(targetSessionId, jobId, response.user_message, response.ai_message);
-        fetchSessions(1, null, false);
+        fetchSessions(1, null, false, true);
       } else {
         // Job queued into llm_chat stream; replace tempId in-place with saved user msg
         replaceOptimisticUserMessage(targetSessionId, tempId, response.user_message);
@@ -1165,6 +1331,8 @@ export const ChatsPage: FC = () => {
       isRenamingLoading,
       isDeletingSessionId,
       sendingSessions,
+      unreadSessionIds,
+      markSessionRead,
       handleSaveRename,
       handleCancelRename,
       handleStartRename,
@@ -1677,23 +1845,32 @@ export const ChatsPage: FC = () => {
           )}
         </div>
 
-        {/* Floating scroll to bottom button when user has scrolled up */}
-        {showScrollBottom && selectedSessionId && cleanMessages.length > 0 && (
-          <button
-            type="button"
-            onClick={scrollToBottom}
-            aria-label="Scroll to bottom"
-            className="absolute bottom-20 right-6 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-900/95 text-cyan-400 hover:text-cyan-300 border border-cyan-500/40 shadow-xl shadow-black/60 text-xs font-medium backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
-          >
-            <ArrowDown className="w-3.5 h-3.5" />
-            <span>Latest messages</span>
-          </button>
-        )}
-
         {/* ==================================================================== */}
         {/* INPUT AREA: Text Input & Controls */}
         {/* ==================================================================== */}
-        <footer className="p-3 sm:p-4 border-t border-white/[0.08] bg-zinc-950/70 backdrop-blur-md shrink-0 z-10">
+        <footer className="relative p-3 sm:p-4 border-t border-white/[0.08] bg-zinc-950/70 backdrop-blur-md shrink-0 z-10">
+          {/* Floating down arrow button on right end for latest messages */}
+          {showScrollBottom && selectedSessionId && cleanMessages.length > 0 && (
+            <div className="absolute -top-12 right-4 sm:right-8 pointer-events-none z-30">
+              <button
+                type="button"
+                id="btn-scroll-to-bottom"
+                onClick={scrollToBottom}
+                disabled={isAutoScrolling}
+                title={isAutoScrolling ? "Scrolling to bottom..." : "Scroll to latest messages"}
+                aria-label="Scroll to latest messages"
+                className={cn(
+                  "pointer-events-auto flex items-center justify-center w-9 h-9 rounded-full bg-zinc-900/95 hover:bg-zinc-800 text-cyan-400 hover:text-cyan-300 border border-cyan-500/40 hover:border-cyan-400/70 shadow-[0_4px_16px_rgba(0,0,0,0.6),0_0_12px_rgba(6,182,212,0.2)] backdrop-blur-md transition-all duration-200 animate-in fade-in slide-in-from-bottom-2",
+                  isAutoScrolling
+                    ? "opacity-40 cursor-not-allowed pointer-events-none scale-95"
+                    : "cursor-pointer hover:scale-110 active:scale-95"
+                )}
+              >
+                <ArrowDown className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           <div className="max-w-6xl mx-auto w-full px-2 sm:px-6 space-y-2">
             <div className="relative flex items-end gap-2 bg-zinc-900/90 border border-white/[0.1] focus-within:border-cyan-500/50 focus-within:ring-1 focus-within:ring-cyan-500/30 rounded-2xl p-2 transition-all">
               <textarea
