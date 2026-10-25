@@ -123,6 +123,9 @@ export const ChatsPage: FC = () => {
       ? sessionMessagesCache[selectedSessionId]
       : [];
   });
+  const messagesRef = useRef<ChatMessage[]>(messages);
+  messagesRef.current = messages;
+
   const [messagesLoading, setMessagesLoading] = useState<boolean>(false);
   const [messagesError, setMessagesError] = useState<string | null>(null);
   const [messagesPage, setMessagesPage] = useState<number>(1);
@@ -148,8 +151,6 @@ export const ChatsPage: FC = () => {
 
   const inputTextRef = useRef<string>(inputText);
   inputTextRef.current = inputText;
-
-  const prevSessionIdRef = useRef<string | null>(selectedSessionId);
 
   const sendingSessionsRef = useRef(sendingSessions);
   sendingSessionsRef.current = sendingSessions;
@@ -254,33 +255,61 @@ export const ChatsPage: FC = () => {
     adjustTextareaHeight();
   }, [inputText, adjustTextareaHeight]);
 
-  // Synchronize input draft relative to active chat session
-  useEffect(() => {
-    const prevSid = prevSessionIdRef.current;
-    if (prevSid !== selectedSessionId) {
-      // Save draft for previous session
-      useChatStore.getState().setInputDraft(prevSid || "new", inputTextRef.current);
-      prevSessionIdRef.current = selectedSessionId;
+  // Switch chat session deterministically preserving and restoring isolated drafts
+  const switchSession = useCallback(
+    (nextSessionId: string | null) => {
+      const currentSid = selectedSessionIdRef.current;
+      if (currentSid === nextSessionId) return;
 
-      // Restore draft for newly selected session (or "new" chat)
-      const nextDraft = useChatStore.getState().inputDrafts[selectedSessionId || "new"] || "";
-      setInputText(nextDraft);
-    }
-  }, [selectedSessionId]);
+      // 1. Synchronously save departing session's draft (or "new" chat)
+      const departingKey = currentSid || "new";
+      const currentDraft = inputTextRef.current;
+      setInputDraft(departingKey, currentDraft);
+
+      // 2. Cache departing session's messages if present
+      if (currentSid && messagesRef.current.length > 0) {
+        setSessionMessages(currentSid, messagesRef.current);
+      }
+
+      // 3. Mark arriving session as read
+      if (nextSessionId) {
+        markSessionRead(nextSessionId);
+      }
+
+      // 4. Update session ID ref and Zustand store
+      selectedSessionIdRef.current = nextSessionId;
+      setSelectedSessionId(nextSessionId);
+
+      // 5. If switching to new chat, clear visible messages immediately
+      if (!nextSessionId) {
+        setMessages([]);
+      }
+
+      // 6. Restore arriving session's draft into input state and ref
+      const arrivingKey = nextSessionId || "new";
+      const arrivingDraft = useChatStore.getState().inputDrafts[arrivingKey] || "";
+      inputTextRef.current = arrivingDraft;
+      setInputText(arrivingDraft);
+    },
+    [markSessionRead, setSelectedSessionId, setSessionMessages, setInputDraft]
+  );
 
   // Persist draft on page unmount / navigation
   useEffect(() => {
     return () => {
+      const currentKey = selectedSessionIdRef.current || "new";
       useChatStore
         .getState()
-        .setInputDraft(selectedSessionIdRef.current || "new", inputTextRef.current);
+        .setInputDraft(currentKey, inputTextRef.current);
     };
   }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     setInputText(val);
-    setInputDraft(selectedSessionId || "new", val);
+    inputTextRef.current = val;
+    const currentKey = selectedSessionIdRef.current || "new";
+    setInputDraft(currentKey, val);
   };
 
   // Cycle through 15 loading messages every 2.5s while waiting for response in current session
@@ -857,9 +886,11 @@ export const ChatsPage: FC = () => {
       // If the deleted session is currently selected, clear the chat window and switch to no-chat-selected state
       setInputDraft(id, "");
       if (selectedSessionIdRef.current === id) {
+        selectedSessionIdRef.current = null;
         setSelectedSessionId(null);
         setMessages([]);
         const newDraft = useChatStore.getState().inputDrafts["new"] || "";
+        inputTextRef.current = newDraft;
         setInputText(newDraft);
       }
 
@@ -894,8 +925,10 @@ export const ChatsPage: FC = () => {
       setSessionsHasMore(false);
       setSessionsCursor(null);
       setSelectedSessionId(null);
+      selectedSessionIdRef.current = null;
       setMessages([]);
       setInputText("");
+      inputTextRef.current = "";
       useChatStore.setState({ inputDrafts: {} });
       clearAllSessionMessages();
 
@@ -934,6 +967,7 @@ export const ChatsPage: FC = () => {
     // Set sending state strictly for this target session in Zustand store
     setSendingSession(targetSessionId, jobId, trimmed);
     setInputText("");
+    inputTextRef.current = "";
     setInputDraft(targetSessionId, "");
     if (isNewSession) {
       setInputDraft("new", "");
@@ -963,6 +997,7 @@ export const ChatsPage: FC = () => {
 
       // Skip the initial wipeout fetch in useEffect([selectedSessionId])
       setSkipInitialFetchSessionId(targetSessionId);
+      selectedSessionIdRef.current = targetSessionId;
       setSelectedSessionId(targetSessionId);
     } else {
       // For existing session, bump it to the top of the sidebar list
@@ -1066,16 +1101,9 @@ export const ChatsPage: FC = () => {
     }
   };
 
-  const handleStartNewChat = () => {
-    if (selectedSessionId) {
-      setSessionMessages(selectedSessionId, messages);
-      setInputDraft(selectedSessionId, inputText);
-    }
-    setSelectedSessionId(null);
-    setMessages([]);
-    const newDraft = useChatStore.getState().inputDrafts["new"] || "";
-    setInputText(newDraft);
-  };
+  const handleStartNewChat = useCallback(() => {
+    switchSession(null);
+  }, [switchSession]);
 
   const handleCopySessionId = (sid: string) => {
     navigator.clipboard.writeText(sid);
@@ -1433,17 +1461,7 @@ export const ChatsPage: FC = () => {
         items={sidebarItems}
         activeKey={selectedSessionId || undefined}
         onSelect={(key) => {
-          if (selectedSessionId === key) return;
-          if (selectedSessionId) {
-            setSessionMessages(selectedSessionId, messages);
-            setInputDraft(selectedSessionId, inputText);
-          } else {
-            setInputDraft("new", inputText);
-          }
-          markSessionRead(key);
-          setSelectedSessionId(key);
-          const nextDraft = useChatStore.getState().inputDrafts[key] || "";
-          setInputText(nextDraft);
+          switchSession(key);
         }}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={setIsSidebarCollapsed}
@@ -1745,7 +1763,9 @@ export const ChatsPage: FC = () => {
                     type="button"
                     onClick={() => {
                       setInputText(prompt);
-                      setInputDraft(selectedSessionId || "new", prompt);
+                      inputTextRef.current = prompt;
+                      const currentKey = selectedSessionIdRef.current || "new";
+                      setInputDraft(currentKey, prompt);
                     }}
                     className="p-3 rounded-xl bg-zinc-900/60 hover:bg-zinc-800/80 border border-white/[0.06] hover:border-cyan-500/30 text-xs text-zinc-300 hover:text-white transition-all text-left space-y-1 group cursor-pointer"
                   >

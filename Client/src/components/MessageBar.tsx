@@ -79,7 +79,7 @@ const THEME_STYLES: Record<string, ColorTheme> = {
     text: "text-emerald-200",
     glow: "shadow-[0_8px_30px_rgba(16,185,129,0.18)]",
     bullet: "bg-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.9)]",
-    progress: "bg-emerald-500",
+    progress: "bg-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.9)]",
     defaultIcon: <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />,
   },
   green: {
@@ -88,7 +88,7 @@ const THEME_STYLES: Record<string, ColorTheme> = {
     text: "text-emerald-200",
     glow: "shadow-[0_8px_30px_rgba(16,185,129,0.18)]",
     bullet: "bg-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.9)]",
-    progress: "bg-emerald-500",
+    progress: "bg-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.9)]",
     defaultIcon: <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />,
   },
   error: {
@@ -97,7 +97,7 @@ const THEME_STYLES: Record<string, ColorTheme> = {
     text: "text-rose-200",
     glow: "shadow-[0_8px_30px_rgba(244,63,94,0.18)]",
     bullet: "bg-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.9)]",
-    progress: "bg-rose-500",
+    progress: "bg-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.9)]",
     defaultIcon: <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />,
   },
   red: {
@@ -106,7 +106,7 @@ const THEME_STYLES: Record<string, ColorTheme> = {
     text: "text-rose-200",
     glow: "shadow-[0_8px_30px_rgba(244,63,94,0.18)]",
     bullet: "bg-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.9)]",
-    progress: "bg-rose-500",
+    progress: "bg-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.9)]",
     defaultIcon: <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />,
   },
   warning: {
@@ -115,7 +115,7 @@ const THEME_STYLES: Record<string, ColorTheme> = {
     text: "text-amber-200",
     glow: "shadow-[0_8px_30px_rgba(245,158,11,0.18)]",
     bullet: "bg-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.9)]",
-    progress: "bg-amber-500",
+    progress: "bg-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.9)]",
     defaultIcon: <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />,
   },
   yellow: {
@@ -124,7 +124,7 @@ const THEME_STYLES: Record<string, ColorTheme> = {
     text: "text-amber-200",
     glow: "shadow-[0_8px_30px_rgba(245,158,11,0.18)]",
     bullet: "bg-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.9)]",
-    progress: "bg-amber-500",
+    progress: "bg-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.9)]",
     defaultIcon: <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />,
   },
   info: {
@@ -133,7 +133,7 @@ const THEME_STYLES: Record<string, ColorTheme> = {
     text: "text-cyan-200",
     glow: "shadow-[0_8px_30px_rgba(6,182,212,0.18)]",
     bullet: "bg-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.9)]",
-    progress: "bg-cyan-500",
+    progress: "bg-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.9)]",
     defaultIcon: <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />,
   },
   cyan: {
@@ -142,7 +142,7 @@ const THEME_STYLES: Record<string, ColorTheme> = {
     text: "text-cyan-200",
     glow: "shadow-[0_8px_30px_rgba(6,182,212,0.18)]",
     bullet: "bg-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.9)]",
-    progress: "bg-cyan-500",
+    progress: "bg-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.9)]",
     defaultIcon: <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />,
   },
   blue: {
@@ -151,7 +151,7 @@ const THEME_STYLES: Record<string, ColorTheme> = {
     text: "text-blue-200",
     glow: "shadow-[0_8px_30px_rgba(59,130,246,0.18)]",
     bullet: "bg-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.9)]",
-    progress: "bg-blue-500",
+    progress: "bg-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.9)]",
     defaultIcon: <Info className="w-4 h-4 text-blue-400 shrink-0" />,
   },
   purple: {
@@ -160,7 +160,7 @@ const THEME_STYLES: Record<string, ColorTheme> = {
     text: "text-purple-200",
     glow: "shadow-[0_8px_30px_rgba(168,85,247,0.18)]",
     bullet: "bg-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.9)]",
-    progress: "bg-purple-500",
+    progress: "bg-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.9)]",
     defaultIcon: <Sparkles className="w-4 h-4 text-purple-400 shrink-0" />,
   },
   orange: {
@@ -169,7 +169,7 @@ const THEME_STYLES: Record<string, ColorTheme> = {
     text: "text-orange-200",
     glow: "shadow-[0_8px_30px_rgba(249,115,22,0.18)]",
     bullet: "bg-orange-400 shadow-[0_0_10px_rgba(249,115,22,0.9)]",
-    progress: "bg-orange-500",
+    progress: "bg-orange-400 shadow-[0_0_10px_rgba(249,115,22,0.9)]",
     defaultIcon: <AlertTriangle className="w-4 h-4 text-orange-400 shrink-0" />,
   },
   pink: {
@@ -178,7 +178,7 @@ const THEME_STYLES: Record<string, ColorTheme> = {
     text: "text-pink-200",
     glow: "shadow-[0_8px_30px_rgba(236,72,153,0.18)]",
     bullet: "bg-pink-400 shadow-[0_0_10px_rgba(236,72,153,0.9)]",
-    progress: "bg-pink-500",
+    progress: "bg-pink-400 shadow-[0_0_10px_rgba(236,72,153,0.9)]",
     defaultIcon: <Sparkles className="w-4 h-4 text-pink-400 shrink-0" />,
   },
   white: {
@@ -187,7 +187,7 @@ const THEME_STYLES: Record<string, ColorTheme> = {
     text: "text-white",
     glow: "shadow-[0_8px_30px_rgba(255,255,255,0.1)]",
     bullet: "bg-white shadow-[0_0_10px_rgba(255,255,255,0.8)]",
-    progress: "bg-white",
+    progress: "bg-white shadow-[0_0_10px_rgba(255,255,255,0.8)]",
     defaultIcon: <Info className="w-4 h-4 text-white shrink-0" />,
   },
   gray: {
@@ -196,7 +196,7 @@ const THEME_STYLES: Record<string, ColorTheme> = {
     text: "text-zinc-300",
     glow: "shadow-[0_8px_30px_rgba(113,113,122,0.15)]",
     bullet: "bg-zinc-400 shadow-[0_0_8px_rgba(113,113,122,0.6)]",
-    progress: "bg-zinc-500",
+    progress: "bg-zinc-400 shadow-[0_0_8px_rgba(113,113,122,0.6)]",
     defaultIcon: <Info className="w-4 h-4 text-zinc-400 shrink-0" />,
   },
   default: {
@@ -205,7 +205,7 @@ const THEME_STYLES: Record<string, ColorTheme> = {
     text: "text-cyan-200",
     glow: "shadow-[0_8px_30px_rgba(6,182,212,0.18)]",
     bullet: "bg-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.9)]",
-    progress: "bg-cyan-500",
+    progress: "bg-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.9)]",
     defaultIcon: <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />,
   },
 };
@@ -237,15 +237,17 @@ export const ToastCard: FC<{
 }> = ({ toast, onDismiss }) => {
   const [isExiting, setIsExiting] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const [progress, setProgress] = useState(100);
 
   const duration = toast.duration || 5000;
   const theme = resolveTheme(toast.color, toast.type);
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remainingTimeRef = useRef(duration);
-  const lastTickRef = useRef<number>(Date.now());
-  const timerRef = useRef<ReturnType<typeof requestAnimationFrame> | null>(null);
+  const pauseStartRef = useRef<number>(Date.now());
+  const hasExitedRef = useRef(false);
 
   const startDismissAnimation = useCallback(() => {
+    if (hasExitedRef.current) return;
+    hasExitedRef.current = true;
     setIsExiting(true);
     setTimeout(() => {
       onDismiss(toast.id);
@@ -254,37 +256,26 @@ export const ToastCard: FC<{
   }, [onDismiss, toast]);
 
   useEffect(() => {
-    lastTickRef.current = Date.now();
-
-    const tick = () => {
-      if (!isPaused && !isExiting) {
-        const now = Date.now();
-        const delta = now - lastTickRef.current;
-        lastTickRef.current = now;
-        remainingTimeRef.current -= delta;
-
-        const nextProgress = Math.max(0, (remainingTimeRef.current / duration) * 100);
-        setProgress(nextProgress);
-
-        if (remainingTimeRef.current <= 0) {
-          startDismissAnimation();
-          return;
-        }
-      } else {
-        lastTickRef.current = Date.now();
+    if (isPaused) {
+      if (dismissTimerRef.current) {
+        clearTimeout(dismissTimerRef.current);
+        dismissTimerRef.current = null;
       }
-
-      timerRef.current = requestAnimationFrame(tick);
-    };
-
-    timerRef.current = requestAnimationFrame(tick);
+      const elapsed = Date.now() - pauseStartRef.current;
+      remainingTimeRef.current = Math.max(0, remainingTimeRef.current - elapsed);
+    } else {
+      pauseStartRef.current = Date.now();
+      dismissTimerRef.current = setTimeout(() => {
+        startDismissAnimation();
+      }, remainingTimeRef.current);
+    }
 
     return () => {
-      if (timerRef.current) {
-        cancelAnimationFrame(timerRef.current);
+      if (dismissTimerRef.current) {
+        clearTimeout(dismissTimerRef.current);
       }
     };
-  }, [isPaused, isExiting, duration, startDismissAnimation]);
+  }, [isPaused, startDismissAnimation]);
 
   return (
     <div
@@ -294,7 +285,7 @@ export const ToastCard: FC<{
       onMouseLeave={() => setIsPaused(false)}
       className={cn(
         "pointer-events-auto relative w-full sm:w-auto min-w-[280px] max-w-[92vw] sm:max-w-md",
-        "flex flex-col rounded-2xl border backdrop-blur-2xl text-xs select-none transition-all duration-300",
+        "flex flex-col rounded-xl overflow-hidden border backdrop-blur-2xl text-xs select-none transition-all duration-300",
         theme.bg,
         theme.border,
         theme.glow,
@@ -302,7 +293,7 @@ export const ToastCard: FC<{
         toast.className
       )}
     >
-      <div className="flex items-start gap-3 p-3.5 pr-2.5">
+      <div className="flex items-start gap-3 p-3.5 pr-2.5 pb-3">
         <div className="shrink-0 pt-0.5">
           {toast.icon ? toast.icon : theme.defaultIcon}
         </div>
@@ -328,11 +319,19 @@ export const ToastCard: FC<{
         </button>
       </div>
 
-      {/* Progress Bar indicating 5s lifespan */}
-      <div className="h-[2px] w-full bg-white/[0.04] overflow-hidden rounded-b-2xl">
+      {/* Animated lifespan progress bar line pinned flush to bottom */}
+      <div className="absolute bottom-0 inset-x-0 h-[2.5px] bg-white/[0.08] overflow-hidden">
         <div
-          className={cn("h-full transition-all ease-linear", theme.progress)}
-          style={{ width: `${progress}%` }}
+          className={cn("h-full w-full", theme.progress)}
+          style={{
+            animation: `toastProgressLine ${duration}ms linear forwards`,
+            animationPlayState: isPaused ? "paused" : "running",
+          }}
+          onAnimationEnd={(e) => {
+            if (e.target === e.currentTarget) {
+              startDismissAnimation();
+            }
+          }}
         />
       </div>
     </div>
