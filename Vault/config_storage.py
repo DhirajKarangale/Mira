@@ -107,6 +107,8 @@ def init_config_storage(schema_path: Optional[Path]=None, enc_db_path: Optional[
                     _DB_CONN.execute('UPDATE engine_workers SET chat_workers_poll_time = 1.0 WHERE chat_workers_poll_time IS NULL')
                     _DB_CONN.execute('UPDATE engine_workers SET embedding_vector_store_workers = 1 WHERE embedding_vector_store_workers IS NULL')
                     _DB_CONN.execute('UPDATE engine_workers SET embedding_vector_store_workers_poll_time = 1.0 WHERE embedding_vector_store_workers_poll_time IS NULL')
+                    _DB_CONN.execute('UPDATE engine_workers SET user_knowledge_base_workers = 1 WHERE user_knowledge_base_workers IS NULL')
+                    _DB_CONN.execute('UPDATE engine_workers SET user_knowledge_base_workers_poll_time = 1.0 WHERE user_knowledge_base_workers_poll_time IS NULL')
                     _DB_CONN.commit()
                 elif table_name == 'operator':
                     _DB_CONN.execute("UPDATE operator SET KNOWLEDGE_BASE_RETENTION_PERIOD = 'Never auto delete' WHERE KNOWLEDGE_BASE_RETENTION_PERIOD IS NULL")
@@ -569,10 +571,12 @@ def get_engine_workers() -> Dict[str, Any]:
             'screenshot_extraction_workers': 1,
             'screenshot_summarization_workers': 1,
             'embedding_vector_store_workers': 1,
+            'user_knowledge_base_workers': 1,
             'chat_workers_poll_time': 1.0,
             'screenshot_extraction_poll_time': 5.0,
             'screenshot_summarization_poll_time': 5.0,
-            'embedding_vector_store_workers_poll_time': 1.0
+            'embedding_vector_store_workers_poll_time': 1.0,
+            'user_knowledge_base_workers_poll_time': 1.0
         }
     cursor = _DB_CONN.execute('SELECT * FROM engine_workers LIMIT 1')
     row = cursor.fetchone()
@@ -582,11 +586,13 @@ def get_engine_workers() -> Dict[str, Any]:
                 screenshot_extraction_workers,
                 screenshot_summarization_workers,
                 embedding_vector_store_workers,
+                user_knowledge_base_workers,
                 chat_workers_poll_time,
                 screenshot_extraction_poll_time,
                 screenshot_summarization_poll_time,
-                embedding_vector_store_workers_poll_time
-            ) VALUES (1, 1, 1, 1, 1.0, 5.0, 5.0, 1.0)''')
+                embedding_vector_store_workers_poll_time,
+                user_knowledge_base_workers_poll_time
+            ) VALUES (1, 1, 1, 1, 1, 1.0, 5.0, 5.0, 1.0, 1.0)''')
         _DB_CONN.commit()
         save_config_storage()
         return {
@@ -594,10 +600,12 @@ def get_engine_workers() -> Dict[str, Any]:
             'screenshot_extraction_workers': 1,
             'screenshot_summarization_workers': 1,
             'embedding_vector_store_workers': 1,
+            'user_knowledge_base_workers': 1,
             'chat_workers_poll_time': 1.0,
             'screenshot_extraction_poll_time': 5.0,
             'screenshot_summarization_poll_time': 5.0,
-            'embedding_vector_store_workers_poll_time': 1.0
+            'embedding_vector_store_workers_poll_time': 1.0,
+            'user_knowledge_base_workers_poll_time': 1.0
         }
     col_names = [d[0].lower() for d in cursor.description]
     row_dict = dict(zip(col_names, row))
@@ -607,10 +615,12 @@ def get_engine_workers() -> Dict[str, Any]:
         'screenshot_extraction_workers': int(row_dict.get('screenshot_extraction_workers') or 1),
         'screenshot_summarization_workers': int(row_dict.get('screenshot_summarization_workers') or 1),
         'embedding_vector_store_workers': int(row_dict.get('embedding_vector_store_workers') or 1),
+        'user_knowledge_base_workers': int(row_dict.get('user_knowledge_base_workers') or 1),
         'chat_workers_poll_time': float(row_dict.get('chat_workers_poll_time') if row_dict.get('chat_workers_poll_time') is not None else (row_dict.get('llm_workers_poll_time') if row_dict.get('llm_workers_poll_time') is not None else 1.0)),
         'screenshot_extraction_poll_time': float(row_dict.get('screenshot_extraction_poll_time') if row_dict.get('screenshot_extraction_poll_time') is not None else 5.0),
         'screenshot_summarization_poll_time': float(row_dict.get('screenshot_summarization_poll_time') if row_dict.get('screenshot_summarization_poll_time') is not None else 5.0),
-        'embedding_vector_store_workers_poll_time': float(row_dict.get('embedding_vector_store_workers_poll_time') if row_dict.get('embedding_vector_store_workers_poll_time') is not None else 1.0)
+        'embedding_vector_store_workers_poll_time': float(row_dict.get('embedding_vector_store_workers_poll_time') if row_dict.get('embedding_vector_store_workers_poll_time') is not None else 1.0),
+        'user_knowledge_base_workers_poll_time': float(row_dict.get('user_knowledge_base_workers_poll_time') if row_dict.get('user_knowledge_base_workers_poll_time') is not None else 1.0)
     }
 
 def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
@@ -639,14 +649,21 @@ def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
         'vector_store_poll_time': 'embedding_vector_store_workers_poll_time',
         'embedding_poll_time': 'embedding_vector_store_workers_poll_time',
         'vector_poll_time': 'embedding_vector_store_workers_poll_time',
-        'embedding_vector_store_poll_time': 'embedding_vector_store_workers_poll_time'
+        'embedding_vector_store_poll_time': 'embedding_vector_store_workers_poll_time',
+        'user_knowledge_base_worker': 'user_knowledge_base_workers',
+        'user_kb_workers': 'user_knowledge_base_workers',
+        'knowledge_base_workers': 'user_knowledge_base_workers',
+        'user_knowledge_base_worker_poll_time': 'user_knowledge_base_workers_poll_time',
+        'user_knowledge_base_poll_time': 'user_knowledge_base_workers_poll_time',
+        'user_kb_poll_time': 'user_knowledge_base_workers_poll_time',
+        'knowledge_base_poll_time': 'user_knowledge_base_workers_poll_time'
     }
     normalized_updates = {}
     for k, v in updates.items():
         canonical = alias_map.get(k.lower(), k.lower())
         normalized_updates[canonical] = v
     new_config = dict(current)
-    int_fields = ['chat_workers', 'screenshot_extraction_workers', 'screenshot_summarization_workers']
+    int_fields = ['chat_workers', 'screenshot_extraction_workers', 'screenshot_summarization_workers', 'user_knowledge_base_workers']
     for field in int_fields:
         if field in normalized_updates and normalized_updates[field] is not None:
             val = normalized_updates[field]
@@ -662,7 +679,7 @@ def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
         if val < 1:
             raise ValueError('embedding_vector_store_workers must be an integer of at least 1.')
         new_config['embedding_vector_store_workers'] = val
-    float_fields = ['chat_workers_poll_time', 'screenshot_extraction_poll_time', 'screenshot_summarization_poll_time']
+    float_fields = ['chat_workers_poll_time', 'screenshot_extraction_poll_time', 'screenshot_summarization_poll_time', 'user_knowledge_base_workers_poll_time']
     for field in float_fields:
         if field in normalized_updates and normalized_updates[field] is not None:
             val = normalized_updates[field]
@@ -688,19 +705,23 @@ def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
                 screenshot_extraction_workers = ?,
                 screenshot_summarization_workers = ?,
                 embedding_vector_store_workers = ?,
+                user_knowledge_base_workers = ?,
                 chat_workers_poll_time = ?,
                 screenshot_extraction_poll_time = ?,
                 screenshot_summarization_poll_time = ?,
-                embedding_vector_store_workers_poll_time = ?
+                embedding_vector_store_workers_poll_time = ?,
+                user_knowledge_base_workers_poll_time = ?
             WHERE id = ?''', (
                 new_config['chat_workers'],
                 new_config['screenshot_extraction_workers'],
                 new_config['screenshot_summarization_workers'],
                 new_config['embedding_vector_store_workers'],
+                new_config['user_knowledge_base_workers'],
                 new_config['chat_workers_poll_time'],
                 new_config['screenshot_extraction_poll_time'],
                 new_config['screenshot_summarization_poll_time'],
                 new_config['embedding_vector_store_workers_poll_time'],
+                new_config['user_knowledge_base_workers_poll_time'],
                 row[0]
             ))
     else:
@@ -709,19 +730,23 @@ def update_engine_workers(updates: Dict[str, Any]) -> Dict[str, Any]:
                 screenshot_extraction_workers,
                 screenshot_summarization_workers,
                 embedding_vector_store_workers,
+                user_knowledge_base_workers,
                 chat_workers_poll_time,
                 screenshot_extraction_poll_time,
                 screenshot_summarization_poll_time,
-                embedding_vector_store_workers_poll_time
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', (
+                embedding_vector_store_workers_poll_time,
+                user_knowledge_base_workers_poll_time
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', (
                 new_config['chat_workers'],
                 new_config['screenshot_extraction_workers'],
                 new_config['screenshot_summarization_workers'],
                 new_config['embedding_vector_store_workers'],
+                new_config['user_knowledge_base_workers'],
                 new_config['chat_workers_poll_time'],
                 new_config['screenshot_extraction_poll_time'],
                 new_config['screenshot_summarization_poll_time'],
-                new_config['embedding_vector_store_workers_poll_time']
+                new_config['embedding_vector_store_workers_poll_time'],
+                new_config['user_knowledge_base_workers_poll_time']
             ))
     _DB_CONN.commit()
     save_config_storage()

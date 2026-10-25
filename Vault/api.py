@@ -432,10 +432,12 @@ class EngineWorkersConfig(BaseModel):
     screenshot_extraction_workers: int = Field(default=1, ge=1, le=50, description='Screenshot extraction workers in memory (1-50)')
     screenshot_summarization_workers: int = Field(default=1, ge=1, le=50, description='Screenshot summarization workers in engine (1-50)')
     embedding_vector_store_workers: int = Field(default=1, ge=1, description='Embedding vector store workers in engine (>=1)')
+    user_knowledge_base_workers: int = Field(default=1, ge=1, le=50, description='User knowledge base workers in engine (1-50)')
     chat_workers_poll_time: float = Field(default=1.0, ge=0.1, le=1800.0, description='Poll time of chat worker (0.1-1800 sec)')
     screenshot_extraction_poll_time: float = Field(default=5.0, ge=1.0, le=1800.0, description='Poll time of screenshot extraction worker (1-1800 sec)')
     screenshot_summarization_poll_time: float = Field(default=5.0, ge=1.0, le=1800.0, description='Poll time of screenshot summarization (1-1800 sec)')
     embedding_vector_store_workers_poll_time: float = Field(default=1.0, gt=0.0, description='Poll time of embedding vector store workers in engine (>0 sec)')
+    user_knowledge_base_workers_poll_time: float = Field(default=1.0, ge=0.1, le=1800.0, description='Poll time of user knowledge base worker (0.1-1800 sec)')
     llm_workers: Optional[int] = Field(default=None, description='Backward compatibility alias for chat_workers')
 
 class EngineWorkersUpdateRequest(BaseModel):
@@ -444,11 +446,13 @@ class EngineWorkersUpdateRequest(BaseModel):
     screenshot_extraction_workers: Optional[int] = Field(default=None, ge=1, le=50)
     screenshot_summarization_workers: Optional[int] = Field(default=None, ge=1, le=50)
     embedding_vector_store_workers: Optional[int] = Field(default=None, ge=1)
+    user_knowledge_base_workers: Optional[int] = Field(default=None, ge=1, le=50)
     chat_workers_poll_time: Optional[float] = Field(default=None, ge=0.1, le=1800.0)
     llm_workers_poll_time: Optional[float] = Field(default=None, ge=0.1, le=1800.0)
     screenshot_extraction_poll_time: Optional[float] = Field(default=None, ge=1.0, le=1800.0)
     screenshot_summarization_poll_time: Optional[float] = Field(default=None, ge=1.0, le=1800.0)
     embedding_vector_store_workers_poll_time: Optional[float] = Field(default=None, gt=0.0)
+    user_knowledge_base_workers_poll_time: Optional[float] = Field(default=None, ge=0.1, le=1800.0)
 
 @router.get('/engine/workers', response_model=EngineWorkersConfig, status_code=status.HTTP_200_OK)
 async def get_engine_workers_endpoint():

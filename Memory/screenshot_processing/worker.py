@@ -246,6 +246,15 @@ def process_screenshot_job(job: Dict[str, Any], worker_id: int=1) -> bool:
             log(f"[Worker-{worker_id}] Published structured job {new_job_id} ({extraction_source}) to 'ocr_summarization' (extracted {len(full_text)} chars, {len(ui_regions)} UI regions from '{app_name}')")
         else:
             log(f"[Worker-{worker_id}] Failed to publish job {new_job_id} to 'ocr_summarization'")
+
+        kb_job_id = str(uuid.uuid4())
+        kb_job = {'job_id': kb_job_id, 'consumer_key': 'user_knowledge_base', 'app_name': app_name, 'os': os_name, 'timestamp': timestamp, 'extracted_text': full_text}
+        kb_published = publish_broker_job(kb_job)
+        if kb_published:
+            log(f"[Worker-{worker_id}] Published structured job {kb_job_id} ({extraction_source}) to 'user_knowledge_base' (extracted {len(full_text)} chars, {len(ui_regions)} UI regions from '{app_name}')")
+        else:
+            log(f"[Worker-{worker_id}] Failed to publish job {kb_job_id} to 'user_knowledge_base'")
+
         removed = remove_broker_job('ocr_extraction', job_id)
         if removed:
             log(f"[Worker-{worker_id}] Completed and removed job {job_id} from 'ocr_extraction'")
