@@ -87,7 +87,7 @@ def resolve_user_timezone(user_profile: Optional[Dict[str, Any]] = None) -> Zone
 
 
 def parse_time_expression(
-    expr: str,
+    expr: Optional[str],
     user_tz: ZoneInfo,
     now: Optional[datetime] = None
 ) -> Tuple[Optional[int], Optional[int], str]:
@@ -96,7 +96,15 @@ def parse_time_expression(
     Returns:
         (start_unix_timestamp, end_unix_timestamp, human_readable_description)
     All timestamps are UTC Unix timestamps in seconds.
+    If expr is None, empty, or asks broadly without a date limit, returns (None, None, 'all available activity history').
     """
+    if expr is None or not str(expr).strip():
+        return None, None, "all available activity history"
+
+    expr_clean = str(expr).strip().lower()
+    if expr_clean in ("none", "null", "all", "all time", "recent", "overall", "any", "all available activity history"):
+        return None, None, "all available activity history"
+
     if now is None:
         now = datetime.now(user_tz)
     elif now.tzinfo is None:
@@ -105,7 +113,6 @@ def parse_time_expression(
         now = now.astimezone(user_tz)
 
     today = now.date()
-    expr_clean = expr.strip().lower()
 
     # Normalize common typos in natural language time queries (e.g. 'yesterady')
     expr_clean = re.sub(r'\byeste?r[ad]{1,2}y\b', 'yesterday', expr_clean)

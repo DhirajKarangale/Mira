@@ -12,9 +12,14 @@ class AgentState(TypedDict, total=False):
     user_profile: Dict[str, Any]
     user_timezone: str
 
-    # Routing and Decision
-    next_node: str  # e.g., 'user_activity', 'general_llm', or future tool name
+    # Routing, Intent & Retrieval Planning
+    next_node: str  # 'user_activity', 'history_answer', 'general_llm', or dynamic tool
     decision_reasoning: str
+    is_follow_up: bool
+    can_answer_from_history: bool
+    detail_level: str  # 'overview', 'detailed', 'concise'
+    resolved_query: str
+    retrieval_plan: Dict[str, Any]
     tool_parameters: Dict[str, Any]
 
     # Node execution outputs & retrieved context

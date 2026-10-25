@@ -11,6 +11,7 @@ from .graph import (
 from .decision_node import decision_node
 from .general_llm_node import general_llm_node
 from .user_activity_node import user_activity_node
+from .history_node import history_node
 from .synthesis_node import synthesis_node
 from .timezone_helper import resolve_user_timezone, parse_time_expression, format_timestamp_in_tz
 
@@ -22,6 +23,7 @@ __all__ = [
     "build_workflow_graph",
     "get_compiled_workflow",
     "decision_node",
+    "history_node",
     "general_llm_node",
     "user_activity_node",
     "synthesis_node",

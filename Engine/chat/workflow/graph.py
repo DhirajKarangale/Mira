@@ -9,6 +9,7 @@ from .state import AgentState
 from .decision_node import decision_node
 from .general_llm_node import general_llm_node
 from .user_activity_node import user_activity_node
+from .history_node import history_node
 from .synthesis_node import synthesis_node
 from .timezone_helper import resolve_user_timezone
 from vault_logger import log, log_error
@@ -19,6 +20,7 @@ logger = logging.getLogger("mira.engine.chat.workflow.graph")
 # Additional tools (browser automation, weather, news) can be registered dynamically
 TOOL_REGISTRY: Dict[str, Callable[[AgentState], Dict[str, Any]]] = {
     "user_activity": user_activity_node,
+    "history_answer": history_node,
     "general_llm": general_llm_node,
 }
 

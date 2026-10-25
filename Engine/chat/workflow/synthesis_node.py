@@ -30,6 +30,7 @@ def synthesis_node(state: AgentState) -> Dict[str, Any]:
     previous_answer = (
         state.get("final_response")
         or node_outputs.get("activity_response")
+        or node_outputs.get("history_response")
         or node_outputs.get("general_llm_response")
         or ""
     ).strip()

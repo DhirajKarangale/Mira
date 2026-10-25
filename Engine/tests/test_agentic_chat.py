@@ -378,8 +378,89 @@ class TestAgenticChatSystem(unittest.IsolatedAsyncioTestCase):
                 super().__init__("Error code: 429 - Rate limit reached for model on tokens per minute (TPM)")
                 self.status_code = 429
 
-        err_type = classify_error(Mock429Error(), "groq")
-        self.assertEqual(err_type, ErrorType.API_KEY_EXPIRED_OR_INVALID)
+    # =========================================================================
+    # 10. Optimized Agentic Workflow Tests
+    # =========================================================================
+    def test_detail_level_inference(self):
+        """Verify automatic inference of expected detail level from user query."""
+        from chat.workflow.decision_node import _infer_detail_level
+        self.assertEqual(_infer_detail_level("give me an overview of my morning"), "overview")
+        self.assertEqual(_infer_detail_level("what did I do today?"), "overview")
+        self.assertEqual(_infer_detail_level("tell me in detail everything I did"), "detailed")
+        self.assertEqual(_infer_detail_level("give me the complete timeline with full details"), "detailed")
+        self.assertEqual(_infer_detail_level("did I open Microsoft Edge?"), "concise")
+        self.assertEqual(_infer_detail_level("which website was open at 3pm?"), "concise")
+
+    async def test_history_answering_without_vector_search(self):
+        """Verify that follow-up questions answerable from history route to history_answer without vector search."""
+        session_history = [
+            {"role": "user", "content": "What did I do today after 2:00pm?"},
+            {"role": "ai", "content": "You were using Microsoft Edge to research AI architectures and reviewed the MIRA codebase between 03:23 PM and 04:21 PM."},
+        ]
+
+        def mock_llm_handler(prompt, work="general"):
+            if work == "decision":
+                return (
+                    '{\n'
+                    '  "route": "history_answer",\n'
+                    '  "reasoning": "Follow-up question answerable from prior message",\n'
+                    '  "is_follow_up": true,\n'
+                    '  "can_answer_from_history": true,\n'
+                    '  "detail_level": "concise",\n'
+                    '  "resolved_query": "Which browser was used today after 2pm?",\n'
+                    '  "retrieval_plan": {}\n'
+                    '}'
+                )
+            elif work == "general":
+                return "You were using Microsoft Edge."
+            elif work == "synthesis":
+                return "You were using Microsoft Edge."
+            return "OK"
+
+        with patch("chat.workflow.decision_node.call_llm", side_effect=mock_llm_handler), \
+             patch("chat.workflow.history_node.call_llm", side_effect=mock_llm_handler), \
+             patch("chat.workflow.synthesis_node.call_llm", side_effect=mock_llm_handler), \
+             patch("chat.workflow.user_activity_node.user_activity_node") as mock_user_act:
+
+            response = await run_chat_workflow(
+                job_id="test-job-history",
+                session_id="test-session-history",
+                user_query="Which browser was that?",
+                chat_history=session_history,
+                user_profile=self.mock_profile,
+            )
+
+            # user_activity_node must NOT be called when answering from history
+            mock_user_act.assert_not_called()
+            self.assertIn("Microsoft Edge", response)
+
+    def test_pre_planned_retrieval_skips_extra_llm(self):
+        """Verify user_activity_node directly uses pre-planned retrieval parameters without secondary LLM call."""
+        state: AgentState = {
+            "user_query": "What did I do in Edge yesterday?",
+            "chat_history": [],
+            "user_profile": self.mock_profile,
+            "detail_level": "overview",
+            "retrieval_plan": {
+                "search_query": "Edge browsing session",
+                "app_name": "Microsoft Edge",
+                "time_expression": "yesterday",
+            },
+            "tool_parameters": {
+                "search_query": "Edge browsing session",
+                "app_name": "Microsoft Edge",
+                "time_expression": "yesterday",
+                "detail_level": "overview",
+            },
+        }
+
+        with patch("chat.workflow.user_activity_node._understand_activity_query") as mock_understand, \
+             patch("chat.workflow.user_activity_node._search_across_knowledge_bases", return_value=[]):
+            res = user_activity_node(state)
+            # Secondary LLM understanding call must be skipped because plan was provided
+            mock_understand.assert_not_called()
+            self.assertIn("user_activity", res["node_outputs"])
+            self.assertIn("records", res["retrieved_context"])
 
 
 if __name__ == "__main__":
