@@ -1215,16 +1215,6 @@ export const ChatsPage: FC = () => {
               isDeletingSessionId === item.key && "pointer-events-none opacity-40"
             )}
           >
-            {/* Unread indicator icon in front of chat */}
-            {isUnread && (
-              <span
-                className="shrink-0 flex items-center justify-center mr-1.5"
-                title="Unread response"
-              >
-                <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.95)] animate-pulse" />
-              </span>
-            )}
-
             <span
               className={cn(
                 "shrink-0 flex items-center justify-center w-7 h-7 rounded transition-colors mr-1.5 relative",
