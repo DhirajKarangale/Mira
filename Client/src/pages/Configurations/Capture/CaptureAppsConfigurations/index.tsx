@@ -85,16 +85,16 @@ export const CaptureAppsConfigurationsPage: FC = () => {
       });
       toast.success(
         currentAllowed
-          ? "Application marked as restricted from screen capture."
-          : "Application allowed for screen capture.",
-        { title: "Capture Permission" }
+          ? "Application marked as restricted from screen activity."
+          : "Application allowed for screen activity.",
+        { title: "Activity Permission" }
       );
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { detail?: { message?: string } } }; message?: string })
           ?.response?.data?.detail?.message ||
         (err as Error)?.message ||
-        "Failed to update app capture permission.";
+        "Failed to update app activity permission.";
       toast.error(msg, { title: "Permission Error" });
     }
   };
@@ -182,7 +182,7 @@ export const CaptureAppsConfigurationsPage: FC = () => {
         )}
 
         <div className="pt-4 pb-6 text-center text-xs text-zinc-500 font-mono flex items-center justify-center gap-2 flex-wrap">
-          <span>Application Capture Filter</span>
+          <span>Application Activity Filter</span>
           <span>•</span>
           <span>Synchronized with Vault SQL & Operator Engine</span>
           <span>•</span>

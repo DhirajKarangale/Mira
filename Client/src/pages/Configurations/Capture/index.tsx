@@ -13,6 +13,7 @@ export const CapturedDataPage: FC = () => {
   const navigate = useNavigate();
 
   const isAppsView =
+    location.pathname.includes("/activity-control/apps") ||
     location.pathname.includes("/capture/apps") ||
     location.pathname.includes("/captured-data/apps");
 
@@ -30,14 +31,14 @@ export const CapturedDataPage: FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-bold tracking-tight text-white">
-                  Capture
+                  Activity Control
                 </h1>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20">
                   Operator
                 </span>
               </div>
               <p className="text-xs text-zinc-400 mt-0.5">
-                Screen capture automation, recording intervals, data retention, and application capture permissions
+                Screen activity automation, recording intervals, data retention, and application activity permissions
               </p>
             </div>
           </div>
@@ -45,8 +46,8 @@ export const CapturedDataPage: FC = () => {
           <div className="flex items-center p-1 rounded-xl bg-zinc-900/80 border border-white/[0.08] self-start sm:self-auto shadow-inner">
             <button
               type="button"
-              id="tab-btn-capture-configurations"
-              onClick={() => navigate("/configurations/capture/data")}
+              id="tab-btn-activity-configurations"
+              onClick={() => navigate("/configurations/activity-control/data")}
               className={cn(
                 "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
                 !isAppsView
@@ -55,13 +56,13 @@ export const CapturedDataPage: FC = () => {
               )}
             >
               <Sliders className="w-3.5 h-3.5" />
-              Capture Configurations
+              Activity Configurations
             </button>
 
             <button
               type="button"
-              id="tab-btn-capture-apps-configurations"
-              onClick={() => navigate("/configurations/capture/apps")}
+              id="tab-btn-activity-apps-configurations"
+              onClick={() => navigate("/configurations/activity-control/apps")}
               className={cn(
                 "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
                 isAppsView
@@ -70,7 +71,7 @@ export const CapturedDataPage: FC = () => {
               )}
             >
               <AppWindow className="w-3.5 h-3.5" />
-              Capture Apps Configurations
+              Activity Apps Configurations
             </button>
           </div>
         </div>

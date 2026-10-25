@@ -11,8 +11,15 @@ import { useGlobalChatSync } from "@/hooks/useGlobalChatSync";
 
 function ActivityRedirect() {
   const { "*": rest } = useParams();
-  const normalized = (rest || "").replace(/^captured-data/, "capture");
-  return <Navigate to={`/configurations/${normalized}`} replace />;
+  const normalized = (rest || "")
+    .replace(/^captured-data/, "activity-control")
+    .replace(/^capture/, "activity-control");
+  return (
+    <Navigate
+      to={`/configurations/${normalized || "activity-control"}`}
+      replace
+    />
+  );
 }
 
 function AiConfigsRedirect() {
@@ -42,8 +49,10 @@ export function App() {
           <Route path="/chats" element={<ChatsPage />} />
           <Route path="/user" element={<UserPage />} />
           <Route path="/configurations/*" element={<ConfigurationsPage />} />
-          <Route path="/activity" element={<Navigate to="/configurations" replace />} />
+          <Route path="/activity" element={<Navigate to="/configurations/activity-control" replace />} />
           <Route path="/activity/*" element={<ActivityRedirect />} />
+          <Route path="/capture" element={<Navigate to="/configurations/activity-control" replace />} />
+          <Route path="/capture/*" element={<ActivityRedirect />} />
           <Route path="/ai-configs" element={<Navigate to="/configurations/ai-config" replace />} />
           <Route path="/ai-configs/*" element={<AiConfigsRedirect />} />
           <Route path="/about" element={<AboutPage />} />

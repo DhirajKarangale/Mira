@@ -68,7 +68,7 @@ export const DeleteConfirmModal: FC<DeleteConfirmModalProps> = ({
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-white tracking-tight">
-                    Delete All Captured Data?
+                    Delete All Activity Data?
                   </h3>
                   <p className="text-xs text-zinc-400">
                     Permanent deletion of {totalDays} {totalDays === 1 ? "day" : "days"} of stored records
@@ -91,7 +91,7 @@ export const DeleteConfirmModal: FC<DeleteConfirmModalProps> = ({
                 <span>Important Privacy & Security Notice</span>
               </div>
               <p className="text-xs text-amber-200/90 leading-relaxed font-normal">
-                Your captured data is <strong className="text-white font-semibold">encrypted and highly secured</strong>, present <strong className="text-white font-semibold">locally on your device only</strong>. We are not taking it or storing it in the cloud.
+                Your activity data is <strong className="text-white font-semibold">encrypted and highly secured</strong>, present <strong className="text-white font-semibold">locally on your device only</strong>. We are not taking it or storing it in the cloud.
               </p>
               <p className="text-xs text-amber-300 font-medium leading-relaxed pt-1 border-t border-amber-500/20">
                 ⚠️ If this data is deleted, you will permanently lose all your previous work activity, visual timelines, and activity context. This action cannot be reversed.
@@ -127,7 +127,7 @@ export const DeleteConfirmModal: FC<DeleteConfirmModalProps> = ({
 
             <div className="space-y-1.5">
               <h3 className="text-lg font-bold text-white tracking-tight">
-                Deleting Stored Captured Data...
+                Deleting Stored Activity Data...
               </h3>
               <p className="text-xs text-zinc-400 max-w-sm mx-auto leading-relaxed">
                 Purging encrypted local screenshots and clearing activity timeline records. Please wait...
@@ -155,7 +155,7 @@ export const DeleteConfirmModal: FC<DeleteConfirmModalProps> = ({
                 Data Deleted Successfully
               </h3>
               <p className="text-xs sm:text-sm text-zinc-300 max-w-md mx-auto leading-relaxed">
-                All local screen capture records and visual activity activity have been permanently deleted from your device.
+                All local screen activity records and visual history have been permanently deleted from your device.
               </p>
             </div>
 

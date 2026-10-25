@@ -37,7 +37,7 @@ export const AppsHeader: FC<AppsHeaderProps> = ({
           <div className="space-y-1.5 min-w-0">
             <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white shrink-0 whitespace-nowrap">
-                Capture Apps Configurations
+                Activity Apps Configurations
               </h1>
 
               <div className="flex items-center gap-2 shrink-0 flex-wrap">
@@ -59,8 +59,8 @@ export const AppsHeader: FC<AppsHeaderProps> = ({
             </div>
 
             <p className="text-xs sm:text-sm text-zinc-400 max-w-2xl leading-relaxed">
-              Control which desktop applications MIRA Operator captures. When a restricted application is active,
-              screen capturing is skipped automatically without interrupting your workflow.
+              Control which desktop applications MIRA Operator records activity for. When a restricted application is active,
+              screen activity is skipped automatically without interrupting your workflow.
             </p>
           </div>
         </div>

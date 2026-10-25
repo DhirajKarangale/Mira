@@ -51,7 +51,7 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
           <div className="space-y-1.5 min-w-0">
             <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white shrink-0 whitespace-nowrap">
-                Capture Configurations
+                Activity Configurations
               </h1>
 
               <div className="flex items-center gap-2 shrink-0">
@@ -106,7 +106,7 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
             </div>
 
             <p className="text-xs sm:text-sm text-zinc-400 max-w-2xl leading-relaxed">
-              Real-time screen capturing loop powered by the Operator engine. Configure capture
+              Real-time screen activity loop powered by the Operator engine. Configure activity
               intervals, toggle auto-start behavior, and monitor active runtime states.
             </p>
           </div>
@@ -194,7 +194,7 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
                 ? "bg-gradient-to-r from-rose-500 via-rose-600 to-red-600 hover:from-rose-400 hover:to-red-500 text-white border border-rose-400/40 shadow-[0_0_20px_rgba(244,63,94,0.25)] hover:shadow-[0_0_28px_rgba(244,63,94,0.4)] focus-visible:ring-rose-400"
                 : "bg-gradient-to-r from-emerald-500 via-emerald-600 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white border border-emerald-400/40 shadow-[0_0_20px_rgba(16,185,129,0.25)] hover:shadow-[0_0_28px_rgba(16,185,129,0.4)] focus-visible:ring-emerald-400"
             )}
-            title={isStarted ? "Stop screenshot capturing" : "Start screenshot capturing"}
+            title={isStarted ? "Stop screenshot activity" : "Start screenshot activity"}
           >
             {statusLoading ? (
               <>
@@ -204,12 +204,12 @@ export const CaptureStatusHeader: FC<CaptureStatusHeaderProps> = ({
             ) : isStarted ? (
               <>
                 <Square className="w-3.5 h-3.5 fill-current shrink-0 transition-transform group-hover:scale-110" />
-                <span className="tracking-wide">Stop Capturing</span>
+                <span className="tracking-wide">Stop Activity</span>
               </>
             ) : (
               <>
                 <Play className="w-3.5 h-3.5 fill-current shrink-0 transition-transform group-hover:scale-110" />
-                <span className="tracking-wide">Start Capturing</span>
+                <span className="tracking-wide">Start Activity</span>
               </>
             )}
           </button>

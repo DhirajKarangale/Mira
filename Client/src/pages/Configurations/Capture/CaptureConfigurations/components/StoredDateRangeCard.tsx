@@ -53,10 +53,10 @@ export const StoredDateRangeCard: FC<StoredDateRangeCardProps> = ({
           </div>
           <div>
             <h2 className="text-lg font-bold text-white tracking-tight">
-              Stored Captured Data
+              Stored Activity Data
             </h2>
             <p className="text-xs text-zinc-400">
-              Temporal coverage of local encrypted screen capture records
+              Temporal coverage of local encrypted screen activity records
             </p>
           </div>
         </div>
@@ -73,10 +73,10 @@ export const StoredDateRangeCard: FC<StoredDateRangeCardProps> = ({
               id="btn-delete-all-captured-data"
               onClick={onRequestDeleteAll}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 hover:text-white border border-rose-500/35 shadow-[0_0_15px_rgba(244,63,94,0.15)] transition-all duration-200 cursor-pointer active:scale-95"
-              title="Delete all stored captured data"
+              title="Delete all stored activity data"
             >
               <Trash2 className="w-4 h-4 text-rose-400" />
-              <span>Delete Captured Data</span>
+              <span>Delete Activity Data</span>
             </button>
           )}
         </div>
@@ -87,7 +87,7 @@ export const StoredDateRangeCard: FC<StoredDateRangeCardProps> = ({
           <div className="p-6 sm:p-7 rounded-2xl bg-zinc-950/70 border border-white/[0.06] flex flex-col md:flex-row items-center justify-between gap-6 shadow-inner">
             <div className="flex-1 text-center md:text-left space-y-1">
               <span className="text-[11px] font-mono text-zinc-500 uppercase tracking-wider block">
-                From Date (Earliest Capture)
+                From Date (Earliest Activity)
               </span>
               <div className="text-2xl sm:text-3xl font-bold text-white font-mono tracking-tight">
                 {dataRange.startDate}
@@ -110,7 +110,7 @@ export const StoredDateRangeCard: FC<StoredDateRangeCardProps> = ({
 
             <div className="flex-1 text-center md:text-right space-y-1">
               <span className="text-[11px] font-mono text-zinc-500 uppercase tracking-wider block">
-                To Date (Latest Capture)
+                To Date (Latest Activity)
               </span>
               <div className="text-2xl sm:text-3xl font-bold text-white font-mono tracking-tight">
                 {dataRange.endDate}
@@ -137,17 +137,17 @@ export const StoredDateRangeCard: FC<StoredDateRangeCardProps> = ({
             Data Deleted Successfully
           </h3>
           <p className="text-xs text-zinc-400 max-w-md mx-auto leading-relaxed">
-            All stored captured data has been permanently cleared from your local storage.
+            All stored activity data has been permanently cleared from your local storage.
           </p>
         </div>
       ) : (
         <div className="p-8 sm:p-10 rounded-2xl bg-zinc-950/40 border border-white/[0.06] text-center space-y-2">
           <CalendarDays className="w-10 h-10 text-zinc-600 mx-auto mb-1" />
           <h3 className="text-sm font-semibold text-white">
-            No Captured Data Stored
+            No Activity Data Stored
           </h3>
           <p className="text-xs text-zinc-400 max-w-md mx-auto leading-relaxed">
-            There is currently no screen capture data stored on this device.
+            There is currently no screen activity data stored on this device.
           </p>
         </div>
       )}

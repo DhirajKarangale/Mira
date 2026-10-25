@@ -292,7 +292,7 @@ export const KnowledgeBaseDateRangePicker: FC<KnowledgeBaseDateRangePickerProps>
           }
         }}
         disabled={disabled}
-        title="Filter Knowledge Bases by capture date range"
+        title="Filter Knowledge Bases by activity date range"
         className={cn(
           "flex items-center gap-2 px-3 py-1.5 text-xs rounded-xl border transition-all select-none outline-none group",
           disabled
@@ -313,7 +313,7 @@ export const KnowledgeBaseDateRangePicker: FC<KnowledgeBaseDateRangePickerProps>
 
         <span className="font-mono text-xs">
           {!hasFilter ? (
-            <span className="text-zinc-400 group-hover:text-zinc-200">All Capture Dates</span>
+            <span className="text-zinc-400 group-hover:text-zinc-200">All Activity Dates</span>
           ) : startDate === endDate ? (
             <span>
               {isTodaySelected ? "Today: " : ""}

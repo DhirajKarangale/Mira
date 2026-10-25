@@ -194,7 +194,7 @@ export const KnowledgeBaseManagerCard: FC = () => {
               </span>
             </div>
             <p className="text-xs text-zinc-400 mt-0.5">
-              Local Qdrant vector databases, capture intervals, semantic memories, and data retention
+              Local Qdrant vector databases, activity intervals, semantic memories, and data retention
             </p>
           </div>
         </div>
@@ -378,7 +378,7 @@ export const KnowledgeBaseManagerCard: FC = () => {
           <p className="text-xs text-zinc-400 max-w-md mx-auto leading-relaxed">
             {hasActiveFilters
               ? "No Knowledge Bases match the specified date range or search keyword. Try clearing or expanding your filters."
-              : "No Knowledge Bases have been created yet. As screen capture data is extracted and summarized, Knowledge Bases will automatically appear here."}
+              : "No Knowledge Bases have been created yet. As screen activity data is extracted and summarized, Knowledge Bases will automatically appear here."}
           </p>
           {hasActiveFilters && (
             <div className="pt-2">
@@ -458,12 +458,12 @@ export const KnowledgeBaseManagerCard: FC = () => {
                   </div>
                 </div>
 
-                {/* Capture Dates Timeline Banner */}
+                {/* Activity Dates Timeline Banner */}
                 <div className="mt-3.5 grid grid-cols-1 md:grid-cols-3 gap-3 items-center text-xs">
                   {/* Start Date */}
                   <div className="p-3 rounded-xl bg-zinc-900/80 border border-white/[0.04] space-y-1">
                     <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 block">
-                      Capture Start Date
+                      Activity Start Date
                     </span>
                     <div className="flex items-center gap-2">
                       <Calendar className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
@@ -487,7 +487,7 @@ export const KnowledgeBaseManagerCard: FC = () => {
                   {/* End Date */}
                   <div className="p-3 rounded-xl bg-zinc-900/80 border border-white/[0.04] space-y-1 md:text-right">
                     <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 block">
-                      Capture End Date
+                      Activity End Date
                     </span>
                     <div className="flex items-center md:justify-end gap-2">
                       <Calendar className="w-3.5 h-3.5 text-cyan-400 shrink-0 md:order-last" />

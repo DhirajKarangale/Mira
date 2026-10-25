@@ -48,13 +48,13 @@ export const CaptureConfigurationsPage: FC = () => {
       await toggleCaptureMutation.mutateAsync(nextStatus);
       toast.success(
         nextStatus === "Started"
-          ? "Screen capture started successfully."
-          : "Screen capture paused/stopped.",
-        { title: "Operator Capture" }
+          ? "Screen activity started successfully."
+          : "Screen activity paused/stopped.",
+        { title: "Operator Activity" }
       );
     } catch (err: unknown) {
-      const msg = (err as Error)?.message || "Failed to update capture status.";
-      toast.error(msg, { title: "Capture Error" });
+      const msg = (err as Error)?.message || "Failed to update activity status.";
+      toast.error(msg, { title: "Activity Error" });
     }
   };
 
@@ -75,7 +75,7 @@ export const CaptureConfigurationsPage: FC = () => {
   const handleUpdateInterval = async (newSecs: number) => {
     try {
       await updateConfigMutation.mutateAsync({ CAPTURE_INTERVAL_SECS: newSecs });
-      toast.success(`Capture interval updated to ${newSecs}s in Vault.`, {
+      toast.success(`Activity interval updated to ${newSecs}s in Vault.`, {
         title: "Vault Configuration",
       });
     } catch (err: unknown) {

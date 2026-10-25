@@ -106,12 +106,12 @@ export const AppPermissionCard: FC<AppPermissionCardProps> = ({
           )}
           title={
             isAllowed
-              ? "Capture permission enabled. Click to restrict this application."
-              : "Capture permission restricted. Click to allow this application."
+              ? "Activity permission enabled. Click to restrict this application."
+              : "Activity permission restricted. Click to allow this application."
           }
         >
           <span className="text-xs font-semibold tracking-wide hidden sm:inline-block">
-            {isAllowed ? "Capture Allowed" : "Capture Blocked"}
+            {isAllowed ? "Activity Allowed" : "Activity Blocked"}
           </span>
 
           <div

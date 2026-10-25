@@ -150,7 +150,7 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
   const handleSave = async () => {
     if (draft < MIN_INTERVAL_SECS || draft > MAX_INTERVAL_SECS) {
       toast.warning(
-        `Capture interval must be between ${MIN_INTERVAL_SECS} and ${MAX_INTERVAL_SECS} seconds (up to 1 hour).`,
+        `Activity interval must be between ${MIN_INTERVAL_SECS} and ${MAX_INTERVAL_SECS} seconds (up to 1 hour).`,
         { title: "Invalid Interval" }
       );
       return;
@@ -161,7 +161,7 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err: any) {
-      console.error("Failed to update capture interval:", err);
+      console.error("Failed to update activity interval:", err);
       const msg =
         err?.response?.data?.detail?.message ||
         "Failed to update CAPTURE_INTERVAL_SECS in Vault.";
@@ -190,7 +190,7 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-lg font-bold text-white tracking-tight">
-                Capture Interval
+                Activity Interval
               </h2>
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono text-cyan-300 bg-cyan-500/10 border border-cyan-500/20">
                 <ShieldCheck className="w-3.5 h-3.5" />
@@ -198,7 +198,7 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
               </span>
             </div>
             <p className="text-xs text-zinc-400 mt-0.5">
-              Frequency of automated background silent screenshot captures
+              Frequency of automated background silent screenshot activities
             </p>
           </div>
         </div>
@@ -329,7 +329,7 @@ export const CaptureIntervalCard: FC<CaptureIntervalCardProps> = ({
               <Activity className="w-4 h-4" />
             </div>
             <div>
-              <div className="text-[11px] text-zinc-400 font-medium">Capture Rate</div>
+              <div className="text-[11px] text-zinc-400 font-medium">Activity Rate</div>
               <div className="text-sm font-bold font-mono text-zinc-100">
                 ~{capturesPerMin}{" "}
                 <span className="text-[10px] text-zinc-500 font-normal">/ min</span>

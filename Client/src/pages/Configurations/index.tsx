@@ -25,8 +25,8 @@ export { WorkersPage } from "./Workers";
 
 const CONFIGURATIONS_SIDEBAR_ITEMS: readonly SidebarItem[] = [
   {
-    key: "capture",
-    name: "Capture",
+    key: "activity-control",
+    name: "Activity Control",
     icon: MonitorPlay,
   },
   {
@@ -56,8 +56,11 @@ export const ConfigurationsPage: FC = () => {
   const navigate = useNavigate();
 
   const segments = location.pathname.split("/").filter(Boolean);
-  const rawSubTab = segments[1] || "capture";
-  const activeSubTab = rawSubTab === "captured-data" ? "capture" : rawSubTab;
+  const rawSubTab = segments[1] || "activity-control";
+  const activeSubTab =
+    rawSubTab === "captured-data" || rawSubTab === "capture"
+      ? "activity-control"
+      : rawSubTab;
 
   return (
     <div
@@ -79,17 +82,21 @@ export const ConfigurationsPage: FC = () => {
         className="flex-1 relative h-full w-full overflow-hidden"
       >
         <Routes>
-          <Route path="/" element={<Navigate to="capture" replace />} />
-          <Route path="capture/*" element={<CapturedDataPage />} />
+          <Route path="/" element={<Navigate to="activity-control" replace />} />
+          <Route path="activity-control/*" element={<CapturedDataPage />} />
+          <Route
+            path="capture/*"
+            element={<Navigate to="/configurations/activity-control" replace />}
+          />
           <Route
             path="captured-data/*"
-            element={<Navigate to="/configurations/capture/data" replace />}
+            element={<Navigate to="/configurations/activity-control/data" replace />}
           />
           <Route path="ai-config/*" element={<AiConfigPage />} />
           <Route path="workers/*" element={<WorkersPage />} />
           <Route path="redis/*" element={<RedisPage />} />
           <Route path="logs/*" element={<LogsPage />} />
-          <Route path="*" element={<Navigate to="capture" replace />} />
+          <Route path="*" element={<Navigate to="activity-control" replace />} />
         </Routes>
       </div>
     </div>
