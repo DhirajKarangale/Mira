@@ -22,6 +22,14 @@ from .config import (
 )
 from .websocket import ws_manager
 from .naming import chat_naming_queue
+from .workflow import (
+    run_chat_workflow,
+    register_tool,
+    get_registered_tools,
+    build_workflow_graph,
+    get_compiled_workflow,
+    AgentState,
+)
 
 __all__ = [
     "router",
@@ -40,4 +48,11 @@ __all__ = [
     "get_chat_workers_count",
     "get_chat_poll_time",
     "ws_manager",
+    "run_chat_workflow",
+    "register_tool",
+    "get_registered_tools",
+    "build_workflow_graph",
+    "get_compiled_workflow",
+    "AgentState",
 ]
+

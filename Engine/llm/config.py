@@ -4,19 +4,24 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import sys
 _engine_dir = Path(__file__).resolve().parent.parent
-if str(_engine_dir) not in sys.path:
-    sys.path.insert(0, str(_engine_dir))
-import config as engine_config
+import importlib.util
+_spec = importlib.util.spec_from_file_location("engine_config_module", _engine_dir / "config.py")
+engine_config = importlib.util.module_from_spec(_spec)
+sys.modules["engine_config_module"] = engine_config
+_spec.loader.exec_module(engine_config)
 _CONFIG_PATH = Path(__file__).resolve().parent / 'config.json'
 _WORK_CONFIGS: Dict[str, Any] = {}
+_CONFIG_LAST_MTIME: float = 0.0
 
 def load_work_configs(config_path: Optional[Path]=None) -> Dict[str, Any]:
-    global _WORK_CONFIGS
+    global _WORK_CONFIGS, _CONFIG_LAST_MTIME
     path = config_path or _CONFIG_PATH
     if path.exists():
         try:
+            mtime = path.stat().st_mtime
             with open(path, 'r', encoding='utf-8') as f:
                 _WORK_CONFIGS = json.load(f)
+                _CONFIG_LAST_MTIME = mtime
                 return _WORK_CONFIGS
         except Exception as e:
             from vault_logger import log_error
@@ -26,6 +31,15 @@ def load_work_configs(config_path: Optional[Path]=None) -> Dict[str, Any]:
 load_work_configs()
 
 def get_work_config(work: str) -> Dict[str, Any]:
+    global _WORK_CONFIGS, _CONFIG_LAST_MTIME
+    try:
+        if _CONFIG_PATH.exists():
+            cur_mtime = _CONFIG_PATH.stat().st_mtime
+            if cur_mtime > _CONFIG_LAST_MTIME:
+                load_work_configs()
+    except Exception:
+        pass
+
     clean_work = work.strip().lower()
     if clean_work in _WORK_CONFIGS:
         return _WORK_CONFIGS[clean_work]

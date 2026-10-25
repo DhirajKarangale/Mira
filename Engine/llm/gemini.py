@@ -49,8 +49,8 @@ def call(prompt: str, work: str) -> str:
                 if err_type == ErrorType.API_KEY_EXPIRED_OR_INVALID:
                     key_attempts += 1
                     if key_attempts >= len(keys):
-                        log_error('[Gemini] All Gemini API keys failed due to expiration or invalidity.')
-                        raise AllKeysExhaustedError('gemini')
+                        log_error(f"[Gemini] All Gemini API keys failed for model '{model}'. Falling back to next configured model...")
+                        break
                     new_key = rotate_key('gemini')
                     log(f"[Gemini] Rotated key. Retrying model '{model}' with next key...")
                     continue

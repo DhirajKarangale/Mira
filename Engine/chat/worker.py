@@ -23,6 +23,8 @@ from .memory import (
 )
 from .websocket import ws_manager
 from .naming import chat_naming_queue
+from .workflow import run_chat_workflow
+from config import get_user_profile
 from llm import call_llm
 from vault_logger import log, log_error, mask_sensitive
 
@@ -31,12 +33,13 @@ logger = logging.getLogger("mira.engine.chat.worker")
 
 async def process_chat_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
     """
-    Process a single chat job from llm_chat stream:
-      1. Retrieve session's entire chat history.
-      2. Call the existing LLM script with the user query and chat history.
-      3. Send the response to the Client through WebSockets using existing job_id and session_id.
-      4. Store the user query and AI response in the Vault chat table.
-      5. Store the conversation in Redis short-term memory.
+    Process a single chat job from llm_chat stream using LangGraph agentic workflow:
+      1. Retrieve session's chat history and active user profile.
+      2. Execute LangGraph workflow (decision, user activity / general LLM, response synthesis).
+      3. Store the user query and AI response in the Vault chat table.
+      4. Store the conversation in Redis short-term memory.
+      5. Send the response to the Client through WebSockets using existing job_id and session_id.
+      6. Automatic chat naming and Message Broker job acknowledgment.
     """
     job_id = job.get("job_id")
     session_id = job.get("session_id")
@@ -55,21 +58,31 @@ async def process_chat_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
 
     log(f"[ChatWorker-{worker_id}] Processing job {job_id} for session {session_id}...")
 
-    # Step 1: Retrieve entire chat history for complete LLM context
+    # Step 1: Retrieve chat history and user profile from memory
     history = await asyncio.to_thread(get_entire_session_history, session_id)
-    log(f"[ChatWorker-{worker_id}] Retrieved {len(history)} messages of history for session {session_id}")
+    if not history:
+        history = await asyncio.to_thread(get_session_memory, session_id)
+    user_profile = await asyncio.to_thread(get_user_profile)
+    log(f"[ChatWorker-{worker_id}] Retrieved {len(history)} history turns for user '{user_profile.get('user_name', 'User')}' (session {session_id})")
 
-    # Step 2: Format history with user query and call existing LLM script
-    prompt = format_chat_history_for_llm(history, user_query)
+    # Step 2: Execute LangGraph agentic workflow
     ai_response = ""
     try:
-        ai_response = await asyncio.to_thread(call_llm, prompt, "chat")
+        ai_response = await run_chat_workflow(
+            job_id=job_id,
+            session_id=session_id,
+            user_query=user_query,
+            chat_history=history,
+            user_profile=user_profile,
+        )
     except Exception as e:
-        log_error(f"[ChatWorker-{worker_id}] LLM call failed for job {job_id}: {mask_sensitive(str(e))}")
+        log_error(f"[ChatWorker-{worker_id}] Workflow failed for job {job_id}: {mask_sensitive(str(e))}")
+        user_name = user_profile.get("user_name", "there")
         ai_response = (
-            "I apologize, but I was unable to complete your request at this moment. "
+            f"I apologize {user_name}, but I was unable to complete your request at this moment. "
             "Please check your configured AI provider keys in Configurations > AI Config."
         )
+
 
     # Step 3: Resolve user message reference and store AI response in Vault
     now_str = time.strftime("%Y-%m-%d %H:%M:%S")

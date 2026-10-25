@@ -57,6 +57,10 @@ _env_port = os.getenv('PORT')
 SERVER_HOST: str = _env_host or _parsed_engine_host or '127.0.0.1'
 SERVER_PORT: int = int(_env_port) if _env_port and _env_port.isdigit() else _parsed_engine_port or 9007
 
+VAULT_DIR: Path = Path(__file__).resolve().parent.parent / 'Vault'
+SYSTEM_DIR: Path = Path(os.getenv('MIRA_SYSTEM_DIR', str(VAULT_DIR / 'system')))
+SCHEMA_FILE_PATH: Path = Path(os.getenv('MIRA_SCHEMA_FILE', str(VAULT_DIR / 'schema.sql')))
+
 class EngineMemoryConfig:
 
     def __init__(self):
@@ -74,6 +78,7 @@ class EngineMemoryConfig:
         self.ai_priorities: List[str] = ['gemini', 'groq']
         self.ai_configs: Dict[str, Dict[str, Any]] = {}
         self.active_provider: Optional[str] = 'gemini'
+        self.user_profile: Dict[str, Any] = {}
         self._initialized: bool = False
 
     def fetch_from_vault(self, vault_base_url: Optional[str]=None) -> bool:
@@ -122,6 +127,50 @@ class EngineMemoryConfig:
         except Exception as e:
             logger.warning(f'Error fetching AI configs from Vault HTTP: {e}')
             success = False
+        # Fetch complete user profile from Vault
+        try:
+            resp = requests.get(f'{base}/user', timeout=1.5)
+            if resp.status_code == 200:
+                u_data = resp.json()
+                if isinstance(u_data, dict):
+                    with self._lock:
+                        self.user_profile = u_data
+        except Exception as e:
+            logger.warning(f'Error fetching user profile from Vault: {e}')
+            success = False
+
+        # Fallback to local Vault config_storage if HTTP calls failed or returned empty
+        if not fetched_configs or not self.user_profile:
+            try:
+                import sys
+                vault_dir = Path(__file__).resolve().parent.parent / 'Vault'
+                if str(vault_dir) not in sys.path:
+                    sys.path.insert(0, str(vault_dir))
+                import config_storage
+                config_storage.init_config_storage()
+                if not fetched_priorities:
+                    direct_priorities = config_storage.get_ai_priorities()
+                    if direct_priorities:
+                        fetched_priorities = [str(p).strip().lower() for p in direct_priorities if str(p).strip()]
+                if not fetched_configs:
+                    direct_configs = config_storage.get_all_ai_configs()
+                    for item in direct_configs:
+                        prov_name = str(item.get('llm_provider', '')).strip().lower()
+                        if not prov_name:
+                            continue
+                        keys = [str(k).strip() for k in item.get('keys', []) if str(k).strip()]
+                        current_key = int(item.get('current_key', 0))
+                        total_keys = int(item.get('total_keys', len(keys)))
+                        fetched_configs[prov_name] = {'provider': prov_name, 'display_name': prov_name, 'keys': keys, 'current_key': current_key, 'total_keys': total_keys}
+                if not self.user_profile:
+                    u_cfg = config_storage.get_configuration('user_details')
+                    if isinstance(u_cfg, dict):
+                        with self._lock:
+                            self.user_profile = u_cfg
+                success = True
+            except Exception as e:
+                logger.debug(f'Direct Vault storage fallback failed: {e}')
+
         with self._lock:
             if fetched_priorities:
                 self.ai_priorities = fetched_priorities
@@ -134,8 +183,40 @@ class EngineMemoryConfig:
             if success:
                 self._initialized = True
         from vault_logger import log as v_log
-        v_log(f'Engine configuration initialized from Vault. Priorities: {self.ai_priorities}, Active: {self.active_provider}')
+        v_log(f'Engine configuration initialized from Vault. Priorities: {self.ai_priorities}, Active: {self.active_provider}, User: {self.user_profile.get("user_name", "Unknown")}')
         return success
+
+    def get_user_profile(self) -> Dict[str, Any]:
+        with self._lock:
+            if not self.user_profile:
+                try:
+                    vault_url = VAULT_URL or get_service_url('vault')
+                    if vault_url:
+                        resp = requests.get(f"{vault_url.rstrip('/')}/user", timeout=1.5)
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            if isinstance(data, dict):
+                                self.user_profile = data
+                except Exception:
+                    pass
+                if not self.user_profile:
+                    try:
+                        import sys
+                        vault_dir = Path(__file__).resolve().parent.parent / 'Vault'
+                        if str(vault_dir) not in sys.path:
+                            sys.path.insert(0, str(vault_dir))
+                        import config_storage
+                        config_storage.init_config_storage()
+                        u_cfg = config_storage.get_configuration('user_details')
+                        if isinstance(u_cfg, dict):
+                            self.user_profile = u_cfg
+                    except Exception:
+                        pass
+            return dict(self.user_profile)
+
+    def set_user_profile(self, profile: Dict[str, Any]) -> None:
+        with self._lock:
+            self.user_profile = dict(profile)
 
     def get_ai_priorities(self) -> List[str]:
         with self._lock:
@@ -231,3 +312,7 @@ try:
     CONFIG.fetch_from_vault()
 except Exception as _e:
     logger.warning(f'Initial Vault fetch failed: {_e}')
+
+get_user_profile = CONFIG.get_user_profile
+set_user_profile = CONFIG.set_user_profile
+

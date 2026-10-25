@@ -3,6 +3,7 @@ import base64
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 import requests
@@ -25,7 +26,9 @@ class VaultCryptoClient:
     def __init__(self, vault_url: Optional[str]=None) -> None:
         self._vault_url = vault_url
         self._direct_crypto = None
+        self._vault_http_cooldown_until: float = 0.0
         self._init_direct_crypto()
+
 
     def _init_direct_crypto(self) -> None:
         try:
@@ -52,14 +55,15 @@ class VaultCryptoClient:
         if data is None:
             data = ''
         data_str = str(data)
-        vault_url = self.get_vault_url()
-        try:
-            resp = requests.post(f'{vault_url}/crypto/encrypt', json={'data': data_str}, timeout=3.0)
-            if resp.status_code == 200:
-                ct = resp.json().get('ciphertext', '')
-                return f'{ENCRYPTION_PREFIX}{ct}'
-        except Exception:
-            pass
+        if time.time() >= self._vault_http_cooldown_until:
+            vault_url = self.get_vault_url()
+            try:
+                resp = requests.post(f'{vault_url}/crypto/encrypt', json={'data': data_str}, timeout=1.0)
+                if resp.status_code == 200:
+                    ct = resp.json().get('ciphertext', '')
+                    return f'{ENCRYPTION_PREFIX}{ct}'
+            except Exception:
+                self._vault_http_cooldown_until = time.time() + 60.0
         if self._direct_crypto is None:
             self._init_direct_crypto()
         if self._direct_crypto:
@@ -93,21 +97,23 @@ class VaultCryptoClient:
         raw_ct = ct_str[len(ENCRYPTION_PREFIX):] if is_prefixed else ct_str
         if not is_prefixed and (not self.is_likely_ciphertext(ct_str)):
             return ct_str
-        vault_url = self.get_vault_url()
-        try:
-            resp = requests.post(f'{vault_url}/crypto/decrypt', json={'ciphertext': raw_ct}, timeout=3.0)
-            if resp.status_code == 200:
-                return resp.json().get('data', '')
-            elif resp.status_code == 500:
-                detail = resp.text
-                if is_prefixed and any((w in detail.lower() for w in ('decrypt', 'cipher', 'fail', 'mac', 'crypto', 'padding'))):
-                    raise IntegrityVerificationError(f'Data integrity verification failed: {detail}')
-                if not is_prefixed:
-                    return ct_str
-        except IntegrityVerificationError:
-            raise
-        except Exception:
-            pass
+        if time.time() >= self._vault_http_cooldown_until:
+            vault_url = self.get_vault_url()
+            try:
+                resp = requests.post(f'{vault_url}/crypto/decrypt', json={'ciphertext': raw_ct}, timeout=1.0)
+                if resp.status_code == 200:
+                    return resp.json().get('data', '')
+                elif resp.status_code == 500:
+                    detail = resp.text
+                    if is_prefixed and any((w in detail.lower() for w in ('decrypt', 'cipher', 'fail', 'mac', 'crypto', 'padding'))):
+                        raise IntegrityVerificationError(f'Data integrity verification failed: {detail}')
+                    if not is_prefixed:
+                        return ct_str
+            except IntegrityVerificationError:
+                raise
+            except Exception:
+                self._vault_http_cooldown_until = time.time() + 60.0
+
         if self._direct_crypto is None:
             self._init_direct_crypto()
         if self._direct_crypto:

@@ -47,8 +47,8 @@ def call(prompt: str, work: str) -> str:
                 if err_type == ErrorType.API_KEY_EXPIRED_OR_INVALID:
                     key_attempts += 1
                     if key_attempts >= len(keys):
-                        log_error('[Groq] All Groq API keys failed due to expiration or invalidity.')
-                        raise AllKeysExhaustedError('groq')
+                        log_error(f"[Groq] All Groq API keys failed for model '{model}'. Falling back to next configured model...")
+                        break
                     new_key = rotate_key('groq')
                     log(f"[Groq] Rotated key. Retrying model '{model}' with next key...")
                     continue

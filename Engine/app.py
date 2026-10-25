@@ -113,7 +113,17 @@ async def sync_config():
         load_work_configs()
     except Exception as e:
         log_error(f'Failed to reload LLM work configs during sync: {e}')
-    return {'status': 'success' if success else 'partial_or_failed', 'active_provider': config.CONFIG.get_active_provider(), 'ai_priorities': config.CONFIG.get_ai_priorities()}
+    return {'status': 'success' if success else 'partial_or_failed', 'active_provider': config.CONFIG.get_active_provider(), 'ai_priorities': config.CONFIG.get_ai_priorities(), 'user_profile': config.CONFIG.get_user_profile()}
+
+@app.get('/user/profile', status_code=status.HTTP_200_OK)
+async def get_user_profile_endpoint():
+    return config.CONFIG.get_user_profile()
+
+@app.post('/user/profile', status_code=status.HTTP_200_OK)
+async def update_user_profile_endpoint(profile: Dict[str, Any]):
+    config.CONFIG.set_user_profile(profile)
+    return {'status': 'updated', 'user_profile': config.CONFIG.get_user_profile()}
+
 
 @app.post('/llm/call', response_model=LLMCallResponse, status_code=status.HTTP_200_OK)
 async def call_llm_endpoint(request: LLMCallRequest):
