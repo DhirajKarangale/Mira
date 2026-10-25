@@ -14,11 +14,13 @@ export function useGlobalChatSync() {
   locationRef.current = location.pathname;
 
   const wsRef = useRef<WebSocket | null>(null);
+  const notifiedIdsRef = useRef<Map<string, number>>(new Map());
 
   const notifyIfInactive = (
     targetSid: string,
     aiContent?: string,
-    userPrompt?: string
+    userPrompt?: string,
+    dedupId?: string
   ) => {
     const store = useChatStore.getState();
     const isViewingThisChat =
@@ -30,6 +32,36 @@ export function useGlobalChatSync() {
       store.markSessionUnread(targetSid);
 
       const cleanContent = aiContent?.trim();
+      const now = Date.now();
+
+      // Deduplication key: combination of dedupId (message ID or job ID) or session + content snippet
+      const dedupKey = dedupId || `${targetSid}:${cleanContent?.substring(0, 40) || ""}`;
+
+      // Check if this exact message was already notified within the last 15 seconds
+      const lastNotifiedAt = notifiedIdsRef.current.get(dedupKey);
+      if (lastNotifiedAt && now - lastNotifiedAt < 15000) {
+        return; // Suppress duplicate toast notification
+      }
+
+      // Check session-level throttling: don't show another notification for the same session within 3.5 seconds
+      const sessionDedupKey = `session:${targetSid}`;
+      const lastSessionNotifiedAt = notifiedIdsRef.current.get(sessionDedupKey);
+      if (lastSessionNotifiedAt && now - lastSessionNotifiedAt < 3500) {
+        return; // Suppress rapid duplicate toast for the same session
+      }
+
+      notifiedIdsRef.current.set(dedupKey, now);
+      notifiedIdsRef.current.set(sessionDedupKey, now);
+
+      // Prune old entries from cache (older than 30s)
+      if (notifiedIdsRef.current.size > 100) {
+        for (const [k, ts] of notifiedIdsRef.current.entries()) {
+          if (now - ts > 30000) {
+            notifiedIdsRef.current.delete(k);
+          }
+        }
+      }
+
       const preview = cleanContent
         ? cleanContent.length > 90
           ? `${cleanContent.substring(0, 90)}...`
@@ -60,6 +92,16 @@ export function useGlobalChatSync() {
     const connectWs = () => {
       if (!isMounted) return;
       try {
+        if (socket) {
+          socket.onclose = null;
+          socket.onerror = null;
+          socket.onmessage = null;
+          try {
+            socket.close();
+          } catch {}
+          socket = null;
+        }
+
         const wsUrl = getEngineWebSocketUrl();
         socket = new WebSocket(wsUrl);
         wsRef.current = socket;
@@ -97,7 +139,12 @@ export function useGlobalChatSync() {
               if (targetSid) {
                 const userPrompt = store.sendingSessions[targetSid]?.userPrompt;
                 store.resolveAiMessage(targetSid, job_id, user_message, ai_message);
-                notifyIfInactive(targetSid, ai_message?.content, userPrompt);
+                notifyIfInactive(
+                  targetSid,
+                  ai_message?.content,
+                  userPrompt,
+                  ai_message?.id || job_id
+                );
               }
             }
           } catch (e) {
@@ -128,6 +175,8 @@ export function useGlobalChatSync() {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (socket) {
         socket.onclose = null;
+        socket.onerror = null;
+        socket.onmessage = null;
         socket.close();
       }
     };
@@ -143,16 +192,33 @@ export function useGlobalChatSync() {
       if (activeIds.length === 0) return;
 
       for (const sid of activeIds) {
+        // Double check session is still sending before querying backend
+        if (!useChatStore.getState().sendingSessions[sid]) {
+          continue;
+        }
+
         try {
           let resp = await engineService.getChatsBySession(sid, {
             limit: 100,
           });
+
+          // Re-check after async fetch if WebSocket resolved it while awaiting
+          if (!useChatStore.getState().sendingSessions[sid]) {
+            continue;
+          }
+
           if (resp.total_pages > 1) {
             resp = await engineService.getChatsBySession(sid, {
               page: resp.total_pages,
               limit: 100,
             });
           }
+
+          // Re-check again
+          if (!useChatStore.getState().sendingSessions[sid]) {
+            continue;
+          }
+
           const msgs = resp.messages || [];
           const lastMsg = msgs[msgs.length - 1];
 
@@ -162,7 +228,7 @@ export function useGlobalChatSync() {
             const userPrompt = sendingInfo?.userPrompt;
             store.resolveAiMessage(sid, sendingInfo?.jobId, null, lastMsg);
             store.setSessionMessages(sid, msgs);
-            notifyIfInactive(sid, lastMsg.content, userPrompt);
+            notifyIfInactive(sid, lastMsg.content, userPrompt, lastMsg.id);
           }
         } catch (e) {
           console.debug("[Global Chat Poller] Polling check error:", e);
