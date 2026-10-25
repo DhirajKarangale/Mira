@@ -218,31 +218,20 @@ def _extract_subday_range(
     """
     Extracts time-of-day bounds like 'between 9 AM and 5 PM', 'morning', 'afternoon', 'evening'.
     """
-    # "between 9 AM and 5 PM" or "between 9:00 and 17:00"
-    between_match = re.search(
-        r'between\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s+(?:and|to)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)',
+    # Time ranges: "11:00 am to 02:00 pm", "from 9 AM to 5 PM", "between 9 AM and 5 PM", "11 am - 2 pm"
+    range_match = re.search(
+        r'(?:\bfrom\s+|\bbetween\s+)?(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s+(?:to|and|-|until|till)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)',
         expr
     )
-    if between_match:
-        t1 = _to_dtime(between_match.group(1).strip())
-        t2 = _to_dtime(between_match.group(2).strip())
+    if range_match:
+        t1 = _to_dtime(range_match.group(1).strip())
+        t2 = _to_dtime(range_match.group(2).strip())
         if t1 and t2:
             dt1 = datetime.combine(base_date, t1, tzinfo=user_tz)
             dt2 = datetime.combine(base_date, t2, tzinfo=user_tz)
-            return dt1, dt2, f"between {t1.strftime('%I:%M %p')} and {t2.strftime('%I:%M %p')}"
-
-    # "from 9 AM to 5 PM"
-    from_match = re.search(
-        r'from\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s+to\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)',
-        expr
-    )
-    if from_match:
-        t1 = _to_dtime(from_match.group(1).strip())
-        t2 = _to_dtime(from_match.group(2).strip())
-        if t1 and t2:
-            dt1 = datetime.combine(base_date, t1, tzinfo=user_tz)
-            dt2 = datetime.combine(base_date, t2, tzinfo=user_tz)
-            return dt1, dt2, f"from {t1.strftime('%I:%M %p')} to {t2.strftime('%I:%M %p')}"
+            if "between" in expr:
+                return dt1, dt2, f"between {t1.strftime('%I:%M %p')} and {t2.strftime('%I:%M %p')}"
+            return dt1, dt2, f"{t1.strftime('%I:%M %p')} to {t2.strftime('%I:%M %p')}"
 
     # Part of day
     if "morning" in expr:

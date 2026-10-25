@@ -88,6 +88,10 @@ class KnowledgeBaseWorkerManager:
             await asyncio.to_thread(kb_protector.sync_and_protect_all, self.storage.base_dir)
         except Exception as e:
             log_error(f'[KnowledgeBaseWorkerManager] Failed to protect all KB folders on startup: {e}')
+        try:
+            await asyncio.to_thread(self.vector_store.get_client)
+        except Exception as e:
+            log_error(f'[KnowledgeBaseWorkerManager] Failed to pre-warm Qdrant client: {e}')
         self.refresh_config()
         self.is_running = True
         self._stop_event.clear()

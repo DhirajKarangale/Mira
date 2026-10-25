@@ -132,7 +132,6 @@ class KnowledgeBaseStorage:
             kb_dir = self.base_dir
             if not kb_dir.exists():
                 return []
-            kb_protector.sync_and_protect_all(kb_dir)
             results: List[Dict[str, Any]] = []
             for item in kb_dir.iterdir():
                 if item.is_dir():
@@ -168,7 +167,21 @@ class KnowledgeBaseStorage:
                     date_match = q_search in kb['start_date'] or q_search in kb['end_date']
                     if not (name_match or date_match):
                         continue
+                filtered_kbs.append(kb)
+
+            total = len(filtered_kbs)
+            page_num = max(1, int(page))
+            limit_num = max(1, min(int(limit), 100))
+            total_pages = max(1, math.ceil(total / limit_num)) if total > 0 else 1
+            start_idx = (page_num - 1) * limit_num
+            end_idx = start_idx + limit_num
+            raw_page_items = filtered_kbs[start_idx:end_idx]
+
+            page_items: List[Dict[str, Any]] = []
+            for kb in raw_page_items:
                 kb_path = Path(kb['path'])
+                kb_start: datetime = kb['start_datetime']
+                kb_end: datetime = kb['end_datetime']
                 days_coverage = max(1, (kb_end - kb_start).days + 1)
                 points_count = 0
                 if get_point_count_cb:
@@ -177,14 +190,19 @@ class KnowledgeBaseStorage:
                     except Exception:
                         points_count = 0
                 size_bytes = get_dir_size_bytes(kb_path)
-                filtered_kbs.append({'name': kb['name'], 'start_date': kb['start_date'], 'end_date': kb['end_date'], 'start_date_formatted': kb_start.strftime('%Y-%m-%d'), 'end_date_formatted': kb_end.strftime('%Y-%m-%d'), 'days_coverage': days_coverage, 'is_current_month': kb['is_current_month'], 'is_active': True, 'points_count': points_count, 'size_bytes': size_bytes, 'path': kb['path']})
-            total = len(filtered_kbs)
-            page_num = max(1, int(page))
-            limit_num = max(1, min(int(limit), 100))
-            total_pages = max(1, math.ceil(total / limit_num)) if total > 0 else 1
-            start_idx = (page_num - 1) * limit_num
-            end_idx = start_idx + limit_num
-            page_items = filtered_kbs[start_idx:end_idx]
+                page_items.append({
+                    'name': kb['name'],
+                    'start_date': kb['start_date'],
+                    'end_date': kb['end_date'],
+                    'start_date_formatted': kb_start.strftime('%Y-%m-%d'),
+                    'end_date_formatted': kb_end.strftime('%Y-%m-%d'),
+                    'days_coverage': days_coverage,
+                    'is_current_month': kb.get('is_current_month', False),
+                    'is_active': True,
+                    'points_count': points_count,
+                    'size_bytes': size_bytes,
+                    'path': kb['path']
+                })
             return {'status': 'success', 'total': total, 'page': page_num, 'limit': limit_num, 'total_pages': total_pages, 'knowledge_bases': page_items}
 
     def delete_knowledge_base(self, name: str, before_delete_cb: Optional[Callable[[], None]]=None, after_delete_cb: Optional[Callable[[], None]]=None) -> bool:

@@ -59,8 +59,8 @@ export function createServiceClient(
 export const messageBrokerApi = createServiceClient(SERVICE_ENDPOINTS.messageBroker);
 export const vaultApi = createServiceClient(SERVICE_ENDPOINTS.vault);
 export const operatorApi = createServiceClient(SERVICE_ENDPOINTS.operator);
-export const memoryApi = createServiceClient(SERVICE_ENDPOINTS.memory);
-export const engineApi = createServiceClient(SERVICE_ENDPOINTS.engine);
+export const memoryApi = createServiceClient(SERVICE_ENDPOINTS.memory, { timeout: 30000 });
+export const engineApi = createServiceClient(SERVICE_ENDPOINTS.engine, { timeout: 60000 });
 
 export function updateServiceEndpoints(urls: Record<string, string>) {
   for (const [key, rawUrl] of Object.entries(urls)) {

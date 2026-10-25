@@ -296,13 +296,19 @@ class FolderProtectionManager:
             sqlite_path = folder_path / 'collection' / 'knowledge_base' / 'storage.sqlite'
             if not sqlite_path.exists():
                 return False
+            snapshot_path = folder_path / VAULT_SNAPSHOT_FILENAME
+            if snapshot_path.exists():
+                try:
+                    if sqlite_path.stat().st_mtime <= snapshot_path.stat().st_mtime:
+                        return True
+                except Exception:
+                    pass
             raw_bytes = sqlite_path.read_bytes()
             if not raw_bytes:
                 return False
             import base64
             from .encryption import vault_crypto
             enc_text = vault_crypto.encrypt(base64.b64encode(raw_bytes).decode('ascii'))
-            snapshot_path = folder_path / VAULT_SNAPSHOT_FILENAME
             temp_path = snapshot_path.with_suffix('.tmp')
             temp_path.write_text(enc_text, encoding='utf-8')
             temp_path.replace(snapshot_path)

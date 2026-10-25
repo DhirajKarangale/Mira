@@ -146,19 +146,34 @@ Verified Ground-Truth Evidence from Screen Activity Database:
 CRITICAL GUIDELINES FOR SYNTHESIS:
 1. Deep Detail & Precision (TOP PRIORITY):
    - You MUST be specific, thorough, and precise about what {user_name} was doing inside each application based ONLY on the evidence.
-   - For Web Browsers (e.g. Microsoft Edge, Chrome): Specify the EXACT websites visited, web apps open (e.g. WhatsApp Web, ChatGPT, Bolna.ai, YouTube, local MIRA dashboard at 127.0.0.1:9010), specific chats/conversations ('Message yourself'), shared links, background tabs open, documents viewed, or search queries. NEVER give vague answers like "you were using Edge" or "browsing the web" — explicitly explain WHAT was on the screen!
+   - For Web Browsers (e.g. Microsoft Edge, Chrome): Specify the EXACT websites visited, web apps open (e.g. WhatsApp Web, ChatGPT, Bolna.ai, YouTube, local MIRA dashboard at 127.0.0.1:9010), specific chats, shared links, background tabs open, documents viewed, or search queries. NEVER give vague answers like "you were using Edge" or "browsing the web" — explicitly explain WHAT was on the screen!
    - For Code Editors & IDEs (e.g. Antigravity IDE, VS Code): State the exact project name ('Mira'), the exact files viewed or edited ('config.json', 'worker.py', 'router.py'), code analysis tasks, terminal commands, or agent interactions.
    - For Text Editors (e.g. Notepad): State the exact file name (e.g. 'prompts.txt', '12543200 = 4y') and the specific architecture specifications, prompts, or math equations written.
+
 2. NO HALLUCINATION & NO MERGING (STRICT MANDATE):
    - Every single website, URL, file name, app name, and action mentioned MUST come directly and literally from the Evidence above. Do not invent facts, numbers, or activities.
    - DO NOT MERGE separate applications or activities into an imagined narrative story. If {user_name} used Calculator and also had a Notion tab open in the background, report each factually and independently. DO NOT claim or assume that the calculation was for the Notion project!
    - DO NOT ADD speculative assumptions, deductions, or motivations (e.g. do NOT say "suggesting you were planning a 3D game" or "using ChatGPT to estimate storage for your 3D project").
    - If an open tab or workspace title (e.g. a Notion tab) was simply visible in a browser window or sidebar, report it strictly as an open page/tab title. Do NOT claim {user_name} actively worked on that project or made progress on it unless the log explicitly describes direct editing actions.
    - Do NOT perform unrequested extra math or invent interpretations of numbers.
-   - Do NOT ask fabricated follow-up questions based on invented connections (e.g., do NOT ask "Did you finish the storage calculation for the 3D project?"). Keep any closing question strictly factual and grounded.
-3. Privacy & Decryption Notice: The Evidence above is ALREADY fully decrypted, verified, and safe to share with {user_name}. NEVER state or imply that "details are encrypted in the logs" or that you "cannot see what websites or documents you had open". Share the exact details directly.
-4. Tone & Engagement: Warm, conversational, objective, and grounded. Address {user_name} by name.
-5. Clean Formatting: Present a clear chronological timeline using Markdown bullet points, bolding application names, websites, files, and key actions.
+
+3. SLEEK, EXECUTIVE TIMELINE FORMATTING (CRITICAL FORMAT RULES):
+   - Format the response as a clean, highly scannable chronological timeline.
+   - Do NOT create deep multi-level nested bullet hierarchies (avoid bullet-under-bullet-under-bullet lists).
+   - Do NOT create artificial category subheadings or arbitrary time blocks (e.g. avoid '### 🕚 11:38 AM – 11:46 AM: IDE Setup & Initial Math Queries').
+   - Do NOT append redundant 'Summary of Key Data Points' sections repeating calculations or numbers.
+   - Do NOT include trivial UI chrome (e.g. do NOT mention button focus like 'focused on Equals', default shortcut tiles, or generic UI warnings). Focus on meaningful user actions.
+   - Do NOT ask intrusive, speculative trailing questions at the end. End cleanly with a polite, helpful one-sentence closing (e.g., "Let me know if you would like me to unpack any of these sessions in greater detail!").
+   - FORMAT STRUCTURE:
+     Start with a friendly greeting and concise 1-sentence intro stating the time window.
+     Then present a chronological bulleted timeline:
+     * **[Timestamp or Range]** — **[Application / Service]**: [Crisp, high-signal description of the exact page, document, query, or task].
+     If multiple quick actions occurred in the same 1-2 minute burst (e.g. search + calculator):
+     * **[Timestamp Range]** — **[Activity Summary]**:
+       - **[Service 1]**: [Action or query]
+       - **[Service 2]**: [Result or action]
+
+4. Privacy & Decryption Notice: The Evidence above is ALREADY fully decrypted, verified, and safe to share with {user_name}. NEVER state or imply that "details are encrypted in the logs" or that you "cannot see what websites or documents you had open". Share the exact details directly.
 
 Write your response directly to {user_name}:
 """

@@ -289,12 +289,33 @@ class QdrantVectorStore:
     def get_kb_point_count(self, kb_path: Path) -> int:
         with self._lock:
             try:
-                if self._current_path and self._current_path.resolve() == kb_path.resolve():
+                active_kb_path = self.storage.get_active_kb_path()
+                is_active = False
+                if self._current_path:
+                    try:
+                        is_active = self._current_path.resolve() == kb_path.resolve()
+                    except Exception:
+                        pass
+                if not is_active and active_kb_path:
+                    try:
+                        is_active = active_kb_path.resolve() == kb_path.resolve()
+                    except Exception:
+                        pass
+
+                if is_active:
                     return self.count_points()
+
+                cache_key = str(kb_path.resolve())
+                if not hasattr(self, '_point_count_cache'):
+                    self._point_count_cache = {}
+                if cache_key in self._point_count_cache:
+                    return self._point_count_cache[cache_key]
+
                 temp_client = QdrantClient(path=str(kb_path))
                 existing = [c.name for c in temp_client.get_collections().collections]
                 count_val = temp_client.count(collection_name=COLLECTION_NAME).count if COLLECTION_NAME in existing else 0
                 temp_client.close()
+                self._point_count_cache[cache_key] = count_val
                 return count_val
             except Exception:
                 return 0
