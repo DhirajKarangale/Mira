@@ -107,6 +107,7 @@ export const ChatsPage: FC = () => {
   // Keyed by sessionId -> jobId for strict per-session loading isolation
   const [sendingSessions, setSendingSessions] = useState<Record<string, string>>({});
   const [copiedSessionId, setCopiedSessionId] = useState<string | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [loadingMessageIndex, setLoadingMessageIndex] = useState<number>(0);
 
   // Session refs for fresh access inside async effects / WS callbacks
@@ -291,6 +292,9 @@ export const ChatsPage: FC = () => {
     },
     []
   );
+
+  const fetchSessionsRef = useRef(fetchSessions);
+  fetchSessionsRef.current = fetchSessions;
 
   useEffect(() => {
     fetchSessions(1, null, false);
@@ -595,7 +599,7 @@ export const ChatsPage: FC = () => {
                 }
 
                 // Refresh sessions list in background to update timestamps and chat names
-                fetchSessions(1, null, false);
+                fetchSessionsRef.current(1, null, false);
               }
             }
           } catch (e) {
@@ -629,7 +633,50 @@ export const ChatsPage: FC = () => {
         socket.close();
       }
     };
-  }, [selectedSessionId, fetchSessions]);
+  }, []);
+
+  // Active fallback poller for sending sessions: ensures loading state stays until AI response is received
+  useEffect(() => {
+    const activeSessionIds = Object.keys(sendingSessions);
+    if (activeSessionIds.length === 0) return;
+
+    const pollInterval = setInterval(async () => {
+      for (const sid of activeSessionIds) {
+        try {
+          const resp = await engineService.getChatsBySession(sid, { page: 1, limit: 10 });
+          const msgs = resp.messages || [];
+          const lastMsg = msgs[msgs.length - 1];
+          if (lastMsg && lastMsg.role === "ai") {
+            // AI response has arrived! Clear sending state
+            setSendingSessions((prev) => {
+              if (!prev[sid]) return prev;
+              const next = { ...prev };
+              delete next[sid];
+              return next;
+            });
+
+            // Update session cache
+            sessionMessagesCacheRef.current[sid] = msgs;
+
+            // Update visible messages if user is currently viewing this session
+            if (selectedSessionIdRef.current === sid) {
+              setMessages(msgs);
+              setTimeout(() => {
+                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+              }, 100);
+            }
+
+            // Refresh sessions list
+            fetchSessionsRef.current(1, null, false);
+          }
+        } catch (e) {
+          console.debug("[Chat Poller] Polling check failed:", e);
+        }
+      }
+    }, 2000);
+
+    return () => clearInterval(pollInterval);
+  }, [sendingSessions]);
 
   const handleLoadMoreMessages = () => {
     if (!selectedSessionId || loadingMoreMessages || !messagesHasMore) return;
@@ -768,7 +815,7 @@ export const ChatsPage: FC = () => {
     const targetSessionId = selectedSessionId || generateUUID();
 
     // Guard: Prevent double-send if THIS session is already awaiting a reply
-    if (sendingSessionsRef.current[targetSessionId]) return;
+    if (sendingSessionsRef.current[targetSessionId] || isCurrentSessionSending) return;
 
     const jobId = `job-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
@@ -894,20 +941,6 @@ export const ChatsPage: FC = () => {
         sessionMessagesCacheRef.current[targetSessionId] = (
           sessionMessagesCacheRef.current[targetSessionId] || []
         ).map((m) => (m.id === tempId ? response.user_message : m));
-
-        // 40-second safety fallback timeout in case WebSocket connection misses the event
-        setTimeout(() => {
-          if (sendingSessionsRef.current[targetSessionId] === jobId) {
-            setSendingSessions((prev) => {
-              const next = { ...prev };
-              delete next[targetSessionId];
-              return next;
-            });
-            if (selectedSessionIdRef.current === targetSessionId) {
-              fetchMessages(targetSessionId, 1, null, false);
-            }
-          }
-        }, 40000);
       }
 
       setTimeout(() => {
@@ -927,7 +960,9 @@ export const ChatsPage: FC = () => {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSendMessage();
+      if (!isCurrentSessionSending) {
+        handleSendMessage();
+      }
     }
   };
 
@@ -945,6 +980,15 @@ export const ChatsPage: FC = () => {
     setCopiedSessionId(sid);
     toast.info("Session ID copied to clipboard", { title: "Copied" });
     setTimeout(() => setCopiedSessionId(null), 2000);
+  };
+
+  const handleCopyMessage = (msgId: string, content: string) => {
+    navigator.clipboard.writeText(content);
+    setCopiedMessageId(msgId);
+    toast.success("Message copied to clipboard", { title: "Copied" });
+    setTimeout(() => {
+      setCopiedMessageId((prev) => (prev === msgId ? null : prev));
+    }, 2000);
   };
 
   // ============================================================================
@@ -1616,15 +1660,47 @@ export const ChatsPage: FC = () => {
                         isUser ? "items-end" : "items-start"
                       )}
                     >
-                      {/* Issue 2 & 3: For user remove 'You •', for Mira use 'Mira' */}
-                      <div className="flex items-center gap-2 px-1 text-[11px] text-zinc-500 font-mono">
-                        {!isUser && (
+                      {/* Message header with name/date & copy button */}
+                      <div className="flex items-center gap-1.5 px-1 text-[11px] text-zinc-500 font-mono">
+                        {isUser ? (
+                          <>
+                            <button
+                              type="button"
+                              id={`btn-copy-msg-${msg.id}`}
+                              onClick={() => handleCopyMessage(msg.id, msg.content)}
+                              title="Copy message"
+                              aria-label="Copy message"
+                              className="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-white/10 transition-colors cursor-pointer"
+                            >
+                              {copiedMessageId === msg.id ? (
+                                <Check className="w-3 h-3 text-emerald-400" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
+                            <span>{formatDate(msg.created_at)}</span>
+                          </>
+                        ) : (
                           <>
                             <span className="font-semibold text-cyan-400">Mira</span>
                             <span>•</span>
+                            <span>{formatDate(msg.created_at)}</span>
+                            <button
+                              type="button"
+                              id={`btn-copy-msg-${msg.id}`}
+                              onClick={() => handleCopyMessage(msg.id, msg.content)}
+                              title="Copy message"
+                              aria-label="Copy message"
+                              className="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-white/10 transition-colors cursor-pointer"
+                            >
+                              {copiedMessageId === msg.id ? (
+                                <Check className="w-3 h-3 text-emerald-400" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
                           </>
                         )}
-                        <span>{formatDate(msg.created_at)}</span>
                       </div>
 
                       <div
@@ -1685,13 +1761,12 @@ export const ChatsPage: FC = () => {
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyDown={handleKeyDown}
-                disabled={isCurrentSessionSending}
                 placeholder={
                   selectedSessionId
                     ? "Type your message... (Enter to send, Shift+Enter for new line)"
                     : "Type a prompt to start a new chat session..."
                 }
-                className="flex-1 max-h-44 min-h-[38px] bg-transparent resize-none text-xs sm:text-[13px] text-zinc-100 placeholder-zinc-500 focus:outline-none px-2 py-1.5 leading-relaxed overflow-y-auto disabled:opacity-50"
+                className="flex-1 max-h-44 min-h-[38px] bg-transparent resize-none text-xs sm:text-[13px] text-zinc-100 placeholder-zinc-500 focus:outline-none px-2 py-1.5 leading-relaxed overflow-y-auto"
               />
 
               <button
@@ -1699,7 +1774,7 @@ export const ChatsPage: FC = () => {
                 id="btn-send-message"
                 onClick={handleSendMessage}
                 disabled={!inputText.trim() || isCurrentSessionSending}
-                title="Send message (Enter)"
+                title={isCurrentSessionSending ? "Waiting for AI response..." : "Send message (Enter)"}
                 aria-label="Send message"
                 className={cn(
                   "p-2 rounded-xl text-white font-medium transition-all duration-150 flex items-center justify-center shrink-0 cursor-pointer shadow-md",

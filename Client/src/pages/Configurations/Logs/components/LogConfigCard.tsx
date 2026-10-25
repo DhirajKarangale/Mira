@@ -253,7 +253,7 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
 
   return (
     <div className="w-full space-y-6 pb-0">
-      {/* Top Header with Discard and Save */}
+      {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/[0.08]">
         <div>
           <h2 className="text-base sm:text-lg font-bold tracking-tight text-zinc-100 flex items-center gap-2">
@@ -265,31 +265,12 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={handleReset}
-            disabled={!isDirty || saving}
-            className="text-xs gap-1.5"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Discard
-          </Button>
-
-          <Button
-            type="button"
-            variant="default"
-            size="sm"
-            onClick={handleSave}
-            disabled={!isDirty || saving}
-            className="text-xs gap-1.5 bg-cyan-600 hover:bg-cyan-500 text-white shadow-[0_0_15px_rgba(6,182,212,0.25)] font-semibold"
-          >
-            <Save className="w-3.5 h-3.5" />
-            {saving ? "Saving to Vault..." : "Save Configurations"}
-          </Button>
-        </div>
+        {isDirty && (
+          <div className="flex items-center gap-2 text-xs text-amber-400 font-medium px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 self-start sm:self-auto">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            Unsaved changes
+          </div>
+        )}
       </div>
 
       {/* 1: Retention Period Card */}
@@ -461,7 +442,7 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
 
           <div className="flex items-center gap-2.5 flex-wrap">
             <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-zinc-900/90 border border-white/10 shadow-sm">
-              <span className="text-xs text-zinc-300 font-medium">Show All:</span>
+              <span className="text-xs text-zinc-300 font-medium">Show Logs:</span>
               <button
                 type="button"
                 role="switch"
@@ -488,7 +469,7 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
             </div>
 
             <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-zinc-900/90 border border-white/10 shadow-sm">
-              <span className="text-xs text-zinc-300 font-medium">Store All:</span>
+              <span className="text-xs text-zinc-300 font-medium">Store Logs:</span>
               <button
                 type="button"
                 role="switch"
@@ -513,6 +494,32 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({ onSaved }) => {
                 />
               </button>
             </div>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              id="btn-discard-log-config"
+              onClick={handleReset}
+              disabled={!isDirty || saving}
+              className="text-xs gap-1.5"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Discard
+            </Button>
+
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              id="btn-save-log-config"
+              onClick={handleSave}
+              disabled={!isDirty || saving}
+              className="text-xs gap-1.5 bg-cyan-600 hover:bg-cyan-500 text-white shadow-[0_0_15px_rgba(6,182,212,0.25)] font-semibold"
+            >
+              <Save className="w-3.5 h-3.5" />
+              {saving ? "Saving to Vault..." : "Save Configurations"}
+            </Button>
           </div>
         </div>
 
