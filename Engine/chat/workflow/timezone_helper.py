@@ -113,6 +113,38 @@ def parse_time_expression(
     expr_clean = re.sub(r'\btod[ay]{1,2}\b', 'today', expr_clean)
     expr_clean = re.sub(r'\btomm?orr?ow\b', 'tomorrow', expr_clean)
 
+    # 0. Relative time expressions (e.g. "last 5 hours", "past 5 hours", "in the last 5 hours", "last 30 minutes")
+    rel_hours_match = re.search(r'(?:in\s+the\s+|over\s+the\s+|for\s+the\s+)?(?:last|past)\s+(\d+)\s*(?:hours?|hrs?)\b', expr_clean)
+    if rel_hours_match:
+        hours = int(rel_hours_match.group(1))
+        start_dt = now - timedelta(hours=hours)
+        end_dt = now
+        desc = f"the last {hours} hours ({start_dt.strftime('%I:%M %p')} to {end_dt.strftime('%I:%M %p')})"
+        return int(start_dt.timestamp()), int(end_dt.timestamp()), desc
+
+    rel_single_hour = re.search(r'(?:in\s+the\s+|over\s+the\s+|for\s+the\s+)?(?:last|past)\s+hour\b', expr_clean)
+    if rel_single_hour:
+        start_dt = now - timedelta(hours=1)
+        end_dt = now
+        desc = f"the last hour ({start_dt.strftime('%I:%M %p')} to {end_dt.strftime('%I:%M %p')})"
+        return int(start_dt.timestamp()), int(end_dt.timestamp()), desc
+
+    rel_mins_match = re.search(r'(?:in\s+the\s+|over\s+the\s+|for\s+the\s+)?(?:last|past)\s+(\d+)\s*(?:minutes?|mins?)\b', expr_clean)
+    if rel_mins_match:
+        mins = int(rel_mins_match.group(1))
+        start_dt = now - timedelta(minutes=mins)
+        end_dt = now
+        desc = f"the last {mins} minutes ({start_dt.strftime('%I:%M %p')} to {end_dt.strftime('%I:%M %p')})"
+        return int(start_dt.timestamp()), int(end_dt.timestamp()), desc
+
+    rel_days_match = re.search(r'(?:in\s+the\s+|over\s+the\s+|for\s+the\s+)?(?:last|past)\s+(\d+)\s*days?\b', expr_clean)
+    if rel_days_match:
+        days = int(rel_days_match.group(1))
+        start_dt = datetime.combine(today - timedelta(days=days), dtime.min, tzinfo=user_tz)
+        end_dt = datetime.combine(today, dtime.max, tzinfo=user_tz)
+        desc = f"the past {days} days ({start_dt.strftime('%Y-%m-%d')} to {end_dt.strftime('%Y-%m-%d')})"
+        return int(start_dt.timestamp()), int(end_dt.timestamp()), desc
+
     # 1. "yesterday"
     if "yesterday" in expr_clean:
         y_date = today - timedelta(days=1)

@@ -97,13 +97,13 @@ export function getEngineWebSocketUrl(): string {
   if (engineBase) {
     try {
       const url = new URL(engineBase);
-      return `${protocol}//${url.hostname || "127.0.0.1"}:${url.port || "9009"}/ws/chat`;
+      return `${protocol}//${url.hostname || "127.0.0.1"}:${url.port || "9007"}/ws/chat`;
     } catch {
       // Fallback
     }
   }
   const host = window.location.hostname || "127.0.0.1";
-  return `${protocol}//${host}:9009/ws/chat`;
+  return `${protocol}//${host}:9007/ws/chat`;
 }
 
 export const engineService = {
@@ -271,7 +271,33 @@ export const engineService = {
       return { status: "success", seeded_count: 0 };
     }
   },
+
+  async getPendingChatSessions(): Promise<Record<string, { job_id: string; created_at?: number; user_query?: string }>> {
+    try {
+      const response = await engineApi.get<{ status: string; pending_sessions: Record<string, any> }>("/chats/pending");
+      return response.data?.pending_sessions || {};
+    } catch {
+      return {};
+    }
+  },
+
+  async getSessionChatStatus(
+    sessionId: string
+  ): Promise<{ session_id: string; is_generating: boolean; job_id?: string; details?: any }> {
+    try {
+      const response = await engineApi.get<{
+        session_id: string;
+        is_generating: boolean;
+        job_id?: string;
+        details?: any;
+      }>(`/chats/sessions/${encodeURIComponent(sessionId)}/status`);
+      return response.data;
+    } catch {
+      return { session_id: sessionId, is_generating: false };
+    }
+  },
 };
+
 
 
 

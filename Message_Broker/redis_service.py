@@ -286,6 +286,15 @@ async def add_job_to_stream(job_data: Dict[str, Any]) -> Dict[str, str]:
             stream_fields[k] = str(v)
     stream_entry_id = await client.xadd(stream_name, stream_fields)
     await client.hset(f'{stream_name}:job_ids', str(job_id), stream_entry_id)
+    if consumer_key in ('llm_chat', 'CONSUMER_GROUP_LLM_CHAT') and job_data.get('session_id'):
+        try:
+            await set_active_chat_session(
+                session_id=str(job_data['session_id']),
+                job_id=str(job_id),
+                user_query=str(job_data.get('user_query', ''))[:120],
+            )
+        except Exception as e:
+            log(f"Warning: Failed to set active chat session in Redis: {e}")
     return {'message': 'successfully queued'}
 
 async def get_jobs_from_stream(consumer_key: str, count: int=1) -> List[Dict[str, Any]]:
@@ -346,6 +355,19 @@ async def delete_job_from_stream(consumer_key: str, job_id: str) -> Dict[str, st
     except Exception:
         pass
     await client.hdel(f'{stream_name}:job_ids', str(job_id))
+    if consumer_key in ('llm_chat', 'CONSUMER_GROUP_LLM_CHAT'):
+        try:
+            active_sessions = await client.hgetall(ACTIVE_CHAT_SESSIONS_KEY)
+            for sid, val in active_sessions.items():
+                try:
+                    obj = json.loads(val)
+                    if obj.get("job_id") == str(job_id):
+                        await client.hdel(ACTIVE_CHAT_SESSIONS_KEY, sid)
+                        break
+                except Exception:
+                    pass
+        except Exception:
+            pass
     return {'message': 'successfully deleted'}
 IMAGE_COMPARISON_RECENT_KEY = 'mira:image_comparison:recent'
 IMAGE_COMPARISON_DATA_KEY_PREFIX = 'mira:image_comparison:data:'
@@ -516,5 +538,95 @@ async def clear_all_chat_memory() -> Dict[str, Any]:
     if keys:
         deleted_count = await client.delete(*keys)
     return {"status": "success", "deleted_count": deleted_count}
+
+
+# ==============================================================================
+# Active Chat Session Tracking in Redis (for cross-screen state persistence)
+# ==============================================================================
+
+ACTIVE_CHAT_SESSIONS_KEY = "mira:chat:active_sessions"
+
+async def set_active_chat_session(
+    session_id: str,
+    job_id: str,
+    user_query: str = "",
+) -> Dict[str, Any]:
+    """
+    Records an active chat job in Redis under mira:chat:active_sessions.
+    Allows clients to restore loading animation across page reloads & navigation.
+    """
+    clean_sid = str(session_id).strip()
+    clean_jid = str(job_id).strip()
+    if not clean_sid or not clean_jid:
+        return {"status": "error", "message": "session_id and job_id required"}
+
+    client = get_redis_client()
+    record = {
+        "job_id": clean_jid,
+        "session_id": clean_sid,
+        "user_query": str(user_query)[:120] if user_query else "",
+        "created_at": int(time.time()),
+        "status": "processing",
+    }
+    await client.hset(ACTIVE_CHAT_SESSIONS_KEY, clean_sid, json.dumps(record))
+    return {"status": "success", "session_id": clean_sid, "job_id": clean_jid}
+
+async def remove_active_chat_session(session_id: str) -> Dict[str, Any]:
+    """
+    Removes a chat session from active Redis sessions once processing completes.
+    """
+    clean_sid = str(session_id).strip()
+    client = get_redis_client()
+    deleted = await client.hdel(ACTIVE_CHAT_SESSIONS_KEY, clean_sid)
+    return {"status": "success", "session_id": clean_sid, "deleted": bool(deleted)}
+
+async def get_active_chat_sessions() -> Dict[str, Any]:
+    """
+    Returns all currently active chat sessions from Redis.
+    Automatically purges any jobs older than 10 minutes to prevent stale state.
+    """
+    client = get_redis_client()
+    raw = await client.hgetall(ACTIVE_CHAT_SESSIONS_KEY)
+    results: Dict[str, Any] = {}
+    now = int(time.time())
+    stale_keys: List[str] = []
+
+    for sid, val in raw.items():
+        try:
+            parsed = json.loads(val)
+            # Auto-expire entries older than 10 minutes (600s)
+            if now - parsed.get("created_at", 0) > 600:
+                stale_keys.append(sid)
+            else:
+                results[sid] = parsed
+        except Exception:
+            results[sid] = {"job_id": val, "session_id": sid, "status": "processing"}
+
+    if stale_keys:
+        try:
+            await client.hdel(ACTIVE_CHAT_SESSIONS_KEY, *stale_keys)
+        except Exception:
+            pass
+
+    return results
+
+async def get_active_chat_session(session_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Returns the active state of a single session, or None if idle.
+    """
+    clean_sid = str(session_id).strip()
+    client = get_redis_client()
+    raw = await client.hget(ACTIVE_CHAT_SESSIONS_KEY, clean_sid)
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+        if int(time.time()) - parsed.get("created_at", 0) > 600:
+            await client.hdel(ACTIVE_CHAT_SESSIONS_KEY, clean_sid)
+            return None
+        return parsed
+    except Exception:
+        return {"job_id": raw, "session_id": clean_sid, "status": "processing"}
+
 
 

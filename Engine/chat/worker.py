@@ -14,6 +14,7 @@ from .broker_client import (
     poll_chat_jobs,
     acknowledge_chat_job,
     save_chat_to_vault,
+    remove_active_chat_session_broker,
 )
 from .memory import (
     get_session_memory,
@@ -143,10 +144,11 @@ async def process_chat_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
     if not chat_name or not str(chat_name).strip():
         chat_naming_queue.enqueue(session_id)
 
-    # Step 7: Acknowledge and remove job from Message Broker
+    # Step 7: Acknowledge and remove job from Message Broker & Redis active tracking
     removed = await asyncio.to_thread(acknowledge_chat_job, job_id)
     if not removed:
         log_error(f"[ChatWorker-{worker_id}] Warning: Failed to acknowledge job {job_id}")
+    await asyncio.to_thread(remove_active_chat_session_broker, session_id)
 
     log(f"[ChatWorker-{worker_id}] Successfully finished job {job_id} for session {session_id}")
     return True

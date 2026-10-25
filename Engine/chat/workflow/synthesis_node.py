@@ -75,22 +75,23 @@ def synthesis_node(state: AgentState) -> Dict[str, Any]:
         time_desc = retrieved_ctx.get("time_description", "the requested time")
         if retrieved_ctx.get("found"):
             count = retrieved_ctx.get("count", 0)
-            top_records = (retrieved_ctx.get("records") or [])[:5]
+            top_records = (retrieved_ctx.get("records") or [])[:50]
             summary_lines = []
             for r in top_records:
                 ts = r.get("timestamp_formatted", "")
+                ts_end = r.get("timestamp_end_formatted")
+                time_display = f"{ts} - {ts_end}" if ts_end and ts_end != ts else ts
                 app = r.get("app_name", "")
-                stext = str(r.get("summarized_text") or "")[:180].strip()
-                summary_lines.append(f"- **{app}** ({ts}): {stext}")
+                stext = str(r.get("summarized_text") or "").strip()
+                summary_lines.append(f"- **{time_display}** — **{app}**: {stext}")
             recs_text = "\n".join(summary_lines)
             final_answer = (
-                f"Hey {user_name}! Here is what I found in your activity logs for {time_desc} ({count} total records):\n\n"
+                f"**Activity Timeline ({time_desc}):**\n\n"
                 f"{recs_text}"
             )
         else:
             final_answer = (
-                f"Hey {user_name}! I checked your activity logs for {time_desc}, but didn't find any recorded screen events "
-                "matching that specific time or application."
+                f"No activity records were found for {time_desc}."
             )
 
     return {
@@ -116,66 +117,57 @@ def _build_activity_synthesis_prompt(
             f"Searched time range: {time_desc}\n"
             f"App filter: {app_filter or 'Any application'}\n\n"
             "CRITICAL INSTRUCTION FOR MISSING DATA:\n"
-            "- You MUST explicitly and honestly inform the user that no activity records were found for this period/query.\n"
+            "- State directly that no activity records were found for this period.\n"
             "- Do NOT invent, assume, or hallucinate activities, applications, files, or tasks.\n"
-            "- Be friendly, warm, and helpful with a polite touch of humor (e.g. suggesting they might have been taking a well-deserved break or working on something offline).\n"
+            "- Avoid conversational filler, greetings, or suggestions.\n"
         )
     else:
-        sample_records = records[:20]
-        lines: List[str] = [f"Found {len(records)} verified activity event(s) in Knowledge Base ({time_desc}) - showing top {len(sample_records)}:"]
+        sample_records = records[:50]
+        lines: List[str] = [f"Verified activity events in Knowledge Base for {time_desc} ({len(sample_records)} event(s)):"]
         for idx, r in enumerate(sample_records, start=1):
             ts = r.get("timestamp_formatted", "Unknown Time")
             ts_end = r.get("timestamp_end_formatted")
             time_display = f"{ts} - {ts_end}" if ts_end and ts_end != ts else ts
             app = r.get("app_name", "Unknown App")
-            summary = r.get("summarized_text", "").strip()[:600]
+            summary = r.get("summarized_text", "").strip()
             lines.append(f"{idx}. [{time_display}] Application: {app}\n   Activity: {summary}")
         evidence_block = "\n".join(lines)
 
-    prompt = f"""You are MIRA, the intelligent, perceptive, highly detailed and friendly desktop AI companion for {user_name}.
+    prompt = f"""You are MIRA, the desktop AI assistant.
 Current Date & Time: {current_time_str}
-
-Conversation History:
-{history_text}
 
 User Query: "{user_query}"
 
 Verified Ground-Truth Evidence from Screen Activity Database:
 {evidence_block}
 
-CRITICAL GUIDELINES FOR SYNTHESIS:
-1. Deep Detail & Precision (TOP PRIORITY):
-   - You MUST be specific, thorough, and precise about what {user_name} was doing inside each application based ONLY on the evidence.
-   - For Web Browsers (e.g. Microsoft Edge, Chrome): Specify the EXACT websites visited, web apps open (e.g. WhatsApp Web, ChatGPT, Bolna.ai, YouTube, local MIRA dashboard at 127.0.0.1:9010), specific chats, shared links, background tabs open, documents viewed, or search queries. NEVER give vague answers like "you were using Edge" or "browsing the web" — explicitly explain WHAT was on the screen!
-   - For Code Editors & IDEs (e.g. Antigravity IDE, VS Code): State the exact project name ('Mira'), the exact files viewed or edited ('config.json', 'worker.py', 'router.py'), code analysis tasks, terminal commands, or agent interactions.
-   - For Text Editors (e.g. Notepad): State the exact file name (e.g. 'prompts.txt', '12543200 = 4y') and the specific architecture specifications, prompts, or math equations written.
+STRICT REQUIREMENTS FOR THE ACTIVITY RESPONSE:
+1. Explain Each Activity in Simple, Clear Language:
+   - Describe exactly what {user_name} was doing at that time based ONLY on the available captured data.
+   - For applications and browsers: state the specific document, file, website, tool, or query being used whenever confirmed by the data.
 
-2. NO HALLUCINATION & NO MERGING (STRICT MANDATE):
-   - Every single website, URL, file name, app name, and action mentioned MUST come directly and literally from the Evidence above. Do not invent facts, numbers, or activities.
-   - DO NOT MERGE separate applications or activities into an imagined narrative story. If {user_name} used Calculator and also had a Notion tab open in the background, report each factually and independently. DO NOT claim or assume that the calculation was for the Notion project!
-   - DO NOT ADD speculative assumptions, deductions, or motivations (e.g. do NOT say "suggesting you were planning a 3D game" or "using ChatGPT to estimate storage for your 3D project").
-   - If an open tab or workspace title (e.g. a Notion tab) was simply visible in a browser window or sidebar, report it strictly as an open page/tab title. Do NOT claim {user_name} actively worked on that project or made progress on it unless the log explicitly describes direct editing actions.
-   - Do NOT perform unrequested extra math or invent interpretations of numbers.
+2. Do NOT Confuse Project Names with Git Branch Names:
+   - If Antigravity, an IDE, or an editor displays 'main', 'master', or a similar label, do NOT assume or state that it is the project name or Git branch.
+   - Explain ONLY what the captured data confirms. Never guess or label an element as a project name or Git branch unless explicitly verified by repository or directory path labels in the text.
 
-3. SLEEK, EXECUTIVE TIMELINE FORMATTING (CRITICAL FORMAT RULES):
-   - Format the response as a clean, highly scannable chronological timeline.
-   - Do NOT create deep multi-level nested bullet hierarchies (avoid bullet-under-bullet-under-bullet lists).
-   - Do NOT create artificial category subheadings or arbitrary time blocks (e.g. avoid '### 🕚 11:38 AM – 11:46 AM: IDE Setup & Initial Math Queries').
-   - Do NOT append redundant 'Summary of Key Data Points' sections repeating calculations or numbers.
-   - Do NOT include trivial UI chrome (e.g. do NOT mention button focus like 'focused on Equals', default shortcut tiles, or generic UI warnings). Focus on meaningful user actions.
-   - Do NOT ask intrusive, speculative trailing questions at the end. End cleanly with a polite, helpful one-sentence closing (e.g., "Let me know if you would like me to unpack any of these sessions in greater detail!").
-   - FORMAT STRUCTURE:
-     Start with a friendly greeting and concise 1-sentence intro stating the time window.
-     Then present a chronological bulleted timeline:
-     * **[Timestamp or Range]** — **[Application / Service]**: [Crisp, high-signal description of the exact page, document, query, or task].
-     If multiple quick actions occurred in the same 1-2 minute burst (e.g. search + calculator):
-     * **[Timestamp Range]** — **[Activity Summary]**:
-       - **[Service 1]**: [Action or query]
-       - **[Service 2]**: [Result or action]
+3. No Assumptions, Inventions, or Autocompletion:
+   - Do NOT autocomplete missing context, make assumptions, invent actions, or hallucinate details.
+   - Do NOT guess user motivations, intentions, or deductions.
+   - If the activity is unclear, state only what is known (e.g. "You had <Application> open, but the specific activity is unclear from the captured data.").
+   - Never merge unrelated tasks into an imagined narrative.
 
-4. Privacy & Decryption Notice: The Evidence above is ALREADY fully decrypted, verified, and safe to share with {user_name}. NEVER state or imply that "details are encrypted in the logs" or that you "cannot see what websites or documents you had open". Share the exact details directly.
+4. Factual, Chronological, and Focused on Actual Activity:
+   - Present a clean chronological timeline covering the activities in the requested time window.
+   - AVOID unnecessary greetings (do NOT include "Hello!", "Hey there!", or conversational pleasantries).
+   - AVOID suggestions, recommendations, or trailing questions (do NOT offer follow-ups, advice, or trailing questions like "Let me know if you would like me to unpack...").
+   - AVOID repetition of calculations, numbers, or identical descriptions.
+   - Format structure:
+     * **[Timestamp or Range]** — **[Application]**: [Clear, simple, factual description of what the user was doing at that time].
 
-Write your response directly to {user_name}:
+5. Privacy & Decryption:
+   - The evidence above is ALREADY fully decrypted and verified. Never state or imply that details are encrypted in the logs.
+
+Output the response directly:
 """
     return prompt
 

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { NAV_ITEMS } from "@/types/navigation";
 import { cn } from "@/lib/utils";
+import { useChatStore } from "@/store/useChatStore";
 
 const ICON_MAP: Record<string, LucideIcon> = {
   Sparkles,
@@ -27,6 +28,9 @@ const ICON_MAP: Record<string, LucideIcon> = {
 export const NavTabs: FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const unreadCount = useChatStore(
+    (s) => Object.keys(s.unreadSessionIds || {}).length
+  );
 
   return (
     <nav
@@ -66,6 +70,15 @@ export const NavTabs: FC = () => {
               )}
             />
             <span className="tracking-wide">{item.label}</span>
+
+            {item.id === "chats" && unreadCount > 0 && (
+              <span
+                className="flex items-center justify-center px-1.5 min-w-[16px] h-3.5 rounded-full bg-cyan-400 text-zinc-950 text-[9px] font-bold shadow-[0_0_8px_rgba(6,182,212,0.7)] animate-pulse"
+                title={`${unreadCount} unread response${unreadCount > 1 ? "s" : ""}`}
+              >
+                {unreadCount}
+              </span>
+            )}
 
             {isActive && (
               <span className="absolute bottom-0 left-2 right-2 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent rounded-full" />

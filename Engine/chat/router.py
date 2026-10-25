@@ -18,6 +18,9 @@ from .broker_client import (
     save_chat_to_vault,
     delete_session_from_vault,
     delete_all_sessions_from_vault,
+    get_active_chat_sessions_broker,
+    set_active_chat_session_broker,
+    remove_active_chat_session_broker,
 )
 from .memory import clear_session_memory, clear_all_sessions_memory
 from .websocket import ws_manager
@@ -293,6 +296,14 @@ async def send_chat_message_endpoint(request: SendChatMessageRequest):
         )
         if not queued:
             logger.warning(f"Failed to queue chat job {job_id} into Message Broker stream.")
+        else:
+            # Record in Redis active tracking for UI cross-screen persistence
+            await asyncio.to_thread(
+                set_active_chat_session_broker,
+                session_id=session_id,
+                job_id=job_id,
+                user_query=content,
+            )
 
     return {
         "job_id": job_id,
@@ -301,6 +312,32 @@ async def send_chat_message_endpoint(request: SendChatMessageRequest):
         "ai_message": None,
         "status": "queued",
     }
+
+
+@router.get("/chats/pending", status_code=status.HTTP_200_OK, summary="Get Active / Pending Chat Sessions from Redis")
+async def get_pending_chat_sessions_endpoint():
+    """
+    Returns all sessions that are currently awaiting or generating an AI reply in Redis.
+    """
+    active = await asyncio.to_thread(get_active_chat_sessions_broker)
+    return {"status": "success", "pending_sessions": active}
+
+
+@router.get("/chats/sessions/{session_id}/status", status_code=status.HTTP_200_OK, summary="Get Chat Session Generation Status")
+async def get_chat_session_status_endpoint(session_id: str):
+    """
+    Checks if a specific session is generating in Redis.
+    """
+    clean_sid = (session_id or "").strip()
+    active = await asyncio.to_thread(get_active_chat_sessions_broker)
+    session_info = active.get(clean_sid) if isinstance(active, dict) else None
+    return {
+        "session_id": clean_sid,
+        "is_generating": bool(session_info),
+        "job_id": session_info.get("job_id") if isinstance(session_info, dict) else None,
+        "details": session_info,
+    }
+
 
 
 @router.get("/chats/workers/status", status_code=status.HTTP_200_OK, summary="Get Chat Workers Status")

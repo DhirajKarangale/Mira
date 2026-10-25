@@ -296,3 +296,64 @@ def delete_all_chat_memory_broker() -> bool:
         log_error(f"Failed to delete all chat memory from Message Broker: {e}")
         return False
 
+
+def get_active_chat_sessions_broker() -> Dict[str, Any]:
+    """
+    Fetch all currently active chat sessions from Redis via Message Broker.
+    """
+    broker_base = get_broker_base_url()
+    endpoint = f"{broker_base}/chat/active"
+    try:
+        resp = requests.get(endpoint, timeout=4.0)
+        if resp.status_code == 200:
+            data = resp.json()
+            return data if isinstance(data, dict) else {}
+        return {}
+    except Exception as e:
+        log_error(f"Failed to fetch active chat sessions from Redis: {e}")
+        return {}
+
+
+def set_active_chat_session_broker(session_id: str, job_id: str, user_query: str = "") -> bool:
+    """
+    Register an active chat session in Redis via Message Broker.
+    """
+    clean_sid = str(session_id).strip()
+    clean_jid = str(job_id).strip()
+    if not clean_sid or not clean_jid:
+        return False
+    broker_base = get_broker_base_url()
+    endpoint = f"{broker_base}/chat/active"
+    try:
+        resp = requests.post(
+            endpoint,
+            json={
+                "session_id": clean_sid,
+                "job_id": clean_jid,
+                "user_query": str(user_query)[:120],
+            },
+            timeout=3.0,
+        )
+        return resp.status_code in (200, 201)
+    except Exception as e:
+        log_error(f"Failed to register active chat session {clean_sid} in Redis: {e}")
+        return False
+
+
+def remove_active_chat_session_broker(session_id: str) -> bool:
+    """
+    Remove an active chat session from Redis via Message Broker.
+    """
+    clean_sid = str(session_id).strip()
+    if not clean_sid:
+        return False
+    broker_base = get_broker_base_url()
+    endpoint = f"{broker_base}/chat/active/{clean_sid}"
+    try:
+        resp = requests.delete(endpoint, timeout=3.0)
+        return resp.status_code in (200, 204)
+    except Exception as e:
+        log_error(f"Failed to remove active chat session {clean_sid} from Redis: {e}")
+        return False
+
+

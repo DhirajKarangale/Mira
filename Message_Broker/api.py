@@ -174,3 +174,63 @@ async def clear_all_chat_memory():
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': str(e)})
 
 
+# ==============================================================================
+# Active Chat Sessions APIs (Redis backed)
+# ==============================================================================
+
+@router.get('/chat/active', status_code=status.HTTP_200_OK)
+async def get_active_chat_sessions():
+    """
+    Get all currently active/generating chat sessions from Redis.
+    """
+    try:
+        return await rs.get_active_chat_sessions()
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': str(e)})
+
+
+@router.get('/chat/active/{session_id}', status_code=status.HTTP_200_OK)
+async def get_active_chat_session(session_id: str):
+    """
+    Check if a specific chat session is currently active/generating.
+    """
+    try:
+        data = await rs.get_active_chat_session(session_id)
+        if not data:
+            return {"session_id": session_id, "status": "idle", "is_generating": False}
+        return {**data, "is_generating": True}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': str(e)})
+
+
+@router.post('/chat/active', status_code=status.HTTP_200_OK)
+async def set_active_chat_session(payload: Dict[str, Any]):
+    """
+    Explicitly register an active chat session in Redis.
+    """
+    sid = payload.get("session_id")
+    jid = payload.get("job_id")
+    if not sid or not jid:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="session_id and job_id are required")
+    try:
+        return await rs.set_active_chat_session(
+            session_id=str(sid),
+            job_id=str(jid),
+            user_query=str(payload.get("user_query", "")),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': str(e)})
+
+
+@router.delete('/chat/active/{session_id}', status_code=status.HTTP_200_OK)
+async def remove_active_chat_session(session_id: str):
+    """
+    Remove an active chat session from Redis once completed.
+    """
+    try:
+        return await rs.remove_active_chat_session(session_id)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': str(e)})
+
+
+

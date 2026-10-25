@@ -79,7 +79,7 @@ def user_activity_node(state: AgentState) -> Dict[str, Any]:
         start_ts=start_ts,
         end_ts=end_ts,
         user_tz=user_tz,
-        limit=30,
+        limit=50,
     )
 
     log(f"[UserActivityNode] Search retrieved {len(records)} relevant activity point(s).")
@@ -125,13 +125,13 @@ Current Reference Time: {current_time_str} (Timezone: {user_tz})
 User Query: "{query}"
 
 Extract the following JSON fields:
-1. "search_query": Focused keywords for semantic vector search on summarized screen text (e.g. "WhatsApp chat conversation", "editing code file in VS Code", "reading documentation").
+1. "search_query": Focused keywords for semantic vector search on summarized screen text (e.g. "WhatsApp chat conversation", "editing code file in VS Code", "reading documentation"). If the user is asking broadly about all their activity or general timeline (e.g. "what have I done", "what was I doing"), set to null.
 2. "app_name": Specific desktop app name if explicitly mentioned or strongly implied (e.g. "Microsoft Edge", "Visual Studio Code", "Notepad", "WhatsApp", "Discord", "Figma", "Spotify", "Terminal"). If not specific to an app, set to null.
-3. "time_expression": The specific relative or absolute time phrase mentioned (e.g. "yesterday", "today", "between 9 AM and 5 PM", "last month", "last week", "before 2 PM", "this morning", "on 24/10/2026"). If none specified, set to "today".
+3. "time_expression": The specific relative or absolute time phrase mentioned (e.g. "last 5 hours", "past 2 hours", "yesterday", "today", "between 9 AM and 5 PM", "last month", "last week", "before 2 PM", "this morning", "on 24/10/2026"). If none specified, set to "today".
 
 Return strictly a valid JSON object matching:
 {{
-  "search_query": "<string>",
+  "search_query": "<string or null>",
   "app_name": "<string or null>",
   "time_expression": "<string>"
 }}
@@ -281,13 +281,18 @@ def _search_across_knowledge_bases(
     """
     from qdrant_client import QdrantClient, models
 
-    # Generate query embedding
+    # Generate query embedding if specific query given; for broad activity timeline queries, use chronological scroll
     query_vector = None
-    try:
-        clean_q = search_query.strip() if search_query else "user computer activity"
-        query_vector = generate_embedding(clean_q)
-    except Exception as e:
-        log_error(f"[UserActivityNode] Failed to generate embedding for query: {e}")
+    is_broad_query = not search_query or search_query.strip().lower() in (
+        "none", "null", "user computer activity", "activity", "user activity", "all", "all activity",
+        "what have i done", "what was i doing", "work", "history"
+    )
+    if not is_broad_query:
+        try:
+            clean_q = search_query.strip()
+            query_vector = generate_embedding(clean_q)
+        except Exception as e:
+            log_error(f"[UserActivityNode] Failed to generate embedding for query: {e}")
 
     # Build Qdrant payload filters
     filter_conditions: List[models.FieldCondition] = []
@@ -326,7 +331,7 @@ def _search_across_knowledge_bases(
                     client.close()
                     continue
 
-                fetch_limit = limit * 2
+                fetch_limit = max(limit * 2, 80)
                 points = []
 
                 if query_vector:
@@ -342,7 +347,7 @@ def _search_across_knowledge_bases(
                         log_error(f"[UserActivityNode] query_points failed on {kb_path.name}: {se}. Falling back to scroll.")
                         points = []
 
-                # Fallback to scroll if vector search returned nothing or was unavailable
+                # Fallback to scroll if vector search returned nothing or was not requested
                 if not points:
                     try:
                         scroll_res, _ = client.scroll(
@@ -388,6 +393,15 @@ def _search_across_knowledge_bases(
                         log_error(f"[UserActivityNode] Point {pt.id} remained encrypted, omitting.")
                         continue
 
+                    # Sanitize any legacy confusion regarding project names vs branch names
+                    sanitized_text = re.sub(
+                        r"\b(?:repository or project named 'main'|project named 'main'|project 'main')\b",
+                        "workspace displaying label 'main'",
+                        decrypted_text,
+                        flags=re.IGNORECASE
+                    )
+                    sanitized_text = re.sub(r'\bproject named "main"\b', "workspace displaying label 'main'", sanitized_text, flags=re.IGNORECASE)
+
                     pt_ts = int(payload.get("timestamp") or 0)
                     localized_ts = format_timestamp_in_tz(pt_ts, user_tz) if pt_ts else "Unknown Time"
                     score_val = float(getattr(pt, "score", 1.0))
@@ -399,7 +413,7 @@ def _search_across_knowledge_bases(
                         "os": payload.get("os", "Unknown"),
                         "timestamp": pt_ts,
                         "timestamp_formatted": localized_ts,
-                        "summarized_text": decrypted_text,
+                        "summarized_text": sanitized_text,
                         "kb_name": kb_path.name,
                     })
 
@@ -426,12 +440,31 @@ def _search_across_knowledge_bases(
             deduped_timeline.append(r)
             continue
         prev = deduped_timeline[-1]
-        same_app = (r["app_name"].lower() == prev["app_name"].lower())
-        summary_prefix_same = (r["summarized_text"][:100].lower() == prev["summarized_text"][:100].lower())
-        if same_app and summary_prefix_same:
+        same_app = (r["app_name"].strip().lower() == prev["app_name"].strip().lower())
+        time_diff = abs(r["timestamp"] - prev["timestamp"])
+        
+        # Check if they are the same continuous activity within 5 minutes
+        is_same = False
+        if same_app and time_diff <= 300:
+            t1 = prev["summarized_text"].lower().strip()
+            t2 = r["summarized_text"].lower().strip()
+            if t1 == t2 or t1[:80] == t2[:80]:
+                is_same = True
+            else:
+                words1 = set(re.findall(r'\b[a-zA-Z0-9_\-\.]{3,}\b', t1))
+                words2 = set(re.findall(r'\b[a-zA-Z0-9_\-\.]{3,}\b', t2))
+                if words1 and words2:
+                    overlap = len(words1 & words2) / max(len(words1), len(words2))
+                    if overlap >= 0.55:
+                        is_same = True
+
+        if is_same:
             # Update end time range
             prev["timestamp_end_formatted"] = r["timestamp_formatted"]
+            if len(r["summarized_text"]) > len(prev["summarized_text"]):
+                prev["summarized_text"] = r["summarized_text"]
             continue
         deduped_timeline.append(r)
 
     return deduped_timeline[:limit]
+

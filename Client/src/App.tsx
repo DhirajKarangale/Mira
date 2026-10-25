@@ -7,6 +7,7 @@ import {
   ConfigurationsPage,
   AboutPage,
 } from "@/pages";
+import { useGlobalChatSync } from "@/hooks/useGlobalChatSync";
 
 function ActivityRedirect() {
   const { "*": rest } = useParams();
@@ -23,6 +24,8 @@ function AiConfigsRedirect() {
 }
 
 export function App() {
+  useGlobalChatSync();
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#080c14] text-zinc-100 select-none border border-white/[0.06]">
       <Header />
