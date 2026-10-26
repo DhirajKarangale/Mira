@@ -750,6 +750,24 @@ async def refresh_suggestions(force: bool = False, force_regenerate: bool = Fals
 
     log("[SuggestionsSection] Initiating daily suggestions generation (new day or forced regeneration)...")
 
+    # Protect backend: immediately stop if no LLM keys configured
+    from config import CONFIG
+    if not CONFIG.has_any_llm_key(force_refresh=True):
+        log_error("[SuggestionsSection] No LLM API keys configured in Vault. Skipping suggestions generation to protect backend.")
+        try:
+            await ws_manager.broadcast_daily_suggestions_update(
+                "suggestions",
+                {
+                    "status": "error",
+                    "error": "NO_LLM_KEYS",
+                    "message": "You don't have any LLM API keys configured. Please add an LLM key in Configurations > AI Config.",
+                    "route": "/configurations/ai-config",
+                }
+            )
+        except Exception:
+            pass
+        return []
+
     # Broadcast refreshing indicator
     try:
         await ws_manager.broadcast_daily_suggestions_update("suggestions", {"status": "refreshing"})

@@ -8,6 +8,7 @@ import {
   AlertCircle,
   Globe,
   ArrowRight,
+  KeyRound,
 } from "lucide-react";
 import type { NewsArticle } from "@/services/dailySuggestions.service";
 
@@ -18,6 +19,7 @@ interface NewsWidgetProps {
   onRefresh: () => void;
   isLocationConfigured?: boolean;
   isUserLoading?: boolean;
+  hasGnewsKeys?: boolean;
 }
 
 function formatRelativeTime(dateStr?: string) {
@@ -44,6 +46,7 @@ export const NewsWidget: FC<NewsWidgetProps> = ({
   onRefresh,
   isLocationConfigured = true,
   isUserLoading = false,
+  hasGnewsKeys = true,
 }) => {
   const navigate = useNavigate();
 
@@ -68,26 +71,36 @@ export const NewsWidget: FC<NewsWidgetProps> = ({
             <h2 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
               <span>Top Headlines</span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700/60 font-normal">
-                {isLocationConfigured ? "3 Key Stories" : "Location Required"}
+                {!hasGnewsKeys
+                  ? "Key Required"
+                  : isLocationConfigured
+                  ? "3 Key Stories"
+                  : "Location Required"}
               </span>
             </h2>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {!isLocationConfigured && !isUserLoading && (
+          {!hasGnewsKeys && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/15 border border-amber-500/30 text-amber-300">
+              <KeyRound className="w-3 h-3 text-amber-400" />
+              <span>GNews Key Required</span>
+            </span>
+          )}
+          {hasGnewsKeys && !isLocationConfigured && !isUserLoading && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/15 border border-amber-500/30 text-amber-300">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
               Location Required
             </span>
           )}
-          {isLocationConfigured && isDisplayingOutdated && (
+          {hasGnewsKeys && isLocationConfigured && isDisplayingOutdated && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/15 border border-amber-500/30 text-amber-300">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
               Previous
             </span>
           )}
-          {isLocationConfigured && isRefreshing && (
+          {hasGnewsKeys && isLocationConfigured && isRefreshing && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-cyan-500/15 border border-cyan-500/30 text-cyan-300">
               <Loader2 className="w-3 h-3 animate-spin" />
               Updating
@@ -96,21 +109,45 @@ export const NewsWidget: FC<NewsWidgetProps> = ({
           <button
             type="button"
             onClick={onRefresh}
-            disabled={isRefreshing || !isLocationConfigured}
+            disabled={isRefreshing || !isLocationConfigured || !hasGnewsKeys}
             title={
-              !isLocationConfigured
+              !hasGnewsKeys
+                ? "GNews API key required to fetch news"
+                : !isLocationConfigured
                 ? "Configure location in Me tab to enable news"
                 : "Refresh News Headlines"
             }
             className="p-1.5 rounded-lg text-zinc-400 hover:text-cyan-300 hover:bg-zinc-800/80 transition-colors disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
           >
-            <RotateCw className={`w-3.5 h-3.5 ${isRefreshing && isLocationConfigured ? "animate-spin text-cyan-400" : ""}`} />
+            <RotateCw className={`w-3.5 h-3.5 ${isRefreshing && isLocationConfigured && hasGnewsKeys ? "animate-spin text-cyan-400" : ""}`} />
           </button>
         </div>
       </div>
 
       {/* Content */}
-      {isUserLoading ? (
+      {!hasGnewsKeys ? (
+        <div className="flex-1 flex flex-col items-center justify-center py-8 px-4 text-center text-zinc-400 gap-3 animate-in fade-in duration-200">
+          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shadow-[0_0_20px_rgba(245,158,11,0.15)]">
+            <KeyRound className="w-6 h-6 text-amber-400" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-zinc-200">GNews API Key Required</p>
+            <p className="text-xs text-zinc-400 max-w-[260px] leading-relaxed">
+              You don't have a GNews API key configured. MIRA cannot fetch top headlines without a GNews key. Please add your GNews API key first.
+            </p>
+          </div>
+          <button
+            type="button"
+            id="news-widget-add-key-btn"
+            onClick={() => navigate("/tools/news")}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white shadow-md shadow-amber-500/20 transition-all duration-200 active:scale-95 cursor-pointer mt-1"
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            <span>Configure GNews Key in Tools Tab</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ) : isUserLoading ? (
         <div className="flex-1 flex flex-col items-center justify-center py-8 text-center text-zinc-400 gap-2">
           <Loader2 className="w-6 h-6 animate-spin text-cyan-400" />
           <p className="text-xs text-zinc-400">Loading user profile...</p>

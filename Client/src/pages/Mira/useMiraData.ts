@@ -8,6 +8,9 @@ import {
   type NewsArticle,
 } from "@/services/dailySuggestions.service";
 import { useUserDetailsQuery } from "../User/queries";
+import { useAIConfigsQuery } from "../Configurations/AiConfig/queries";
+import { useGNewsConfigQuery } from "../Tools/News/queries";
+import { toast } from "@/components";
 import type { UserDetails } from "../User/types";
 import { QUERY_KEYS } from "@/lib/queryClient";
 
@@ -56,6 +59,8 @@ function safeParseObject<T>(val: unknown): T | null {
 export function useMiraData() {
   const queryClient = useQueryClient();
   const { data: userDetails, isLoading: isUserLoading } = useUserDetailsQuery();
+  const { data: aiConfigs } = useAIConfigsQuery();
+  const { data: gnewsConfig } = useGNewsConfigQuery();
 
   const isLocationConfigured = useMemo(
     () => checkIsLocationConfigured(userDetails),
@@ -80,6 +85,31 @@ export function useMiraData() {
     staleTime: 60 * 1000, // 1 minute
     refetchOnWindowFocus: true,
   });
+
+  const hasLlmKeys = useMemo(() => {
+    if (aiConfigs !== undefined) {
+      return aiConfigs.some(
+        (cfg) => Array.isArray(cfg.keys) && cfg.keys.some((k) => typeof k === "string" && k.trim().length > 0)
+      );
+    }
+    if (pageData?.has_llm_keys !== undefined) {
+      return Boolean(pageData.has_llm_keys);
+    }
+    return true;
+  }, [aiConfigs, pageData?.has_llm_keys]);
+
+  const hasGnewsKeys = useMemo(() => {
+    if (gnewsConfig !== undefined) {
+      return (
+        Array.isArray(gnewsConfig.keys) &&
+        gnewsConfig.keys.some((k) => typeof k === "string" && k.trim().length > 0)
+      );
+    }
+    if (pageData?.has_gnews_keys !== undefined) {
+      return Boolean(pageData.has_gnews_keys);
+    }
+    return true;
+  }, [gnewsConfig, pageData?.has_gnews_keys]);
 
   const today: DailySuggestionsRecord = useMemo(() => {
     const raw = pageData?.today;
@@ -269,11 +299,28 @@ export function useMiraData() {
   // Manual refresh trigger
   const handleRefresh = useCallback(
     async (section: "weather" | "news" | "suggestions" | "all" | "location_change" = "all") => {
+      if (section === "suggestions" && !hasLlmKeys) {
+        toast.error("You don't have any LLM API keys configured. Please add an LLM key in Configurations > AI Config.", {
+          title: "LLM API Key Required",
+        });
+        return;
+      }
+
+      if (section === "news" && !hasGnewsKeys) {
+        toast.error("You don't have a GNews API key configured. Please add a GNews key in Tools > News.", {
+          title: "GNews API Key Required",
+        });
+        return;
+      }
+
+      const willRefreshNews = section === "all" || section === "location_change" ? hasGnewsKeys : section === "news";
+      const willRefreshSuggestions = section === "all" ? hasLlmKeys : section === "suggestions";
+
       setRefreshingSection((prev) => ({
         ...prev,
         [section]: true,
-        ...(section === "all" ? { weather: true, news: true, suggestions: true } : {}),
-        ...(section === "location_change" ? { weather: true, news: true } : {}),
+        ...(section === "all" ? { weather: true, news: willRefreshNews, suggestions: willRefreshSuggestions } : {}),
+        ...(section === "location_change" ? { weather: true, news: willRefreshNews } : {}),
       }));
 
       try {
@@ -290,7 +337,7 @@ export function useMiraData() {
         }));
       }
     },
-    [refetch]
+    [refetch, hasLlmKeys, hasGnewsKeys]
   );
 
   // Proactively auto-refresh on mount if sections are empty or mismatched
@@ -313,12 +360,12 @@ export function useMiraData() {
         if (!hasWeather || isWeatherMismatched) {
           handleRefresh("weather");
         }
-        if (!hasNews) {
+        if (!hasNews && hasGnewsKeys) {
           handleRefresh("news");
         }
       }
     }
-  }, [isPageLoading, pageData, today, isLocationConfigured, userDetails, handleRefresh]);
+  }, [isPageLoading, pageData, today, isLocationConfigured, userDetails, handleRefresh, hasGnewsKeys]);
 
   // Seamlessly update page when location is saved or updated in Me tab without requiring a manual refresh
   const prevLocationConfiguredRef = useRef<boolean | null>(null);
@@ -357,6 +404,8 @@ export function useMiraData() {
     userDetails,
     isUserLoading,
     isLocationConfigured,
+    hasLlmKeys,
+    hasGnewsKeys,
     today,
     previous,
     completedIndices,

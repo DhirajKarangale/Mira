@@ -17,6 +17,8 @@ export const MiraPage: FC = () => {
     userDetails,
     isUserLoading,
     isLocationConfigured,
+    hasLlmKeys,
+    hasGnewsKeys,
     today,
     previous,
     completedIndices,
@@ -100,6 +102,7 @@ export const MiraPage: FC = () => {
             isRefreshing={Boolean(refreshingSection.suggestions)}
             isLoading={isPageLoading}
             onRefresh={() => handleRefresh("suggestions")}
+            hasLlmKeys={hasLlmKeys}
           />
 
           {/* Music & Entertainment Containers (Side-by-side) */}
@@ -127,6 +130,7 @@ export const MiraPage: FC = () => {
             onRefresh={() => handleRefresh("news")}
             isLocationConfigured={isLocationConfigured}
             isUserLoading={isUserLoading}
+            hasGnewsKeys={hasGnewsKeys}
           />
         </div>
       </div>

@@ -334,6 +334,49 @@ class EngineMemoryConfig:
         except Exception:
             return {'id': '', 'current_key': 0, 'keys': [], 'total_keys': 0}
 
+    def has_any_llm_key(self, force_refresh: bool = False) -> bool:
+        """
+        Checks whether any active, non-empty API keys are configured for any LLM provider.
+        Protects backend from making unnecessary LLM calls when no keys are available.
+        """
+        if force_refresh or not self._initialized:
+            try:
+                self.fetch_from_vault()
+            except Exception:
+                pass
+
+        with self._lock:
+            for prov, cfg in self.ai_configs.items():
+                keys = [k for k in cfg.get('keys', []) if str(k).strip()]
+                if keys:
+                    return True
+
+        # Direct Vault storage fallback
+        try:
+            import sys
+            vault_dir = Path(__file__).resolve().parent.parent / 'Vault'
+            if str(vault_dir) not in sys.path:
+                sys.path.insert(0, str(vault_dir))
+            import config_storage
+            config_storage.init_config_storage()
+            direct_configs = config_storage.get_all_ai_configs()
+            for item in direct_configs:
+                keys = [k for k in item.get('keys', []) if str(k).strip()]
+                if keys:
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def has_gnews_key(self, force_refresh: bool = False) -> bool:
+        """
+        Checks whether any active, non-empty GNews API keys are configured in Vault.
+        Protects backend from making external GNews calls when no keys are available.
+        """
+        cfg = self.get_gnews_config()
+        keys = [k for k in cfg.get('keys', []) if str(k).strip()]
+        return bool(keys)
+
 CONFIG = EngineMemoryConfig()
 try:
     CONFIG.fetch_from_vault()
@@ -343,4 +386,6 @@ except Exception as _e:
 get_user_profile = CONFIG.get_user_profile
 set_user_profile = CONFIG.set_user_profile
 get_gnews_config = CONFIG.get_gnews_config
+has_any_llm_key = CONFIG.has_any_llm_key
+has_gnews_key = CONFIG.has_gnews_key
 

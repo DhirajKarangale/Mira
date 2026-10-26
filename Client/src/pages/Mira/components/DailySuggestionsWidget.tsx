@@ -1,4 +1,5 @@
 import { useMemo, type FC } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   CheckCircle2,
   Circle,
@@ -6,6 +7,8 @@ import {
   Loader2,
   ListTodo,
   Sparkles,
+  KeyRound,
+  ArrowRight,
 } from "lucide-react";
 
 interface DailySuggestionsWidgetProps {
@@ -16,6 +19,7 @@ interface DailySuggestionsWidgetProps {
   isRefreshing: boolean;
   isLoading?: boolean;
   onRefresh: () => void;
+  hasLlmKeys?: boolean;
 }
 
 function isDummySuggestion(text: string): boolean {
@@ -40,7 +44,9 @@ export const DailySuggestionsWidget: FC<DailySuggestionsWidgetProps> = ({
   isRefreshing,
   isLoading = false,
   onRefresh,
+  hasLlmKeys = true,
 }) => {
+  const navigate = useNavigate();
   const cleanToday = useMemo(
     () => (suggestions || []).filter((s) => !isDummySuggestion(s)),
     [suggestions]
@@ -82,7 +88,13 @@ export const DailySuggestionsWidget: FC<DailySuggestionsWidgetProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {isBusy && (
+            {!hasLlmKeys && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/15 border border-amber-500/30 text-amber-300">
+                <KeyRound className="w-3 h-3 text-amber-400" />
+                <span>LLM Key Required</span>
+              </span>
+            )}
+            {isBusy && hasLlmKeys && (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-cyan-500/15 border border-cyan-500/30 text-cyan-300">
                 <Loader2 className="w-3 h-3 animate-spin text-cyan-400" />
                 <span>Fetching Suggestions...</span>
@@ -91,17 +103,21 @@ export const DailySuggestionsWidget: FC<DailySuggestionsWidgetProps> = ({
             <button
               type="button"
               onClick={onRefresh}
-              disabled={isBusy}
-              title="Refresh Daily Suggestions"
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-cyan-300 hover:bg-zinc-800/80 transition-colors disabled:opacity-50 cursor-pointer"
+              disabled={isBusy || !hasLlmKeys}
+              title={
+                !hasLlmKeys
+                  ? "LLM API key required to generate daily suggestions"
+                  : "Refresh Daily Suggestions"
+              }
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-cyan-300 hover:bg-zinc-800/80 transition-colors disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
             >
-              <RotateCw className={`w-3.5 h-3.5 ${isBusy ? "animate-spin text-cyan-400" : ""}`} />
+              <RotateCw className={`w-3.5 h-3.5 ${isBusy && hasLlmKeys ? "animate-spin text-cyan-400" : ""}`} />
             </button>
           </div>
         </div>
 
         {/* Progress Bar */}
-        {totalCount > 0 && (
+        {hasLlmKeys && totalCount > 0 && (
           <div className="flex items-center gap-2 mt-1">
             <div className="flex-1 h-1.5 rounded-full bg-zinc-800/80 overflow-hidden">
               <div
@@ -117,7 +133,31 @@ export const DailySuggestionsWidget: FC<DailySuggestionsWidgetProps> = ({
       </div>
 
       {/* Main Content Area */}
-      {isBusy && totalCount === 0 ? (
+      {!hasLlmKeys ? (
+        <div className="flex-1 flex flex-col items-center justify-center py-10 px-4 text-center gap-3 animate-in fade-in duration-200">
+          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shadow-[0_0_20px_rgba(245,158,11,0.15)]">
+            <KeyRound className="w-6 h-6" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold text-zinc-100">
+              LLM API Key Required
+            </h3>
+            <p className="text-xs text-zinc-400 max-w-sm leading-relaxed">
+              You don't have any LLM API keys configured. MIRA cannot generate daily suggestions without an active LLM provider. Please add your LLM keys first.
+            </p>
+          </div>
+          <button
+            type="button"
+            id="btn-add-llm-keys-suggestions"
+            onClick={() => navigate("/configurations/ai-config")}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white shadow-lg shadow-amber-500/20 transition-all duration-200 active:scale-95 cursor-pointer mt-1"
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            <span>Add LLM Keys in AI Config</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ) : isBusy && totalCount === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center py-10 px-4 text-center gap-3 animate-in fade-in duration-300">
           <div className="relative flex items-center justify-center w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.15)]">
             <Loader2 className="w-6 h-6 animate-spin text-cyan-400" />

@@ -235,6 +235,24 @@ async def refresh_news(force: bool = False) -> List[Dict[str, Any]]:
         log("[NewsSection] User location is not configured. Skipping location-based news refresh.")
         return []
 
+    # Protect backend: check if GNews API key is configured before making any calls
+    from config import CONFIG
+    if not CONFIG.has_gnews_key(force_refresh=True):
+        log_error("[NewsSection] No GNews API keys configured in Vault. Skipping news refresh to protect backend.")
+        try:
+            await ws_manager.broadcast_daily_suggestions_update(
+                "news",
+                {
+                    "status": "error",
+                    "error": "NO_GNEWS_KEY",
+                    "message": "You don't have any GNews API keys configured. Please add a GNews key in Tools > News.",
+                    "route": "/tools/news",
+                }
+            )
+        except Exception:
+            pass
+        return []
+
     current_record = await asyncio.to_thread(fetch_latest_daily_suggestions)
     if not force and not is_news_refresh_needed(current_record):
         log("[NewsSection] News headlines are already up-to-date. Skipping refresh.")

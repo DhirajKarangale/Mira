@@ -84,6 +84,8 @@ export interface DailySuggestionsRecord {
 
 export interface DailySuggestionsPageResponse {
   status: string;
+  has_llm_keys?: boolean;
+  has_gnews_keys?: boolean;
   today: DailySuggestionsRecord;
   previous: DailySuggestionsRecord;
   scheduler: {

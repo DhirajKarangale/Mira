@@ -107,12 +107,14 @@ Generate a concise, strictly factually accurate short summary of the current wea
 State current conditions, high/low, rain expectations, and evening trend.
 No conversational fluff, no quotation marks, no markdown asterisks."""
 
-    try:
-        raw_summary = call_llm(prompt, work="summarization").strip().strip('"').strip("'")
-        if raw_summary and 8 <= len(raw_summary) <= 150 and not raw_summary.startswith("{"):
-            return raw_summary
-    except Exception as e:
-        log_error(f"[WeatherSection] LLM short summary generation failed: {e}")
+    from config import CONFIG
+    if CONFIG.has_any_llm_key():
+        try:
+            raw_summary = call_llm(prompt, work="summarization").strip().strip('"').strip("'")
+            if raw_summary and 8 <= len(raw_summary) <= 150 and not raw_summary.startswith("{") and not raw_summary.startswith("NO_LLM_KEYS"):
+                return raw_summary
+        except Exception as e:
+            log_error(f"[WeatherSection] LLM short summary generation failed: {e}")
 
     # Deterministic factual fallback
     rain_text = f"rain possible around {rain_hour}" if rain_hour else "zero rain expected"
@@ -264,12 +266,14 @@ Strict Rules:
 4. Keep it concise (max 32 words, 1-2 sentences).
 5. Strictly return ONLY the message text without quotation marks or markdown asterisks."""
 
-    try:
-        raw_suggestion = call_llm(prompt, work="summarization").strip().strip('"').strip("'")
-        if raw_suggestion and len(raw_suggestion) > 10 and not raw_suggestion.startswith("{"):
-            return raw_suggestion
-    except Exception as e:
-        log_error(f"[WeatherSection] LLM suggestion generation failed: {e}")
+    from config import CONFIG
+    if CONFIG.has_any_llm_key():
+        try:
+            raw_suggestion = call_llm(prompt, work="summarization").strip().strip('"').strip("'")
+            if raw_suggestion and len(raw_suggestion) > 10 and not raw_suggestion.startswith("{") and not raw_suggestion.startswith("NO_LLM_KEYS"):
+                return raw_suggestion
+        except Exception as e:
+            log_error(f"[WeatherSection] LLM suggestion generation failed: {e}")
 
     # Deterministic fallback tailored strictly to need and time-of-day
     if has_advisory:

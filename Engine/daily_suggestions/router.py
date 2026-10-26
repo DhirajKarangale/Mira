@@ -40,8 +40,14 @@ async def get_daily_suggestions_page_data():
         previous = await asyncio.to_thread(fetch_previous_daily_suggestions, skip_today=True)
         scheduler_status = get_daily_suggestions_status()
 
+        from config import CONFIG
+        has_llm = CONFIG.has_any_llm_key(force_refresh=True)
+        has_gnews = CONFIG.has_gnews_key(force_refresh=True)
+
         return {
             "status": "success",
+            "has_llm_keys": has_llm,
+            "has_gnews_keys": has_gnews,
             "today": latest or {
                 "id": None,
                 "suggestions": [],
@@ -85,9 +91,34 @@ async def trigger_manual_refresh(
     Manually triggers refresh for Weather, News, Suggestions, or All.
     - Weather & News: always fetch fresh data, cancelling any in-progress tasks.
     - Suggestions: constant for the day unless force_regenerate is True or it is a new day.
+    Protects backend if required keys are missing.
     """
     target_section = (section or (payload.section if payload else "all")).lower().strip()
     force_regen = force_regenerate or (payload.force_regenerate if payload else False)
+
+    from config import CONFIG
+    if target_section == "suggestions" and not CONFIG.has_any_llm_key(force_refresh=True):
+        log_error("[DailySuggestionsRouter] Refresh rejected: No LLM keys configured.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "NO_LLM_KEYS",
+                "message": "You don't have any LLM API keys configured. Please add an LLM key in Configurations > AI Config.",
+                "route": "/configurations/ai-config",
+            },
+        )
+
+    if target_section == "news" and not CONFIG.has_gnews_key(force_refresh=True):
+        log_error("[DailySuggestionsRouter] Refresh rejected: No GNews key configured.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "NO_GNEWS_KEY",
+                "message": "You don't have a GNews API key configured. Please add a GNews key in Tools > News.",
+                "route": "/tools/news",
+            },
+        )
+
     try:
         log(f"[DailySuggestionsRouter] Manual refresh requested for section: '{target_section}', force_regenerate: {force_regen}")
         results = await scheduler.trigger_refresh(target_section, force_regenerate_suggestions=force_regen)
@@ -97,6 +128,8 @@ async def trigger_manual_refresh(
             "results": results,
             "scheduler": get_daily_suggestions_status(),
         }
+    except HTTPException:
+        raise
     except Exception as e:
         log_error(f"[DailySuggestionsRouter] Error triggering manual refresh: {e}")
         raise HTTPException(

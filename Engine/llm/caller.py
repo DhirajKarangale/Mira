@@ -52,9 +52,16 @@ def get_ordered_providers(raw_priorities: List[str]) -> List[str]:
         return valid_priorities
     return ordered_healthy + cooling
 
+NO_LLM_KEYS_MESSAGE = "NO_LLM_KEYS: You don't have any LLM API keys configured. Please add an LLM key in AI Configurations (/configurations/ai-config)."
+
 def call_llm(prompt: str, work: str='summarization') -> str:
     if not prompt or not str(prompt).strip():
         return ''
+    # Protect backend: immediately return clear error if no LLM keys configured
+    from config import CONFIG
+    if not CONFIG.has_any_llm_key(force_refresh=True):
+        log_error("[Engine LLM] No LLM API keys configured in Vault. Rejecting LLM call to protect backend.")
+        return NO_LLM_KEYS_MESSAGE
     work_clean = str(work).strip().lower() if work else 'summarization'
     raw_priorities: List[str] = get_ai_priorities()
     providers_order = get_ordered_providers(raw_priorities)

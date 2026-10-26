@@ -283,6 +283,18 @@ async def send_chat_message_endpoint(request: SendChatMessageRequest):
 
     # 2. Queue job into llm_chat stream
     if role == "user" and request.generate_ai_reply:
+        from config import CONFIG
+        if not CONFIG.has_any_llm_key(force_refresh=True):
+            log_error("[ChatRouter] Rejecting chat message: No LLM keys configured.")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "NO_LLM_KEYS",
+                    "message": "You don't have any LLM API keys configured. You cannot send messages until you add an LLM key in Configurations > AI Config.",
+                    "route": "/configurations/ai-config",
+                },
+            )
+
         queued = await asyncio.to_thread(
             publish_chat_job,
             job_id=job_id,

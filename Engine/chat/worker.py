@@ -68,21 +68,29 @@ async def process_chat_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
 
     # Step 2: Execute LangGraph agentic workflow
     ai_response = ""
-    try:
-        ai_response = await run_chat_workflow(
-            job_id=job_id,
-            session_id=session_id,
-            user_query=user_query,
-            chat_history=history,
-            user_profile=user_profile,
-        )
-    except Exception as e:
-        log_error(f"[ChatWorker-{worker_id}] Workflow failed for job {job_id}: {mask_sensitive(str(e))}")
-        user_name = user_profile.get("user_name", "there")
+    from config import CONFIG
+    if not CONFIG.has_any_llm_key(force_refresh=True):
+        log_error(f"[ChatWorker-{worker_id}] No LLM API keys configured. Rejecting workflow execution for job {job_id}.")
         ai_response = (
-            f"I apologize {user_name}, but I was unable to complete your request at this moment. "
-            "Please check your configured AI provider keys in Configurations > AI Config."
+            "You don't have any LLM API keys configured. You cannot send messages until you add an LLM key "
+            "in Configurations > AI Config (/configurations/ai-config)."
         )
+    else:
+        try:
+            ai_response = await run_chat_workflow(
+                job_id=job_id,
+                session_id=session_id,
+                user_query=user_query,
+                chat_history=history,
+                user_profile=user_profile,
+            )
+        except Exception as e:
+            log_error(f"[ChatWorker-{worker_id}] Workflow failed for job {job_id}: {mask_sensitive(str(e))}")
+            user_name = user_profile.get("user_name", "there")
+            ai_response = (
+                f"I apologize {user_name}, but I was unable to complete your request at this moment. "
+                "Please check your configured AI provider keys in Configurations > AI Config."
+            )
 
 
     # Step 3: Resolve user message reference and store AI response in Vault

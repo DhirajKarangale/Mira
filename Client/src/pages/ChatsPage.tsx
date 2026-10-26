@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type FC } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   MessageSquare,
   Plus,
@@ -21,6 +22,8 @@ import {
   Trash2,
   ShieldCheck,
   AlertTriangle,
+  KeyRound,
+  ArrowRight,
 } from "lucide-react";
 import { Sidebar, type SidebarItem, type SidebarRenderItemState } from "@/components/Sidebar";
 import { toast, ChatMessageContent } from "@/components";
@@ -29,6 +32,7 @@ import {
   type ChatSession,
   type ChatMessage,
 } from "@/services/engine.service";
+import { useAIConfigsQuery } from "./Configurations/AiConfig/queries";
 import { useChatStore, type SendingSessionDetails } from "@/store/useChatStore";
 import { cn } from "@/lib/utils";
 
@@ -63,6 +67,17 @@ function generateUUID(): string {
 }
 
 export const ChatsPage: FC = () => {
+  const navigate = useNavigate();
+  const { data: aiConfigs, isLoading: isAiConfigsLoading } = useAIConfigsQuery();
+
+  const hasLlmKeys = useMemo(() => {
+    if (isAiConfigsLoading && !aiConfigs) return true;
+    if (!aiConfigs || aiConfigs.length === 0) return false;
+    return aiConfigs.some(
+      (cfg) => Array.isArray(cfg.keys) && cfg.keys.some((k) => typeof k === "string" && k.trim().length > 0)
+    );
+  }, [aiConfigs, isAiConfigsLoading]);
+
   // ============================================================================
   // Sessions State
   // ============================================================================
@@ -954,6 +969,13 @@ export const ChatsPage: FC = () => {
   const handleSendMessage = async () => {
     const trimmed = inputText.trim();
     if (!trimmed) return;
+
+    if (!hasLlmKeys) {
+      toast.error("You don't have any LLM API keys configured. You cannot send messages until you add an LLM key in AI Config.", {
+        title: "LLM API Key Required",
+      });
+      return;
+    }
 
     // Upfront session determination: reuse existing or generate new UUID immediately
     const targetSessionId = selectedSessionId || generateUUID();
@@ -1934,6 +1956,30 @@ export const ChatsPage: FC = () => {
           )}
 
           <div className="max-w-6xl mx-auto w-full px-2 sm:px-6 space-y-2">
+            {!hasLlmKeys && !isAiConfigsLoading && (
+              <div
+                id="chat-missing-llm-keys-banner"
+                className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 px-4 rounded-xl border border-amber-500/30 bg-amber-500/10 backdrop-blur-xl animate-in fade-in duration-200 shadow-md shadow-amber-500/5 mb-2"
+              >
+                <div className="flex items-center gap-2.5 text-xs text-amber-200">
+                  <KeyRound className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>
+                    You don't have any LLM API keys configured. You cannot send messages until you add an LLM API key.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  id="btn-route-to-ai-config"
+                  onClick={() => navigate("/configurations/ai-config")}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white shadow-md shadow-amber-500/20 transition-all duration-200 active:scale-95 cursor-pointer shrink-0"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  <span>Add LLM Keys in AI Config</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
             <div className="relative flex items-end gap-2 bg-zinc-900/90 border border-white/[0.1] focus-within:border-cyan-500/50 focus-within:ring-1 focus-within:ring-cyan-500/30 rounded-2xl p-2 transition-all">
               <textarea
                 ref={textareaRef}
@@ -1943,7 +1989,9 @@ export const ChatsPage: FC = () => {
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
                 placeholder={
-                  selectedSessionId
+                  !hasLlmKeys && !isAiConfigsLoading
+                    ? "Add LLM keys in Configurations > AI Config to chat with MIRA..."
+                    : selectedSessionId
                     ? "Type your message... (Enter to send, Shift+Enter for new line)"
                     : "Type a prompt to start a new chat session..."
                 }
@@ -1954,12 +2002,18 @@ export const ChatsPage: FC = () => {
                 type="button"
                 id="btn-send-message"
                 onClick={handleSendMessage}
-                disabled={!inputText.trim() || isCurrentSessionSending}
-                title={isCurrentSessionSending ? "Waiting for AI response..." : "Send message (Enter)"}
+                disabled={!inputText.trim() || isCurrentSessionSending || (!hasLlmKeys && !isAiConfigsLoading)}
+                title={
+                  !hasLlmKeys && !isAiConfigsLoading
+                    ? "LLM API key required to send messages"
+                    : isCurrentSessionSending
+                    ? "Waiting for AI response..."
+                    : "Send message (Enter)"
+                }
                 aria-label="Send message"
                 className={cn(
                   "p-2 rounded-xl text-white font-medium transition-all duration-150 flex items-center justify-center shrink-0 cursor-pointer shadow-md",
-                  inputText.trim() && !isCurrentSessionSending
+                  inputText.trim() && !isCurrentSessionSending && hasLlmKeys
                     ? "bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 active:scale-95 shadow-cyan-500/20"
                     : "bg-zinc-800 text-zinc-500 opacity-60 cursor-not-allowed"
                 )}
