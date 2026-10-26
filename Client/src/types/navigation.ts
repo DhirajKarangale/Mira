@@ -1,8 +1,9 @@
 export type NavTabId =
   | "mira"
   | "chats"
-  | "user"
+  | "tools"
   | "configurations"
+  | "user"
   | "about";
 
 export interface NavItem {
@@ -18,6 +19,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: "Chats",
     description: "Conversation threads, agent dialogues, and active sessions",
     iconName: "MessageSquare",
+  },
+  {
+    id: "tools",
+    label: "Tools",
+    description: "Tool integrations, news provider keys, and external capabilities",
+    iconName: "Wrench",
   },
   {
     id: "configurations",

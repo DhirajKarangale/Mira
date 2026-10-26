@@ -3,6 +3,7 @@ import { Header } from "@/components/layout/Header";
 import {
   MiraPage,
   ChatsPage,
+  ToolsPage,
   UserPage,
   ConfigurationsPage,
   AboutPage,
@@ -47,6 +48,8 @@ export function App() {
           <Route path="/" element={<Navigate to="/mira" replace />} />
           <Route path="/mira" element={<MiraPage />} />
           <Route path="/chats" element={<ChatsPage />} />
+          <Route path="/tools" element={<Navigate to="/tools/news" replace />} />
+          <Route path="/tools/*" element={<ToolsPage />} />
           <Route path="/user" element={<UserPage />} />
           <Route path="/configurations/*" element={<ConfigurationsPage />} />
           <Route path="/activity" element={<Navigate to="/configurations/activity-control" replace />} />

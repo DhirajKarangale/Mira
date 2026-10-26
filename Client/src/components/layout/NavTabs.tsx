@@ -8,6 +8,7 @@ import {
   Activity,
   Info,
   MessageSquare,
+  Wrench,
   type LucideIcon,
 } from "lucide-react";
 import { NAV_ITEMS } from "@/types/navigation";
@@ -23,6 +24,8 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Monitor,
   Activity,
   Info,
+  Wrench,
+  Tools: Wrench,
 };
 
 export const NavTabs: FC = () => {

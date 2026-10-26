@@ -463,6 +463,60 @@ async def update_ai_priorities_endpoint(payload: Union[List[str], AIPrioritiesUp
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to update AI priorities: {str(e)}'})
 
+class GNewsConfigResponse(BaseModel):
+    id: str
+    total_keys: int = 0
+    current_key: int = 0
+    keys: List[str] = []
+
+class GNewsConfigUpdateRequest(BaseModel):
+    keys: Optional[List[str]] = None
+    add_keys: Optional[List[str]] = None
+    remove_keys: Optional[List[str]] = None
+    add_key: Optional[str] = None
+    remove_key: Optional[str] = None
+    current_key: Optional[int] = None
+
+@router.get('/news/config', response_model=GNewsConfigResponse, status_code=status.HTTP_200_OK)
+@router.get('/gnews/config', response_model=GNewsConfigResponse, status_code=status.HTTP_200_OK)
+@router.get('/tools/news/config', response_model=GNewsConfigResponse, status_code=status.HTTP_200_OK)
+async def get_gnews_config_endpoint():
+    try:
+        return config_storage.get_gnews_config()
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to retrieve GNews configuration: {str(e)}'})
+
+@router.post('/news/config', response_model=GNewsConfigResponse, status_code=status.HTTP_200_OK)
+@router.post('/gnews/config', response_model=GNewsConfigResponse, status_code=status.HTTP_200_OK)
+@router.post('/tools/news/config', response_model=GNewsConfigResponse, status_code=status.HTTP_200_OK)
+async def update_gnews_config_endpoint(request: GNewsConfigUpdateRequest):
+    try:
+        add_keys = list(request.add_keys) if request.add_keys else []
+        if request.add_key and request.add_key.strip():
+            add_keys.append(request.add_key.strip())
+        remove_keys = list(request.remove_keys) if request.remove_keys else []
+        if request.remove_key and request.remove_key.strip():
+            remove_keys.append(request.remove_key.strip())
+        return config_storage.update_gnews_config(
+            keys=request.keys,
+            add_keys=add_keys if add_keys else None,
+            remove_keys=remove_keys if remove_keys else None,
+            current_key=request.current_key
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={'message': str(e)})
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to update GNews configuration: {str(e)}'})
+
+@router.delete('/news/config', status_code=status.HTTP_200_OK)
+@router.delete('/gnews/config', status_code=status.HTTP_200_OK)
+@router.delete('/tools/news/config', status_code=status.HTTP_200_OK)
+async def delete_gnews_config_endpoint():
+    try:
+        return config_storage.delete_gnews_config()
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to delete GNews configuration: {str(e)}'})
+
 class EngineWorkersConfig(BaseModel):
     chat_workers: int = Field(default=1, ge=1, le=50, description='Chat workers (1-50)')
     screenshot_extraction_workers: int = Field(default=1, ge=1, le=50, description='Screenshot extraction workers in memory (1-50)')

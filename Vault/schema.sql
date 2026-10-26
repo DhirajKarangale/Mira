@@ -100,7 +100,16 @@ CREATE TABLE IF NOT EXISTS daily_suggestions (
     date_music TIMESTAMP,
     music TEXT DEFAULT '[]',
     date_entertainment TIMESTAMP,
-    entertainment TEXT DEFAULT '[]'
+    entertainment TEXT DEFAULT '[]',
+    date_news TIMESTAMP,
+    news TEXT DEFAULT '[]',
 );
+
+CREATE TABLE IF NOT EXISTS gnews_config (
+    id TEXT PRIMARY KEY,
+    current_key INTEGER DEFAULT 0,
+    keys TEXT DEFAULT '[]'
+);
+
 
 

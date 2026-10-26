@@ -308,6 +308,28 @@ class EngineMemoryConfig:
         except (ValueError, TypeError):
             return 1.0
 
+    def get_gnews_config(self) -> Dict[str, Any]:
+        try:
+            vault_url = VAULT_URL or get_service_url('vault')
+            if vault_url:
+                resp = requests.get(f"{vault_url.rstrip('/')}/news/config", timeout=1.5)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if isinstance(data, dict):
+                        return data
+        except Exception:
+            pass
+        try:
+            import sys
+            vault_dir = Path(__file__).resolve().parent.parent / 'Vault'
+            if str(vault_dir) not in sys.path:
+                sys.path.insert(0, str(vault_dir))
+            import config_storage
+            config_storage.init_config_storage()
+            return config_storage.get_gnews_config()
+        except Exception:
+            return {'id': '', 'current_key': 0, 'keys': [], 'total_keys': 0}
+
 CONFIG = EngineMemoryConfig()
 try:
     CONFIG.fetch_from_vault()
@@ -316,4 +338,5 @@ except Exception as _e:
 
 get_user_profile = CONFIG.get_user_profile
 set_user_profile = CONFIG.set_user_profile
+get_gnews_config = CONFIG.get_gnews_config
 

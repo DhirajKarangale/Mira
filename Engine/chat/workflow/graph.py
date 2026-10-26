@@ -12,6 +12,7 @@ from .user_activity_node import user_activity_node
 from .history_node import history_node
 from .synthesis_node import synthesis_node
 from .weather_tool import weather_forecast_node
+from .news_tool import news_node
 from .timezone_helper import resolve_user_timezone
 from vault_logger import log, log_error
 
@@ -24,6 +25,7 @@ TOOL_REGISTRY: Dict[str, Callable[[AgentState], Dict[str, Any]]] = {
     "history_answer": history_node,
     "general_llm": general_llm_node,
     "weather": weather_forecast_node,
+    "news": news_node,
 }
 
 _COMPILED_GRAPH: Optional[Any] = None

@@ -357,6 +357,33 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 ---
 
+### 2.22 Tools & News (GNews) Configuration
+`GET /news/config` (aliases: `/gnews/config`, `/tools/news/config`)
+- **Response (`200 OK`):**
+  ```json
+  {
+    "id": "c1f7a0b3-1f14-41d5-bc44-5cb19e832f91",
+    "total_keys": 1,
+    "current_key": 0,
+    "keys": ["gnews_api_key_here"]
+  }
+  ```
+
+`POST /news/config` (aliases: `/gnews/config`, `/tools/news/config`)
+- **Request Body (JSON):**
+  ```json
+  {
+    "keys": ["key1", "key2"],
+    "current_key": 0
+  }
+  ```
+- **Response (`200 OK`):** Updated GNews configuration with validated current key index.
+
+`DELETE /news/config` (aliases: `/gnews/config`, `/tools/news/config`)
+- **Response (`200 OK`):** Clears all configured GNews API keys and resets current_key to 0.
+
+---
+
 ## 3. Installation & Startup
 
 ### Install Dependencies

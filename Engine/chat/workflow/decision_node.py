@@ -37,12 +37,12 @@ AVAILABLE_ROUTES = {
         "precipitation, rain, snowfall, humidity, wind speed, or meteorological forecasts for today or upcoming days."
     ),
     "news": (
-        "[Reserved Future Tool] Inquiries strictly requesting latest breaking news headlines."
+        "User is asking about current or latest news, breaking news, headlines, top stories, or news briefings."
     ),
 }
 
 # Active routes supported in current deployment
-ACTIVE_ROUTE_TARGETS = {"user_activity", "history_answer", "general_llm", "weather"}
+ACTIVE_ROUTE_TARGETS = {"user_activity", "history_answer", "general_llm", "weather", "news"}
 
 
 def decision_node(state: AgentState) -> Dict[str, Any]:

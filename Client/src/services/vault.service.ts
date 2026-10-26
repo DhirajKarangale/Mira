@@ -28,6 +28,22 @@ export interface AIConfigUpdateRequest {
   total_keys?: number;
 }
 
+export interface GNewsConfig {
+  id: string;
+  current_key: number;
+  keys: string[];
+  total_keys: number;
+}
+
+export interface GNewsConfigUpdateRequest {
+  keys?: string[];
+  add_keys?: string[];
+  remove_keys?: string[];
+  add_key?: string;
+  remove_key?: string;
+  current_key?: number;
+}
+
 export interface EngineWorkersConfig {
   chat_workers: number;
   chat_workers_poll_time: number;
@@ -258,4 +274,22 @@ export const vaultService = {
     const response = await vaultApi.put<EngineWorkersConfig>("/engine/workers", updates);
     return response.data;
   },
+
+  async getGNewsConfig(): Promise<GNewsConfig> {
+    const response = await vaultApi.get<GNewsConfig>("/news/config");
+    return response.data;
+  },
+
+  async updateGNewsConfig(
+    updates: GNewsConfigUpdateRequest
+  ): Promise<GNewsConfig> {
+    const response = await vaultApi.post<GNewsConfig>("/news/config", updates);
+    return response.data;
+  },
+
+  async deleteGNewsConfig(): Promise<{ status: string; message: string }> {
+    const response = await vaultApi.delete<{ status: string; message: string }>("/news/config");
+    return response.data;
+  },
 };
+

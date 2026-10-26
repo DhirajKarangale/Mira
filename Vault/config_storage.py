@@ -67,7 +67,7 @@ def init_config_storage(schema_path: Optional[Path]=None, enc_db_path: Optional[
         if not exists:
             logger.info(f"Creating missing configuration table: '{table_name}'")
             _DB_CONN.execute(table_spec['create_sql'])
-            if table_name not in ('app_permissions', 'ai_configs', 'chats'):
+            if table_name not in ('app_permissions', 'ai_configs', 'chats', 'gnews_config'):
                 _DB_CONN.execute(f'INSERT INTO {table_name} DEFAULT VALUES')
             _DB_CONN.commit()
         else:
@@ -87,7 +87,7 @@ def init_config_storage(schema_path: Optional[Path]=None, enc_db_path: Optional[
                         _DB_CONN.commit()
                     except Exception as e:
                         logger.error(f"Failed to drop column '{col_name}' from '{table_name}': {e}")
-            if table_name not in ('app_permissions', 'ai_configs', 'chats'):
+            if table_name not in ('app_permissions', 'ai_configs', 'chats', 'gnews_config'):
                 count = _DB_CONN.execute(f'SELECT count(*) FROM {table_name}').fetchone()[0]
                 if count == 0:
                     _DB_CONN.execute(f'INSERT INTO {table_name} DEFAULT VALUES')
@@ -115,6 +115,7 @@ def init_config_storage(schema_path: Optional[Path]=None, enc_db_path: Optional[
                 _DB_CONN.execute("DELETE FROM app_permissions WHERE app_id IS NULL OR app_id = ''")
                 _DB_CONN.commit()
     _seed_default_ai_configs()
+    _seed_default_gnews_config()
     try:
         _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_chats_session_created ON chats(session_id, created_at)")
         _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_chats_created ON chats(created_at)")
@@ -178,6 +179,8 @@ def get_configuration(key: str) -> Dict[str, Any]:
         normalized_key = 'user_details'
     elif normalized_key in ('ai', 'ai_config', 'ai_configs', 'llm'):
         return {'providers': get_all_ai_providers(), 'priorities': get_ai_priorities(), 'configs': get_all_ai_configs()}
+    elif normalized_key in ('gnews', 'gnews_config', 'gnews_configs', 'news', 'news_config'):
+        return get_gnews_config()
     elif normalized_key in ('priorities', 'ai_priorities', 'llm_priorities'):
         return {'priorities': get_ai_priorities()}
     elif normalized_key in ('engine', 'engine_workers', 'workers'):
@@ -239,6 +242,8 @@ def update_configuration(table_name: str, updates: Dict[str, Any]) -> Dict[str, 
         normalized_table = 'user_details'
     elif normalized_table in ('engine', 'engine_workers'):
         return update_engine_workers(updates)
+    elif normalized_table in ('gnews', 'gnews_config', 'gnews_configs', 'news', 'news_config'):
+        return update_gnews_config(**updates)
     if normalized_table not in _PARSED_SCHEMA:
         raise KeyError(f"Unknown configuration group '{table_name}'")
     existing_info = _DB_CONN.execute(f'PRAGMA table_info({normalized_table})').fetchall()
@@ -358,6 +363,153 @@ def _seed_default_ai_configs() -> None:
             logger.info(f"Seeding default AI config provider: '{provider}'")
             _DB_CONN.execute("INSERT INTO ai_configs (llm_provider, total_keys, current_key, keys) VALUES (?, 0, 0, '[]')", (provider,))
     _DB_CONN.commit()
+
+def _seed_default_gnews_config() -> None:
+    global _DB_CONN
+    if _DB_CONN is None:
+        return
+    exists = _DB_CONN.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='gnews_config'").fetchone()[0]
+    if not exists:
+        return
+    cursor = _DB_CONN.execute("SELECT count(*) FROM gnews_config")
+    if cursor.fetchone()[0] == 0:
+        new_id = str(uuid.uuid4())
+        logger.info(f"Seeding default GNews config with ID: '{new_id}'")
+        _DB_CONN.execute("INSERT INTO gnews_config (id, current_key, keys) VALUES (?, 0, '[]')", (new_id,))
+        _DB_CONN.commit()
+
+def get_gnews_config() -> Dict[str, Any]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+    cursor = _DB_CONN.execute("SELECT id, current_key, keys FROM gnews_config LIMIT 1")
+    row = cursor.fetchone()
+    if not row:
+        new_id = str(uuid.uuid4())
+        _DB_CONN.execute("INSERT INTO gnews_config (id, current_key, keys) VALUES (?, 0, '[]')", (new_id,))
+        _DB_CONN.commit()
+        save_config_storage()
+        return {
+            "id": new_id,
+            "total_keys": 0,
+            "current_key": 0,
+            "keys": []
+        }
+    row_id, current_key_idx, raw_keys = row
+    try:
+        keys_list = json.loads(raw_keys) if raw_keys else []
+        if not isinstance(keys_list, list):
+            keys_list = []
+    except Exception:
+        keys_list = []
+    keys_list = [str(k) for k in keys_list]
+    current_key_idx = int(current_key_idx) if current_key_idx is not None else 0
+    return {
+        "id": str(row_id),
+        "total_keys": len(keys_list),
+        "current_key": current_key_idx,
+        "keys": keys_list
+    }
+
+def update_gnews_config(
+    *,
+    keys: Optional[List[str]] = None,
+    add_keys: Optional[List[str]] = None,
+    remove_keys: Optional[List[str]] = None,
+    current_key: Optional[int] = None,
+    total_keys: Optional[int] = None,
+) -> Dict[str, Any]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+    cursor = _DB_CONN.execute("SELECT id, current_key, keys FROM gnews_config LIMIT 1")
+    row = cursor.fetchone()
+    if not row:
+        row_id = str(uuid.uuid4())
+        _DB_CONN.execute("INSERT INTO gnews_config (id, current_key, keys) VALUES (?, 0, '[]')", (row_id,))
+        _DB_CONN.commit()
+        current_key_idx = 0
+        keys_list = []
+    else:
+        row_id, current_key_idx, raw_keys = row
+        try:
+            keys_list = json.loads(raw_keys) if raw_keys else []
+            if not isinstance(keys_list, list):
+                keys_list = []
+        except Exception:
+            keys_list = []
+
+    if keys is not None:
+        keys_list = [str(k).strip() for k in keys if str(k).strip()]
+
+    if add_keys:
+        for k in add_keys:
+            cleaned_k = str(k).strip()
+            if cleaned_k and cleaned_k not in keys_list:
+                keys_list.append(cleaned_k)
+
+    if remove_keys:
+        remove_set = {str(k).strip() for k in remove_keys if str(k).strip()}
+        keys_list = [k for k in keys_list if k not in remove_set]
+
+    computed_total = len(keys_list)
+
+    # Validate selected index against number of configured keys
+    if current_key is not None:
+        if current_key < 0:
+            raise ValueError(f"Current key index cannot be negative (got {current_key}).")
+        if computed_total == 0:
+            if current_key != 0:
+                raise ValueError(f"Current key index {current_key} is invalid. No keys are configured.")
+            target_current_key = 0
+        else:
+            if current_key >= computed_total:
+                raise ValueError(
+                    f"Current key index {current_key} is out of bounds. Must be between 0 and {computed_total - 1}."
+                )
+            target_current_key = current_key
+    else:
+        if computed_total == 0:
+            target_current_key = 0
+        elif current_key_idx >= computed_total:
+            target_current_key = max(0, computed_total - 1)
+        elif current_key_idx < 0:
+            target_current_key = 0
+        else:
+            target_current_key = current_key_idx
+
+    json_keys = json.dumps(keys_list)
+    _DB_CONN.execute(
+        "UPDATE gnews_config SET current_key = ?, keys = ? WHERE id = ?",
+        (target_current_key, json_keys, str(row_id))
+    )
+    _DB_CONN.commit()
+    save_config_storage()
+    logger.info(f"Updated GNews config: total_keys={computed_total}, current_key={target_current_key}, id={row_id}")
+    return {
+        "id": str(row_id),
+        "total_keys": computed_total,
+        "current_key": target_current_key,
+        "keys": keys_list
+    }
+
+def delete_gnews_config() -> Dict[str, Any]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+    cursor = _DB_CONN.execute("SELECT id FROM gnews_config LIMIT 1")
+    row = cursor.fetchone()
+    if not row:
+        row_id = str(uuid.uuid4())
+        _DB_CONN.execute("INSERT INTO gnews_config (id, current_key, keys) VALUES (?, 0, '[]')", (row_id,))
+    else:
+        row_id = row[0]
+        _DB_CONN.execute("UPDATE gnews_config SET current_key = 0, keys = '[]' WHERE id = ?", (row_id,))
+    _DB_CONN.commit()
+    save_config_storage()
+    logger.info("Cleared GNews config keys in Vault")
+    return {"status": "success", "message": "GNews configuration keys cleared successfully."}
+
 
 def get_all_ai_providers() -> List[str]:
     global _DB_CONN
