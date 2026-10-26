@@ -29,6 +29,8 @@ from .workflow import (
     build_workflow_graph,
     get_compiled_workflow,
     AgentState,
+    weather_forecast_node,
+    get_weather_forecast,
 )
 
 __all__ = [
@@ -54,5 +56,7 @@ __all__ = [
     "build_workflow_graph",
     "get_compiled_workflow",
     "AgentState",
+    "weather_forecast_node",
+    "get_weather_forecast",
 ]
 

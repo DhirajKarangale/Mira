@@ -13,6 +13,12 @@ from .general_llm_node import general_llm_node
 from .user_activity_node import user_activity_node
 from .history_node import history_node
 from .synthesis_node import synthesis_node
+from .weather_tool import (
+    weather_forecast_node,
+    get_weather_forecast,
+    fetch_open_meteo_forecast,
+    validate_forecast_days,
+)
 from .timezone_helper import resolve_user_timezone, parse_time_expression, format_timestamp_in_tz
 
 __all__ = [
@@ -27,6 +33,10 @@ __all__ = [
     "general_llm_node",
     "user_activity_node",
     "synthesis_node",
+    "weather_forecast_node",
+    "get_weather_forecast",
+    "fetch_open_meteo_forecast",
+    "validate_forecast_days",
     "resolve_user_timezone",
     "parse_time_expression",
     "format_timestamp_in_tz",

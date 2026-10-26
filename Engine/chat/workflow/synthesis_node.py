@@ -29,6 +29,7 @@ def synthesis_node(state: AgentState) -> Dict[str, Any]:
     # Extract previous agent's answer
     previous_answer = (
         state.get("final_response")
+        or node_outputs.get("weather_response")
         or node_outputs.get("activity_response")
         or node_outputs.get("history_response")
         or node_outputs.get("general_llm_response")
@@ -68,7 +69,7 @@ Rephrase the previous agent's answer into a friendly, natural response.
 Strict Rules:
 1. ONLY rephrase the previous agent's answer into a friendly, natural tone.
 2. You MUST NOT add, remove, modify, or assume any information.
-3. Preserve the original meaning and ALL factual details (such as names, timestamps, numbers, applications, files, URLs, technical terms, and list items) exactly.
+3. Preserve the original meaning and ALL factual details (such as names, timestamps, numbers, temperatures, weather conditions, applications, files, URLs, technical terms, and list items) exactly.
 4. Concise response: Answer ONLY what the user asked.
 5. Do NOT include unrelated information, additional explanations, suggestions, assumptions, or unnecessary introductions (such as "Certainly!", "Sure thing!", "Here is what you did:", or trailing questions like "Let me know if you need anything else!").
 6. Do NOT include unsolicited greetings or conversational pleasantries.

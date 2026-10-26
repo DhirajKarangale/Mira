@@ -33,7 +33,8 @@ AVAILABLE_ROUTES = {
         "[Reserved Future Tool] Instructions to automate the web browser, click buttons, or scrape live web pages."
     ),
     "weather": (
-        "[Reserved Future Tool] Questions strictly asking for real-time weather forecasts or current meteorological conditions."
+        "User is asking about current weather conditions, weather forecasts, temperature, "
+        "precipitation, rain, snowfall, humidity, wind speed, or meteorological forecasts for today or upcoming days."
     ),
     "news": (
         "[Reserved Future Tool] Inquiries strictly requesting latest breaking news headlines."
@@ -41,7 +42,7 @@ AVAILABLE_ROUTES = {
 }
 
 # Active routes supported in current deployment
-ACTIVE_ROUTE_TARGETS = {"user_activity", "history_answer", "general_llm"}
+ACTIVE_ROUTE_TARGETS = {"user_activity", "history_answer", "general_llm", "weather"}
 
 
 def decision_node(state: AgentState) -> Dict[str, Any]:
@@ -104,7 +105,8 @@ Instructions:
 1. Understand Intent & Route:
    - "history_answer": The query is a follow-up, clarification, reformatting, or question whose answer is ALREADY present in the conversation history above (e.g. asking which browser was used when already listed, asking to summarize or reformat previous reply, asking about an entity already explained).
    - "user_activity": The user is asking about their personal activities, screen time, applications used, documents opened, or work history that REQUIRES querying the personal screen activity database.
-   - "general_llm": General knowledge, coding help, definitions, reasoning, greeting, or chit-chat that does not query personal screen logs.
+   - "weather": The user is asking about current weather, weather forecasts, temperature, rain/precipitation, snowfall, humidity, wind speed, or meteorological conditions for today or upcoming days.
+   - "general_llm": General knowledge, coding help, definitions, reasoning, greeting, or chit-chat that does not query personal screen logs or weather.
 2. Follow-Up & Context Resolution:
    - "is_follow_up": true if the query refers to, continues, or relies on previous messages in this session.
    - "can_answer_from_history": true if the conversation history above already contains enough information to answer the question without querying Qdrant/vector store.
@@ -113,15 +115,18 @@ Instructions:
    - "overview": For general activity questions (e.g. "what did I do today?", "summarize my day", "give me an overview of my morning").
    - "detailed": When the user explicitly requests full timeline, step-by-step logs, or all details (e.g. "tell me in detail everything I did", "give me the complete timeline", "detailed log of after 2pm").
    - "concise": For pinpoint/specific questions (e.g. "did I open WhatsApp?", "which file was open?", "how long was I in Edge?").
-4. Retrieval Plan (if route is "user_activity"):
-   - "search_query": Focused keywords for semantic vector search on summarized screen text (e.g. "projects repository code workspace", "WhatsApp chat", "editing code in VS Code", "reading documentation"). Set to null if broad general timeline.
-   - "app_name": Specific desktop application name if requested (e.g. "Microsoft Edge", "Visual Studio Code", "WhatsApp", "Notepad", "Discord"), or null if general.
-   - "time_expression": Specific time period IF mentioned or implied (e.g. "today after 2:00pm", "yesterday", "last 2 hours", "between 9 AM and 5 PM", "last month", "this morning").
-     CRITICAL: If the user is asking broadly about projects, ongoing work, apps used, or work history WITHOUT specifying a date/time (e.g. "give me list of projects I am working on", "what projects am I working on?", "what have I worked on recently?"), set "time_expression" to null so that ALL available Knowledge Bases across all dates are searched.
+4. Retrieval Plan:
+   - If route is "user_activity":
+     - "search_query": Focused keywords for semantic vector search on summarized screen text (e.g. "projects repository code workspace", "WhatsApp chat", "editing code in VS Code", "reading documentation"). Set to null if broad general timeline.
+     - "app_name": Specific desktop application name if requested (e.g. "Microsoft Edge", "Visual Studio Code", "WhatsApp", "Notepad", "Discord"), or null if general.
+     - "time_expression": Specific time period IF mentioned or implied (e.g. "today after 2:00pm", "yesterday", "last 2 hours", "between 9 AM and 5 PM", "last month", "this morning").
+       CRITICAL: If the user is asking broadly about projects, ongoing work, apps used, or work history WITHOUT specifying a date/time (e.g. "give me list of projects I am working on", "what projects am I working on?", "what have I worked on recently?"), set "time_expression" to null so that ALL available Knowledge Bases across all dates are searched.
+   - If route is "weather":
+     - "forecast_days": Integer (1 to 16) indicating number of forecast days requested. Set to 1 for current weather/today, 2 for tomorrow, 7 for a week, or the specific number of days asked (e.g. 3, 5, 10). Default to 7 if unspecified.
 
 Return strictly a valid JSON object matching this schema:
 {{
-  "route": "user_activity" | "history_answer" | "general_llm",
+  "route": "user_activity" | "history_answer" | "weather" | "general_llm",
   "reasoning": "<brief 1-sentence explanation>",
   "is_follow_up": <true | false>,
   "can_answer_from_history": <true | false>,
@@ -130,7 +135,8 @@ Return strictly a valid JSON object matching this schema:
   "retrieval_plan": {{
     "search_query": "<string or null>",
     "app_name": "<string or null>",
-    "time_expression": "<string or null>"
+    "time_expression": "<string or null>",
+    "forecast_days": <integer or null>
   }}
 }}
 Do not include any extra text outside the JSON object.
@@ -178,10 +184,19 @@ Do not include any extra text outside the JSON object.
 
     log(f"[DecisionNode] Final decision: route='{route}' (reasoning: {reasoning}, is_follow_up={is_follow_up}, detail={detail_level})")
 
+    forecast_days = retrieval_plan.get("forecast_days")
+    if route == "weather" and forecast_days is None:
+        try:
+            from .weather_tool import parse_forecast_days_from_query
+            forecast_days = parse_forecast_days_from_query(user_query)
+        except Exception:
+            forecast_days = 7
+
     tool_params = {
         "search_query": retrieval_plan.get("search_query"),
         "app_name": retrieval_plan.get("app_name"),
         "time_expression": retrieval_plan.get("time_expression") or user_query,
+        "forecast_days": forecast_days,
         "detail_level": detail_level,
         "resolved_query": resolved_query,
         "is_follow_up": is_follow_up,
@@ -271,6 +286,17 @@ def _heuristic_fallback(query: str, chat_history: Optional[List[Dict[str, Any]]]
         follow_up_phrases = ["which one", "which browser", "what about that", "summarize that", "can you summarize", "in 2 sentences", "what time was that"]
         if any(p in q for p in follow_up_phrases):
             return "history_answer", "Heuristic matched follow-up phrase on existing history"
+
+    # Weather indicators
+    weather_phrases = [
+        "weather", "forecast", "temperature outside", "is it raining",
+        "will it rain", "is it going to rain", "chance of rain", "how hot is it",
+        "how cold is it", "rain forecast", "snow forecast", "is it snowing",
+        "wind speed outside", "humidity outside", "weather report",
+        "weather update", "current weather", "what's the weather", "what is the weather",
+    ]
+    if any(p in q for p in weather_phrases):
+        return "weather", "Heuristic matched weather inquiry phrase"
 
     # Explicit activity phrases
     activity_phrases = [
