@@ -58,103 +58,83 @@ def is_weather_refresh_needed(
     return delta_seconds >= (interval_hours * 3600)
 
 
-def generate_rest_of_day_overview(
+def generate_weather_short_summary(
     structured_data: Dict[str, Any],
     city_name: str = "your area",
 ) -> str:
     """
-    Generates a concise, short rest-of-day weather overview
-    (e.g., "Might rain after 2 PM; cooling down to 24°C tonight" or
-    "Sunny and hot reaching 33°C at 3 PM, easing to 25°C by 9 PM").
+    Generates a concise, factually accurate short summary of the current weather and forecast.
+    (e.g., "Mainly clear and 33°C in Shegaon with highs near 34°C, cooling to 25°C tonight; zero rain expected.")
     """
     cur = structured_data.get("current") or {}
     cur_time = str(cur.get("time") or "")
     cur_temp = cur.get("temperature_celsius")
     cur_cond = cur.get("condition", "clear")
+    daily = structured_data.get("daily") or []
+    today_max = daily[0].get("temp_max_celsius") if daily else cur_temp
+    today_min = daily[0].get("temp_min_celsius") if daily else cur_temp
+    rain_chance = daily[0].get("precipitation_probability_percent", 0) if daily else 0
+    rain_mm = daily[0].get("rain_sum_mm", 0.0) if daily else 0.0
+
     hourly = structured_data.get("hourly_highlights") or []
-
-    # Filter hourly points from current time through end of day
-    remaining_hours: List[Dict[str, Any]] = []
-    for h in hourly:
-        t_iso = str(h.get("time") or "")
-        if not cur_time or t_iso >= cur_time:
-            remaining_hours.append(h)
-
+    remaining_hours = [h for h in hourly if not cur_time or str(h.get("time") or "") >= cur_time]
     if not remaining_hours:
         remaining_hours = hourly[:8]
 
-    # Analyze rain / precipitation timing
-    rain_hour: Optional[str] = None
-    rain_prob = 0
+    # Check rain timing
+    rain_hour = None
     for h in remaining_hours:
         prob = h.get("precipitation_probability_percent", 0)
-        rain_mm = h.get("rain_mm", 0.0)
-        cond_str = str(h.get("condition", "")).lower()
-        if prob >= 25 or rain_mm > 0.1 or "rain" in cond_str or "drizzle" in cond_str or "shower" in cond_str:
+        rmm = h.get("rain_mm", 0.0)
+        c = str(h.get("condition", "")).lower()
+        if prob >= 25 or rmm > 0.1 or "rain" in c or "drizzle" in c or "shower" in c:
             rain_hour = h.get("formatted_time", "later")
-            rain_prob = prob
             break
 
-    # Analyze peak temp and night temp
-    peak_temp = cur_temp
-    peak_hour = "midday"
-    night_temp = cur_temp
-    for idx, h in enumerate(remaining_hours):
-        t = h.get("temperature_celsius")
-        if t is not None:
-            if peak_temp is None or t > peak_temp:
-                peak_temp = t
-                peak_hour = h.get("formatted_time", "afternoon")
-            if idx == len(remaining_hours) - 1 or "09:00 PM" in h.get("formatted_time", "") or "10:00 PM" in h.get("formatted_time", ""):
-                night_temp = t
+    night_temp = remaining_hours[-1].get("temperature_celsius") if remaining_hours else cur_temp
 
-    # Format hourly summary for LLM
-    hourly_lines = [
-        f"{h.get('formatted_time', h.get('time'))}: {h.get('temperature_celsius')}°C, {h.get('condition')} (rain chance: {h.get('precipitation_probability_percent', 0)}%)"
-        for h in remaining_hours[:8]
-    ]
-    hourly_text = "; ".join(hourly_lines)
+    prompt = f"""You are MIRA, a sharp personal AI assistant.
+Current weather report for {city_name}:
+- Condition: {cur_cond}, Current Temp: {cur_temp}°C
+- Today's High: {today_max}°C, Low: {today_min}°C
+- Rain Chance: {rain_chance}% (Rain volume: {rain_mm} mm)
+- Rain timing (if any): {rain_hour or 'No rain forecasted'}
+- Tonight's expected temp: ~{night_temp}°C
 
-    prompt = f"""You are MIRA, an intelligent personal assistant.
-Provide a very short rest-of-day weather overview for {city_name}.
-Current condition: {cur_cond}, {cur_temp}°C (Local time: {cur_time})
-Hourly outlook for remaining hours today:
-{hourly_text}
-
-Rules:
-1. Summarize the rest of today in ONE short, natural sentence (max 15 words).
-2. If rain or precipitation is likely, explicitly state the timing (e.g. "Might rain after 2 PM; cooling to 23°C tonight" or "Chance of rain around 4 PM, clearing by evening").
-3. If no rain, mention peak temperature timing and evening outlook (e.g. "Clear and sunny reaching 33°C around 3 PM, easing to 25°C tonight").
-4. Strictly return only the sentence without quotation marks, bullet points, or markdown asterisks."""
+Task:
+Generate a concise, strictly factually accurate short summary of the current weather and forecast for {city_name} (1 to 2 short sentences, max 22 words).
+State current conditions, high/low, rain expectations, and evening trend.
+No conversational fluff, no quotation marks, no markdown asterisks."""
 
     try:
-        raw_overview = call_llm(prompt, work="summarization").strip().strip('"').strip("'")
-        if raw_overview and 8 <= len(raw_overview) <= 120 and not raw_overview.startswith("{"):
-            return raw_overview
+        raw_summary = call_llm(prompt, work="summarization").strip().strip('"').strip("'")
+        if raw_summary and 8 <= len(raw_summary) <= 150 and not raw_summary.startswith("{"):
+            return raw_summary
     except Exception as e:
-        log_error(f"[WeatherSection] LLM rest-of-day overview generation failed: {e}")
+        log_error(f"[WeatherSection] LLM short summary generation failed: {e}")
 
-    # Deterministic heuristic fallback
-    peak_display = f"{round(peak_temp)}°C" if peak_temp is not None else "warm"
-    night_display = f"{round(night_temp)}°C" if night_temp is not None else "cooler"
-    if rain_hour:
-        prob_str = f" ({rain_prob}% chance)" if rain_prob else ""
-        return f"Might rain around {rain_hour}{prob_str}; cooling down to {night_display} tonight."
-    elif peak_temp is not None and cur_temp is not None and peak_temp > cur_temp + 1.5:
-        return f"Mainly {cur_cond.lower()} reaching {peak_display} around {peak_hour}, cooling to {night_display} tonight."
-    else:
-        return f"Pleasant and {cur_cond.lower()} through the evening, dipping to {night_display} tonight."
+    # Deterministic factual fallback
+    rain_text = f"rain possible around {rain_hour}" if rain_hour else "zero rain expected"
+    return f"{cur_cond} and {round(cur_temp) if cur_temp is not None else '--'}°C in {city_name} with highs near {round(today_max) if today_max is not None else '--'}°C; {rain_text}, cooling to {round(night_temp) if night_temp is not None else '--'}°C tonight."
 
 
-def generate_weather_suggestion(
+def generate_rest_of_day_overview(
+    structured_data: Dict[str, Any],
+    city_name: str = "your area",
+) -> str:
+    """Wrapper mapping to generate_weather_short_summary for backward compatibility."""
+    return generate_weather_short_summary(structured_data, city_name)
+
+
+def generate_weather_funny_suggestion(
     structured_data: Dict[str, Any],
     user_name: str = "User",
     city_name: str = "your city",
-    rest_of_day: str = "",
+    short_summary: str = "",
 ) -> str:
     """
-    Generates practical, valuable, and actionable weather guidance
-    covering clothing, UV protection, hydration, and optimal outdoor errand windows.
+    Generates a playful, humorous, descriptive recommendation based on actual weather conditions
+    (e.g., carrying an umbrella when rain is expected, not melting into a puddle in the heat, etc.).
     """
     cur = structured_data.get("current") or {}
     condition = cur.get("condition", "clear")
@@ -169,46 +149,59 @@ def generate_weather_suggestion(
     today_min = daily[0].get("temp_min_celsius") if daily else temp
     rain_chance = daily[0].get("precipitation_probability_percent") if daily else 0
 
-    prompt = f"""You are MIRA, a thoughtful and highly intelligent personal AI assistant.
+    prompt = f"""You are MIRA, a witty, observant, and delightfully funny personal AI assistant.
 Current weather report for {user_name} in {city_name}:
 - Condition: {condition}
 - Current Temp: {temp}°C (feels like {app_temp}°C)
 - High / Low: High of {today_max}°C, Low of {today_min}°C
 - Rain chance: {rain_chance}% (rain volume: {rain} mm)
 - Wind: {wind} km/h, Humidity: {humidity}%
-- Rest of Day Outlook: {rest_of_day or 'Steady'}
+- Forecast Overview: {short_summary or 'Standard'}
 
 Task:
-Provide valuable, practical, and actionable weather advice for {user_name} (1 to 2 sentences max).
-Focus on useful guidance such as:
-- Apparel and clothing advice (e.g. breathable cotton fabrics, light layers, waterproof gear, sunglasses).
-- Health & comfort (e.g. UV sun protection, hydration, avoiding peak midday heat).
-- Optimal windows for outdoor activities, commuting, or errands.
+Write a playful, humorous, descriptive recommendation for {user_name} based on the actual weather above (1 to 2 sentences max).
+Playful requirements:
+- Rain / Drizzle: Recommend carrying an umbrella unless they want an impromptu outdoor shower or are practicing their backstroke.
+- Heat / Sun: Remind them to hydrate aggressively, seek shade, and avoid melting into a human puddle under the scorching sun.
+- Cold / Chilly: Suggest bundling up like a cozy burrito and guarding their toes against the brisk chill.
+- Wind: Warn them that the wind is eager to redesign their hairstyle today.
+- Pleasant / Mild: Give a cheerful nudge to escape the screen and soak in some fresh air before the weather changes its mind.
 
 Strict rules:
-1. Make it genuinely helpful and valuable — do NOT write generic jokes, silly puns, or sarcastic humor.
-2. Address {user_name} directly in a warm, professional, and observant tone.
-3. Keep it under 2 sentences (max 40 words).
-4. Strictly return ONLY the advice text. Do NOT use quotation marks, pleasantry headers, or markdown asterisks."""
+1. Make it genuinely funny, witty, and descriptive, while remaining factually accurate to the actual weather above.
+2. Address {user_name} directly in a playful, cheerful, slightly cheeky tone.
+3. Keep it under 2 sentences (max 35 words).
+4. Strictly return ONLY the recommendation text. Do NOT use quotation marks, pleasantry headers, or markdown asterisks."""
 
     try:
         raw_suggestion = call_llm(prompt, work="summarization").strip().strip('"').strip("'")
         if raw_suggestion and len(raw_suggestion) > 10 and not raw_suggestion.startswith("{"):
             return raw_suggestion
     except Exception as e:
-        log_error(f"[WeatherSection] LLM suggestion generation failed: {e}")
+        log_error(f"[WeatherSection] LLM funny suggestion generation failed: {e}")
 
-    # Practical and valuable deterministic fallbacks
-    if rain and rain > 0 or (rain_chance and rain_chance >= 40) or "rain" in str(condition).lower():
-        return f"Keep an umbrella handy today and consider waterproof footwear, as wet conditions may affect your evening commute."
-    elif temp is not None and temp >= 32:
-        return f"With temperatures climbing above {round(temp)}°C, wear breathable fabrics, stay well-hydrated, and schedule outdoor errands for the late afternoon."
-    elif temp is not None and temp <= 14:
-        return f"It is brisk outside at {round(temp)}°C — layer up with a warm jacket and keep a thermal layer handy for when temperatures drop this evening."
-    elif wind and wind >= 25:
-        return f"Expect gusty winds up to {round(wind)} km/h today; secure loose outdoor items and keep a windbreaker close by if heading out."
+    # Deterministic funny fallback grounded in real weather data
+    loc_display = f" in {city_name}" if city_name else ""
+    if rain and rain > 0 or (rain_chance and rain_chance >= 35) or "rain" in str(condition).lower():
+        return f"Clouds are actively plotting against your dry clothes today{loc_display} — grab an umbrella unless your afternoon plans include swimming, {user_name}!"
+    elif temp is not None and temp >= 31:
+        return f"The sun is treating the outdoors like a giant frying pan today at {round(temp)}°C{loc_display} — hydrate aggressively and don't turn into a human puddle, {user_name}!"
+    elif temp is not None and temp <= 13:
+        return f"It's brisk enough outside{loc_display} at {round(temp)}°C to freeze your good mood — wrap up like a cozy burrito before stepping out, {user_name}!"
+    elif wind and wind >= 24:
+        return f"Hold onto your hat{loc_display}! Today's {round(wind)} km/h wind gusts will gladly redesign your hairstyle for free."
     else:
-        return f"Conditions are comfortable at {round(temp) if temp is not None else 24}°C — late afternoon will be an ideal window for outdoor walks or errands."
+        return f"Pleasant skies ahead{loc_display} at {round(temp) if temp is not None else 25}°C — perfect excuse to escape the screen for ten minutes, {user_name}!"
+
+
+def generate_weather_suggestion(
+    structured_data: Dict[str, Any],
+    user_name: str = "User",
+    city_name: str = "your city",
+    rest_of_day: str = "",
+) -> str:
+    """Wrapper mapping to generate_weather_funny_suggestion for backward compatibility."""
+    return generate_weather_funny_suggestion(structured_data, user_name, city_name, rest_of_day)
 
 
 async def refresh_weather_forecast(force: bool = False) -> Dict[str, Any]:
@@ -218,8 +211,10 @@ async def refresh_weather_forecast(force: bool = False) -> Dict[str, Any]:
       2. If not needed and not forced, returns current data.
       3. Retrieves location from Vault.
       4. Queries existing Weather Forecast Tool.
-      5. Generates concise rest-of-day overview and valuable practical suggestion.
-      6. Stores forecast & suggestion in weather, updating date_weather.
+      5. Generates two versions:
+         - Short summary: concise overview of current weather and forecast.
+         - Funny descriptive suggestion: playful recommendation based on actual weather.
+      6. Stores forecast & suggestions in weather, updating date_weather.
       7. Broadcasts update over WebSocket.
     """
     current_record = await asyncio.to_thread(fetch_latest_daily_suggestions)
@@ -252,20 +247,20 @@ async def refresh_weather_forecast(force: bool = False) -> Dict[str, Any]:
         structured = forecast_result["structured_data"]
         loc_name = structured.get("location", {}).get("name") or city or "Your Location"
 
-        # Generate concise rest-of-day overview
-        rest_of_day = await asyncio.to_thread(
-            generate_rest_of_day_overview,
+        # 1. Version A: Concise short summary of current weather and forecast
+        short_summary = await asyncio.to_thread(
+            generate_weather_short_summary,
             structured_data=structured,
             city_name=loc_name,
         )
 
-        # Generate valuable, practical suggestion
-        suggestion = await asyncio.to_thread(
-            generate_weather_suggestion,
+        # 2. Version B: Playful, humorous descriptive recommendation based on actual weather
+        funny_suggestion = await asyncio.to_thread(
+            generate_weather_funny_suggestion,
             structured_data=structured,
             user_name=user_name,
             city_name=loc_name,
-            rest_of_day=rest_of_day,
+            short_summary=short_summary,
         )
 
         weather_payload: Dict[str, Any] = {
@@ -274,19 +269,25 @@ async def refresh_weather_forecast(force: bool = False) -> Dict[str, Any]:
             "current": structured.get("current"),
             "daily": structured.get("daily"),
             "hourly": structured.get("hourly_highlights", [])[:12],
-            "rest_of_day": rest_of_day,
-            "suggestion": suggestion,
+            "short_summary": short_summary,
+            "rest_of_day": short_summary,
+            "funny_suggestion": funny_suggestion,
+            "suggestion": funny_suggestion,
             "summary_text": forecast_result.get("summary_text"),
             "updated_at": now_iso,
         }
     else:
         # Fallback or missing location state
         msg = forecast_result.get("message") or "Weather forecast unavailable."
+        fallback_summary = "Forecast details currently unavailable."
+        fallback_suggestion = "Configure your city and country in Settings so MIRA can give you localized weather and daily recommendations!"
         weather_payload = {
             "status": forecast_result.get("status", "error"),
             "message": msg,
-            "rest_of_day": "Forecast details currently unavailable.",
-            "suggestion": "Configure your city and country in Settings so MIRA can give you localized weather and daily recommendations.",
+            "short_summary": fallback_summary,
+            "rest_of_day": fallback_summary,
+            "funny_suggestion": fallback_suggestion,
+            "suggestion": fallback_suggestion,
             "updated_at": now_iso,
         }
 

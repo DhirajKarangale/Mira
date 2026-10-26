@@ -5,37 +5,40 @@ interface WelcomeHeaderProps {
   userName?: string;
 }
 
-// 20 hardcoded, short, positive, cheerful welcome messages
+// Cheerful, funny, lightly roast-like, short, positive welcome messages
 const MORNING_MESSAGES = [
-  "Good morning, {name}! Let's make today remarkably productive.",
-  "Rise and shine, {name}! A fresh day of possibilities awaits you.",
-  "Good morning, {name}! Ready to tackle your biggest goals today?",
-  "Morning, {name}! Wishing you clarity, high energy, and great focus.",
-  "Good morning, {name}! Today is a fantastic day to build something great.",
-  "Bright and early, {name}! Let's get ahead of the curve today.",
-  "Good morning, {name}! Take a deep breath and start strong.",
+  "Good morning, {name}! Look who decided to grace the world with their presence.",
+  "Morning, {name}! The coffee is hot and waiting for your brain to catch up.",
+  "Rise and shine, {name}! Let's pretend we're fully awake and get things done.",
+  "Good morning, {name}! Your to-do list missed you, even if you didn't miss it.",
+  "Morning, {name}! Another day, another chance to conquer the world (or just close 20 tabs).",
+  "Wake up, {name}! The bugs aren't going to fix themselves, unfortunately.",
+  "Bright and early, {name}! Step away from the snooze button and let's make things happen.",
 ];
 
 const AFTERNOON_MESSAGES = [
-  "Good afternoon, {name}! Keep the positive momentum going strong.",
-  "Afternoon, {name}! Hope your day is turning out smooth and rewarding.",
-  "Good afternoon, {name}! Halfway through the day and doing fantastic.",
-  "Hey {name}, good afternoon! Time to power through the rest of the day.",
-  "Good afternoon, {name}! Stay hydrated, stay energized, and stay inspired.",
-  "Afternoon check-in, {name}! You've got everything under control.",
+  "Good afternoon, {name}! Still surviving on caffeine, optimism, and sheer willpower?",
+  "Afternoon, {name}! Time to defeat the post-lunch slump before it defeats you.",
+  "Hey {name}, good afternoon! You've made it this far without breaking production — keep it up.",
+  "Good afternoon, {name}! Remember to blink and drink actual water between genius moments.",
+  "Afternoon check-in, {name}! Half the day is gone, but your brilliance is just getting started.",
+  "Hey {name}! 3 PM energy check: still fully functional, or just nodding in agreement?",
+  "Good afternoon, {name}! Keep pushing — that commit isn't going to push itself.",
 ];
 
 const EVENING_MESSAGES = [
-  "Good evening, {name}! Time to wrap up and celebrate today's progress.",
-  "Evening, {name}! Hope you had a fulfilling and productive day.",
-  "Good evening, {name}! Wind down smoothly and enjoy your evening.",
-  "Hey {name}, good evening! Great job on everything you tackled today.",
-  "Good evening, {name}! Reflect on your wins and recharge for tomorrow.",
+  "Good evening, {name}! Time to close those 47 open browser tabs and declare victory.",
+  "Evening, {name}! You actually survived today's chaos — honestly, color me impressed.",
+  "Good evening, {name}! Step away from the keyboard before you rewrite the architecture at 9 PM.",
+  "Hey {name}, good evening! Great job today; now please let your brain cool down.",
+  "Good evening, {name}! You earned your downtime — go enjoy it without overthinking your code.",
+  "Evening, {name}! Another day conquered. Time to rest up before tomorrow's plot twists.",
 ];
 
 const ANYTIME_MESSAGES = [
-  "Welcome back, {name}! Always a genuine pleasure to assist you.",
-  "Hello {name}! Let's turn your ideas into achievements today.",
+  "Welcome back, {name}! I was wondering when you'd show up to make things happen.",
+  "Hey {name}! Back for more code chaos? Let's handle it like pros.",
+  "Look who's back! Ready to be productive, {name}, or just seeing if everything's still standing?",
 ];
 
 export const WelcomeHeader: FC<WelcomeHeaderProps> = ({ userName }) => {

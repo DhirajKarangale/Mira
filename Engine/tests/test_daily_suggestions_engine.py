@@ -8,10 +8,14 @@ from daily_suggestions.weather_section import (
     is_weather_refresh_needed,
     generate_weather_suggestion,
     generate_rest_of_day_overview,
+    generate_weather_short_summary,
+    generate_weather_funny_suggestion,
 )
 from daily_suggestions.news_section import (
     is_news_refresh_needed,
     select_top_three_stories_with_llm,
+    verify_article_timestamp,
+    normalize_story_title,
 )
 from daily_suggestions.suggestions_section import (
     is_suggestions_refresh_needed,
@@ -196,23 +200,52 @@ class TestDailySuggestionsEngine(unittest.TestCase):
             ]
         }
 
-        # 1. Rest of day overview
-        overview = generate_rest_of_day_overview(mock_weather_data, city_name="Shegaon")
-        self.assertIsInstance(overview, str)
-        self.assertGreater(len(overview), 5)
+        # 1. Short summary (concise overview of current weather and forecast)
+        short_summary = generate_weather_short_summary(mock_weather_data, city_name="Shegaon")
+        self.assertIsInstance(short_summary, str)
+        self.assertGreater(len(short_summary), 5)
 
-        # 2. Valuable suggestion
-        suggestion = generate_weather_suggestion(
+        overview = generate_rest_of_day_overview(mock_weather_data, city_name="Shegaon")
+        self.assertEqual(overview, short_summary)
+
+        # 2. Funny descriptive suggestion (playful recommendation based on actual conditions)
+        funny_suggestion = generate_weather_funny_suggestion(
             mock_weather_data,
             user_name="Dhiraj",
             city_name="Shegaon",
-            rest_of_day=overview,
+            short_summary=short_summary,
         )
-        self.assertIsInstance(suggestion, str)
-        self.assertGreater(len(suggestion), 10)
-        # Should not contain childish cliches
-        self.assertNotIn("human popsicle", suggestion.lower())
-        self.assertNotIn("puddle", suggestion.lower())
+        self.assertIsInstance(funny_suggestion, str)
+        self.assertGreater(len(funny_suggestion), 10)
+
+    def test_news_timestamp_verification_and_deduplication(self):
+        """Verify publication timestamps within 36 hours and title normalization."""
+        now = datetime.now(timezone.utc)
+
+        # 1. Fresh article (5 hours ago)
+        fresh_pub = (now - timedelta(hours=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        fresh_art = {"title": "Tech Breakthrough Today", "publishedAt": fresh_pub}
+        is_fresh, age, iso_pub = verify_article_timestamp(fresh_art, max_hours=36.0)
+        self.assertTrue(is_fresh)
+        self.assertAlmostEqual(age, 5.0, delta=1.0)
+        self.assertEqual(iso_pub, fresh_pub)
+
+        # 2. Stale article (48 hours ago)
+        stale_pub = (now - timedelta(hours=48)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        stale_art = {"title": "Old News Two Days Ago", "publishedAt": stale_pub}
+        is_fresh, age, iso_pub = verify_article_timestamp(stale_art, max_hours=36.0)
+        self.assertFalse(is_fresh)
+        self.assertAlmostEqual(age, 48.0, delta=1.0)
+
+        # 3. Invalid or missing timestamp gracefully treated as stale
+        missing_art = {"title": "Unknown Date Story"}
+        is_fresh, age, iso_pub = verify_article_timestamp(missing_art, max_hours=36.0)
+        self.assertFalse(is_fresh)
+
+        # 4. Title normalization for deduplication
+        norm_a = normalize_story_title("NASA's Mars Rover Finds Water Ice On Red Planet!")
+        norm_b = normalize_story_title("nasas mars rover finds water ice on red planet")
+        self.assertEqual(norm_a, norm_b)
 
 
 if __name__ == "__main__":

@@ -172,16 +172,16 @@ export const WeatherWidget: FC<WeatherWidgetProps> = ({
             </div>
           </div>
 
-          {/* Rest of Day Short Overview (Issue 2) */}
-          {activeWeather.rest_of_day && (
+          {/* Version 1: Short Summary / Forecast Overview */}
+          {(activeWeather.short_summary || activeWeather.rest_of_day) && (
             <div className="flex items-start gap-2 p-2.5 rounded-xl bg-cyan-950/30 border border-cyan-500/20 text-xs text-cyan-200">
               <Clock className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
               <div className="flex flex-col gap-0.5">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-cyan-400">
-                  Rest of Day
+                  Forecast Overview
                 </span>
                 <p className="text-[11px] sm:text-xs leading-relaxed text-zinc-200 font-medium">
-                  {activeWeather.rest_of_day}
+                  {activeWeather.short_summary || activeWeather.rest_of_day}
                 </p>
               </div>
             </div>
@@ -204,16 +204,16 @@ export const WeatherWidget: FC<WeatherWidgetProps> = ({
             </div>
           )}
 
-          {/* Practical Valuable Weather Advice (Issue 1) */}
-          {activeWeather.suggestion && (
-            <div className="flex items-start gap-2 p-2.5 rounded-xl bg-zinc-800/50 border border-emerald-500/20 text-xs text-zinc-300 leading-relaxed shadow-sm">
-              <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+          {/* Version 2: Playful / Funny Descriptive Weather Recommendation */}
+          {(activeWeather.funny_suggestion || activeWeather.suggestion) && (
+            <div className="flex items-start gap-2 p-2.5 rounded-xl bg-zinc-800/50 border border-amber-500/20 text-xs text-zinc-300 leading-relaxed shadow-sm">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
               <div className="flex flex-col gap-0.5">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
-                  Daily Advice
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-400">
+                  MIRA's Weather Note
                 </span>
                 <p className="text-[11px] sm:text-xs text-zinc-200 font-sans leading-relaxed">
-                  {activeWeather.suggestion}
+                  {activeWeather.funny_suggestion || activeWeather.suggestion}
                 </p>
               </div>
             </div>

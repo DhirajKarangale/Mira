@@ -218,7 +218,7 @@ def generate_daily_suggestions_with_llm(
     has_activity = bool(activity_summary and activity_summary.strip())
     activity_context = activity_summary if has_activity else "No screen activity recorded in the past 2 days."
 
-    prompt = f"""You are MIRA, a personal AI productivity assistant.
+    prompt = f"""You are MIRA, a sharp, witty, and delightfully observant personal AI assistant.
 Today is {day_name}, {date_str}.
 User Name: {user_name}
 User Context: {profile_text}
@@ -227,13 +227,13 @@ Confirmed Activity from Past 2 Days (from Activity Knowledge Base):
 {activity_context}
 
 Task:
-Generate exactly {target_count} practical, personalized, actionable suggestions for {user_name} for today.
+Generate exactly {target_count} personalized, slightly roast-like, funny, and highly actionable daily suggestions for {user_name} today.
 
 Strict Guidelines:
-1. Do NOT invent tasks, deadlines, bugs, preferences, or activities that are not evidenced above.
-2. If the user was active on specific tools or projects (e.g. Mira, VS Code, documentation, browsing), suggest sensible next steps, follow-ups, or focused work blocks referencing the confirmed tools.
-3. If activity evidence is minimal or absent, provide practical productivity and routine suggestions (e.g. daily planning, priority alignment, deep work block, review commitments, healthy breaks, organizing notes). Distinguish known facts from recommendations.
-4. Each suggestion must be concise (1-2 sentences maximum), clear, practical, and directly actionable.
+1. Tone: Slightly roast-like, playful, and funny — tease {user_name} playfully about their coding marathons, endless browser tabs, sitting motionless forever, or obsessing over tiny details, while remaining genuinely supportive and motivating.
+2. Grounded & Actionable: Each suggestion MUST recommend a real, concrete, useful action directly tied to the user's actual confirmed activities and priorities (e.g. Mira project, Antigravity IDE, schema design, testing, documentation, or taking a proper break).
+3. Do NOT invent tasks, fake bugs, fake meetings, or imaginary deadlines. If activity evidence is minimal, playfully roast their planning habits and suggest tangible deep work routines.
+4. Keep each suggestion concise (1 to 2 short sentences, maximum 30 words), punchy, and clear.
 5. Return strictly a JSON array of {target_count} strings:
 [
   "Suggestion 1",
@@ -255,15 +255,15 @@ Do not output any introductory or concluding text outside the JSON array."""
     except Exception as e:
         log_error(f"[SuggestionsSection] LLM suggestion generation failed: {e}")
 
-    # Fallback suggestions if LLM or parse failed
+    # Fallback suggestions if LLM or parse failed (witty, slightly roast-like, and actionable)
     fallback_pool = [
-        "Review your top priorities and set a dedicated focus block for your main project.",
-        "Take 10 minutes to clear unneeded browser tabs and organize your open workspace.",
-        "Check any pending messages or pull requests that need your review.",
-        "Plan your schedule for the afternoon and ensure time for a short away-from-screen break.",
-        "Document any recent architecture decisions or code changes made this week.",
-        "Outline goals and milestones for the upcoming sprint or days ahead.",
-        "Back up your active project notes and ensure local changes are committed.",
+        f"Close those 42 browser tabs you swore you'd read later today and focus on your single biggest code priority, {user_name}.",
+        f"Your chair has officially memorized your posture — stand up, stretch for two minutes, and hydrate before tackling the next feature.",
+        f"Pick one high-impact task to finish before lunch instead of context-switching like a browser on 100% CPU.",
+        f"Step away from the screen for a real water break — coffee does not count as a hydration strategy, {user_name}.",
+        f"Review your top priorities for today before you end up spending three hours color-coding your notes again.",
+        f"Stop admiring your schema and code changes — run the test suite and verify everything actually works.",
+        f"Commit your local working changes before git decides to test your emotional resilience today.",
     ]
     random.shuffle(fallback_pool)
     return fallback_pool[:target_count]

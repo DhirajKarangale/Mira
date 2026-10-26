@@ -48,7 +48,9 @@ export interface WeatherData {
   current?: WeatherCurrent;
   daily?: WeatherDayForecast[];
   hourly?: WeatherHourlyForecast[];
+  short_summary?: string;
   rest_of_day?: string;
+  funny_suggestion?: string;
   suggestion?: string;
   summary_text?: string;
   message?: string;
