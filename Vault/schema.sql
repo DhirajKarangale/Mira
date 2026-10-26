@@ -92,11 +92,14 @@ CREATE TABLE IF NOT EXISTS chats (
 
 CREATE TABLE IF NOT EXISTS daily_suggestions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date TEXT UNIQUE NOT NULL,
+    date_suggestions TIMESTAMP,
     suggestions TEXT DEFAULT '[]',
     completed TEXT DEFAULT '',
+    date_whether TIMESTAMP,
     whether TEXT DEFAULT '{}',
+    date_music TIMESTAMP,
     music TEXT DEFAULT '[]',
+    date_entertainment TIMESTAMP,
     entertainment TEXT DEFAULT '[]'
 );
 
