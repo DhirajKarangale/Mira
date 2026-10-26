@@ -11,9 +11,13 @@ import {
   ShieldCheck,
   CheckCircle,
   Copy,
+  Navigation,
+  Compass,
+  Hash,
 } from "lucide-react";
 import { useState } from "react";
 import type { UserDetails } from "../types";
+import { formatCoordinates } from "@/services";
 
 interface UserDetailsViewProps {
   details: UserDetails | null;
@@ -43,7 +47,10 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
       details?.phone_number?.trim() ||
       details?.city?.trim() ||
       details?.state?.trim() ||
-      details?.country?.trim()
+      details?.country?.trim() ||
+      details?.address?.trim() ||
+      details?.latitude != null ||
+      details?.longitude != null
     );
 
   if (!hasData) {
@@ -79,8 +86,16 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
       .map((n) => n[0].toUpperCase())
       .join("") || "U";
 
+  const coordinatesDisplay = formatCoordinates(details?.latitude, details?.longitude);
+  const hasCoordinates =
+    details?.latitude != null &&
+    details?.longitude != null &&
+    !Number.isNaN(details.latitude) &&
+    !Number.isNaN(details.longitude);
+
   return (
     <div className="space-y-6">
+      {/* Profile Header Banner */}
       <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-6 sm:p-8 backdrop-blur-xl shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
           <div className="flex items-center gap-5">
@@ -107,6 +122,12 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
                 <span className="text-xs text-zinc-500 font-mono">
                   Vault Synced
                 </span>
+                {hasCoordinates && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono bg-cyan-500/10 border border-cyan-500/20 text-cyan-300">
+                    <Compass className="w-3 h-3" />
+                    Geo-Anchored
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -126,6 +147,7 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Contact Information Card */}
         <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-6 backdrop-blur-xl shadow-xl flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between pb-4 mb-4 border-b border-white/[0.06]">
@@ -157,7 +179,7 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => copyToClipboard(details.email, "email")}
-                    className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-all"
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-all cursor-pointer"
                     title="Copy Email"
                   >
                     {copiedField === "email" ? (
@@ -185,7 +207,7 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => copyToClipboard(details.phone_number, "phone")}
-                    className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-all"
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-all cursor-pointer"
                     title="Copy Phone Number"
                   >
                     {copiedField === "phone" ? (
@@ -200,58 +222,132 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
           </div>
         </div>
 
+        {/* Location & Region Card */}
         <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-6 backdrop-blur-xl shadow-xl flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between pb-4 mb-4 border-b border-white/[0.06]">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between pb-4 border-b border-white/[0.06]">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400">
                   <MapPin className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold text-zinc-200">Location & Region</h3>
+                  <h3 className="text-sm font-semibold text-zinc-200">Location & Coordinates</h3>
                   <p className="text-xs text-zinc-500">Geographic parameters in Vault</p>
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="p-3 rounded-xl bg-zinc-800/30 border border-white/[0.04]">
-                <div className="flex items-center gap-2 text-zinc-500 mb-1">
-                  <Building2 className="w-3.5 h-3.5" />
-                  <span className="text-[11px] font-medium uppercase tracking-wider">City</span>
+            {/* Formatted Full Address Row */}
+            <div className="group flex items-start justify-between p-3 rounded-xl bg-zinc-800/30 border border-white/[0.04] hover:border-white/[0.1] transition-all">
+              <div className="flex items-start gap-3 min-w-0">
+                <Navigation className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <span className="block text-[11px] font-medium text-zinc-500 uppercase tracking-wider">
+                    Full Address
+                  </span>
+                  <span className="text-sm font-medium text-zinc-200 block break-words">
+                    {details?.address ||
+                      [details?.city, details?.state, details?.country]
+                        .filter(Boolean)
+                        .join(", ") ||
+                      "—"}
+                  </span>
                 </div>
-                <div className="text-sm font-medium text-zinc-200 truncate">
+              </div>
+              {details?.address && (
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(details.address, "address")}
+                  className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-all cursor-pointer shrink-0 ml-2"
+                  title="Copy Full Address"
+                >
+                  {copiedField === "address" ? (
+                    <span className="text-xs text-emerald-400">Copied!</span>
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              )}
+            </div>
+
+            {/* Region Grid: City, State, Country, Postal Code */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="p-2.5 rounded-xl bg-zinc-800/30 border border-white/[0.04]">
+                <div className="flex items-center gap-1.5 text-zinc-500 mb-1">
+                  <Building2 className="w-3 h-3 text-purple-400" />
+                  <span className="text-[10px] font-medium uppercase tracking-wider">City</span>
+                </div>
+                <div className="text-xs font-semibold text-zinc-200 truncate" title={details?.city || ""}>
                   {details?.city || "—"}
                 </div>
               </div>
 
-              <div className="p-3 rounded-xl bg-zinc-800/30 border border-white/[0.04]">
-                <div className="flex items-center gap-2 text-zinc-500 mb-1">
-                  <MapPin className="w-3.5 h-3.5" />
-                  <span className="text-[11px] font-medium uppercase tracking-wider">State</span>
+              <div className="p-2.5 rounded-xl bg-zinc-800/30 border border-white/[0.04]">
+                <div className="flex items-center gap-1.5 text-zinc-500 mb-1">
+                  <MapPin className="w-3 h-3 text-purple-400" />
+                  <span className="text-[10px] font-medium uppercase tracking-wider">State</span>
                 </div>
-                <div className="text-sm font-medium text-zinc-200 truncate">
+                <div className="text-xs font-semibold text-zinc-200 truncate" title={details?.state || ""}>
                   {details?.state || "—"}
                 </div>
               </div>
 
-              <div className="p-3 rounded-xl bg-zinc-800/30 border border-white/[0.04]">
-                <div className="flex items-center gap-2 text-zinc-500 mb-1">
-                  <Globe className="w-3.5 h-3.5" />
-                  <span className="text-[11px] font-medium uppercase tracking-wider">Country</span>
+              <div className="p-2.5 rounded-xl bg-zinc-800/30 border border-white/[0.04]">
+                <div className="flex items-center gap-1.5 text-zinc-500 mb-1">
+                  <Globe className="w-3 h-3 text-purple-400" />
+                  <span className="text-[10px] font-medium uppercase tracking-wider">Country</span>
                 </div>
-                <div className="text-sm font-medium text-zinc-200 truncate">
+                <div className="text-xs font-semibold text-zinc-200 truncate" title={details?.country || ""}>
                   {details?.country || "—"}
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-zinc-800/30 border border-white/[0.04]">
+                <div className="flex items-center gap-1.5 text-zinc-500 mb-1">
+                  <Hash className="w-3 h-3 text-purple-400" />
+                  <span className="text-[10px] font-medium uppercase tracking-wider">Postal</span>
+                </div>
+                <div className="text-xs font-semibold text-zinc-200 truncate" title={details?.postal_code || ""}>
+                  {details?.postal_code || "—"}
                 </div>
               </div>
             </div>
 
-            <div className="mt-4 p-3 rounded-xl bg-purple-500/[0.04] border border-purple-500/10 flex items-center gap-2.5">
-              <Globe className="w-4 h-4 text-purple-400 shrink-0" />
-              <span className="text-xs text-zinc-300">
-                {[details?.city, details?.state, details?.country].filter(Boolean).join(", ") ||
-                  "No regional location configured"}
-              </span>
+            {/* Geographic Coordinates Banner */}
+            <div className="p-3 rounded-xl bg-cyan-950/20 border border-cyan-500/20 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shrink-0">
+                  <Compass className="w-3.5 h-3.5" />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] uppercase font-mono tracking-wider text-cyan-400 block">
+                    Geographic Coordinates
+                  </span>
+                  <span className="text-xs text-zinc-200 font-mono font-medium block truncate">
+                    {coordinatesDisplay}
+                  </span>
+                </div>
+              </div>
+
+              {hasCoordinates && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    copyToClipboard(
+                      `${details?.latitude}, ${details?.longitude}`,
+                      "coords"
+                    )
+                  }
+                  className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-all cursor-pointer shrink-0"
+                  title="Copy Lat/Lon"
+                >
+                  {copiedField === "coords" ? (
+                    <span className="text-[10px] text-emerald-400">Copied!</span>
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -259,4 +355,3 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
     </div>
   );
 };
-

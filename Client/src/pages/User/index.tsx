@@ -44,7 +44,11 @@ export const UserPage: FC = () => {
           details.phone_number ||
           details.city ||
           details.state ||
-          details.country)
+          details.country ||
+          details.address ||
+          details.postal_code ||
+          details.latitude != null ||
+          details.longitude != null)
     );
 
   return (

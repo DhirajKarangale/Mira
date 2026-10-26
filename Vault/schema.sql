@@ -42,7 +42,11 @@ CREATE TABLE IF NOT EXISTS user_details (
     phone_number TEXT DEFAULT '',
     city TEXT DEFAULT '',
     state TEXT DEFAULT '',
-    country TEXT DEFAULT ''
+    country TEXT DEFAULT '',
+    address TEXT DEFAULT '',
+    postal_code TEXT DEFAULT '',
+    latitude REAL DEFAULT NULL,
+    longitude REAL DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS app_permissions (

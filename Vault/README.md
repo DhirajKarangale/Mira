@@ -143,7 +143,19 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 - **Response (`200 OK`):**
   ```json
-  { "user_name": "User", "email": "user@example.com", "exists": true }
+  {
+    "user_name": "User",
+    "email": "user@example.com",
+    "phone_number": "+1 555-019-2834",
+    "city": "Pune",
+    "state": "Maharashtra",
+    "country": "India",
+    "address": "Pune, Maharashtra, India",
+    "postal_code": "411001",
+    "latitude": 18.51957,
+    "longitude": 73.85535,
+    "exists": true
+  }
   ```
 
 ---
@@ -153,11 +165,35 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 - **Request Body (JSON):**
   ```json
-  { "user_name": "User", "email": "user@example.com" }
+  {
+    "user_name": "User",
+    "email": "user@example.com",
+    "phone_number": "+1 555-019-2834",
+    "city": "Pune",
+    "state": "Maharashtra",
+    "country": "India",
+    "address": "Pune, Maharashtra, India",
+    "postal_code": "411001",
+    "latitude": 18.51957,
+    "longitude": 73.85535
+  }
   ```
 - **Response (`200 OK`):**
   ```json
-  { "user_name": "User", "email": "user@example.com", "exists": true, "message": "User details saved successfully" }
+  {
+    "user_name": "User",
+    "email": "user@example.com",
+    "phone_number": "+1 555-019-2834",
+    "city": "Pune",
+    "state": "Maharashtra",
+    "country": "India",
+    "address": "Pune, Maharashtra, India",
+    "postal_code": "411001",
+    "latitude": 18.51957,
+    "longitude": 73.85535,
+    "exists": true,
+    "message": "User details saved successfully"
+  }
   ```
 
 ---

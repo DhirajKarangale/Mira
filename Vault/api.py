@@ -5,7 +5,7 @@ import platform
 import sys
 from typing import Any, Dict, List, Optional, Union
 from fastapi import APIRouter, HTTPException, Query, Response, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 import config
 import config_storage
 import log_manager
@@ -145,6 +145,20 @@ class UserDetailsRequest(BaseModel):
     city: Optional[str] = None
     state: Optional[str] = None
     country: Optional[str] = None
+    address: Optional[str] = None
+    postal_code: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+    @field_validator('latitude', 'longitude', mode='before')
+    @classmethod
+    def parse_coords(cls, v):
+        if v == '' or v is None:
+            return None
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return None
 
 @router.get('/user', status_code=status.HTTP_200_OK)
 async def get_user_details():
@@ -159,7 +173,12 @@ async def get_user_details():
 async def save_user_details(request: UserDetailsRequest):
     try:
         raw_updates = request.model_dump(exclude_unset=True)
-        updates = {k: v.strip() if isinstance(v, str) else v for k, v in raw_updates.items() if v is not None}
+        updates = {}
+        for k, v in raw_updates.items():
+            if isinstance(v, str):
+                updates[k] = v.strip()
+            elif v is not None or k in ('latitude', 'longitude'):
+                updates[k] = v
         if not updates:
             data = config_storage.get_configuration('user_details')
             return {**data, 'exists': any((v is not None and str(v).strip() != '' for v in data.values()))}

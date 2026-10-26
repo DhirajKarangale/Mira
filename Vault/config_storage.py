@@ -246,7 +246,7 @@ def update_configuration(table_name: str, updates: Dict[str, Any]) -> Dict[str, 
     for k, v in updates.items():
         k_lower = k.lower()
         if k_lower not in existing_cols:
-            col_type = 'BOOLEAN DEFAULT 0' if isinstance(v, bool) or k.upper().startswith(('IS_', 'AUTO_')) else 'INTEGER DEFAULT 0' if isinstance(v, int) else 'TEXT'
+            col_type = 'BOOLEAN DEFAULT 0' if isinstance(v, bool) or k.upper().startswith(('IS_', 'AUTO_')) else 'INTEGER DEFAULT 0' if isinstance(v, int) else 'REAL' if isinstance(v, float) else 'TEXT'
             try:
                 logger.info(f"Dynamically adding column '{k}' to '{normalized_table}'")
                 _DB_CONN.execute(f'ALTER TABLE {normalized_table} ADD COLUMN {k} {col_type}')

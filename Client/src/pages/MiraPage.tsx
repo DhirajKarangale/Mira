@@ -13,7 +13,8 @@ export const MiraPage: FC = () => {
     details?.phone_number?.trim() ||
     details?.city?.trim() ||
     details?.state?.trim() ||
-    details?.country?.trim()
+    details?.country?.trim() ||
+    details?.address?.trim()
   );
 
   return (

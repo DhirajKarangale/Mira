@@ -5,6 +5,10 @@ export interface UserDetails {
   city: string | null;
   state: string | null;
   country: string | null;
+  address?: string | null;
+  postal_code?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   exists?: boolean;
   message?: string;
 }
@@ -16,6 +20,10 @@ export interface UserFormState {
   city: string;
   state: string;
   country: string;
+  address: string;
+  postal_code: string;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export type UserFormField = keyof UserFormState;
@@ -31,4 +39,8 @@ export const DEFAULT_USER_DATA: UserFormState = {
   city: "Pune",
   state: "Maharashtra",
   country: "India",
+  address: "",
+  postal_code: "",
+  latitude: null,
+  longitude: null,
 };

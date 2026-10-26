@@ -1,6 +1,6 @@
 {
-  "state": "off",
-  "is_on": false,
+  "state": "on",
+  "is_on": true,
   "auto_start": true,
-  "updated_at": "2026-10-26T04:42:26.340738900+00:00"
+  "updated_at": "2026-10-26T06:44:29.347982200+00:00"
 }
