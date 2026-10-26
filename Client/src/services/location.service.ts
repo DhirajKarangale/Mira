@@ -41,12 +41,17 @@ export function cleanAdminName(val?: string): string {
 
 /**
  * Tests if a string is a postal or PIN code.
+ * Postal codes worldwide always contain numeric digits. Pure alphabetic words
+ * (like "Wakad", "Pune", "Paris", "Delhi") are place names, never postal codes.
  */
 export function isPostalCodeString(val?: string): boolean {
   if (!val) return false;
   const clean = val.trim();
+  if (!/\d/.test(clean)) return false;
+
   return (
     /^\d{3,10}$/.test(clean) ||
+    /^\d{5}-\d{4}$/.test(clean) ||
     /^[A-Z0-9]{2,5}\s?[A-Z0-9]{2,4}$/i.test(clean)
   );
 }
@@ -72,8 +77,133 @@ export function resolveCityFromAddress(addr: any): string {
 }
 
 /**
- * Searches locations using the Open-Meteo Geocoding API with intelligent
- * OpenStreetMap Nominatim fallback and Indian PIN code directory integration.
+ * Resolves the primary city from a geocoding result.
+ * For regional localities / suburbs (e.g. Wakad or Hinjawadi in Pune),
+ * resolves to the parent city (Pune) while preserving the locality in the full address.
+ */
+export function resolveCityFromGeocoding(item: GeocodingResult): string {
+  if (item.city && !isPostalCodeString(item.city) && !/^\d+/.test(item.city.trim())) {
+    return cleanAdminName(item.city);
+  }
+
+  const cleanAdmin2 = cleanAdminName(item.admin2);
+  const cleanAdmin3 = cleanAdminName(item.admin3);
+
+  // If item.name starts with numbers (e.g. "411057, Mulshi" or "10001, New York"),
+  // strip the numeric prefix for city identification
+  const nameClean = item.name.replace(/^\d+[\s,-]*/, "").trim();
+
+  // If name matches admin2 or there is no admin2, name is the city (e.g. Pune, Mumbai, Paris)
+  if (!cleanAdmin2 || (nameClean && nameClean.toLowerCase() === cleanAdmin2.toLowerCase())) {
+    return isPostalCodeString(nameClean) ? "" : nameClean;
+  }
+
+  // If name matches admin3 (e.g. Shegaon where admin3 is Shegaon and admin2 is Buldhana),
+  // then name is the town/city itself
+  if (cleanAdmin3 && nameClean && nameClean.toLowerCase() === cleanAdmin3.toLowerCase()) {
+    return nameClean;
+  }
+
+  // If name is a locality/suburb inside a city (e.g. Wakad in Pune, Hinjawadi in Pune):
+  // The city is admin2 (e.g. Pune)
+  if (cleanAdmin2 && !isPostalCodeString(cleanAdmin2) && !/^\d+/.test(cleanAdmin2)) {
+    return cleanAdmin2;
+  }
+
+  return nameClean && !isPostalCodeString(nameClean) ? nameClean : "";
+}
+
+/**
+ * Generates common transliteration and spelling variants for location queries.
+ * Example: "hinjewadi" <-> "hinjawadi", "pimpari" <-> "pimpri", "buldana" <-> "buldhana"
+ */
+export function getSpellingVariants(raw: string): string[] {
+  const variants = [raw];
+  const lower = raw.toLowerCase();
+
+  if (lower.includes("ewadi")) {
+    variants.push(raw.replace(/ewadi/gi, "awadi"));
+  } else if (lower.includes("awadi")) {
+    variants.push(raw.replace(/awadi/gi, "ewadi"));
+  }
+
+  if (lower.includes("pimpri")) {
+    variants.push(raw.replace(/pimpri/gi, "pimpari"));
+  } else if (lower.includes("pimpari")) {
+    variants.push(raw.replace(/pimpari/gi, "pimpri"));
+  }
+
+  if (lower.includes("buldana")) {
+    variants.push(raw.replace(/buldana/gi, "buldhana"));
+  } else if (lower.includes("buldhana")) {
+    variants.push(raw.replace(/buldhana/gi, "buldana"));
+  }
+
+  return Array.from(new Set(variants));
+}
+
+/**
+ * Deduplicates geocoding results based on normalized address and coordinates,
+ * preserving distinct postal code zones (e.g. 411057 vs 411115) and distinct
+ * towns while eliminating identical commercial POIs.
+ */
+export function deduplicateGeocodingResults(items: GeocodingResult[]): GeocodingResult[] {
+  const unique: GeocodingResult[] = [];
+
+  for (const item of items) {
+    const formatted = formatGeocodingAddress(item).toLowerCase().trim();
+    if (!formatted) continue;
+
+    const postal = (item.postcodes && item.postcodes[0]) ? item.postcodes[0].trim().toLowerCase() : "";
+    const nameLower = (item.name || "").toLowerCase().trim();
+    const admin2Lower = cleanAdminName(item.admin2).toLowerCase();
+    const countryLower = (item.country || "").toLowerCase().trim();
+
+    const existingIndex = unique.findIndex((existing) => {
+      const exPostal = (existing.postcodes && existing.postcodes[0]) ? existing.postcodes[0].trim().toLowerCase() : "";
+      const exName = (existing.name || "").toLowerCase().trim();
+      const exAdmin2 = cleanAdminName(existing.admin2).toLowerCase();
+      const exCountry = (existing.country || "").toLowerCase().trim();
+      const exFormatted = formatGeocodingAddress(existing).toLowerCase().trim();
+
+      // If both have different postal codes, they are distinct zones (NOT duplicates!)
+      if (postal && exPostal && postal !== exPostal) {
+        return false;
+      }
+
+      // Distance check (~3km in coordinates is approx 0.03 degrees)
+      const dist = Math.hypot(existing.latitude - item.latitude, existing.longitude - item.longitude);
+
+      // If same formatted address and same postal code (or within 3km), they are duplicates
+      if (exFormatted === formatted && (postal === exPostal || dist < 0.035)) {
+        return true;
+      }
+
+      // Same name and same district/country within 3km
+      if ((exName === nameLower || exFormatted === formatted) && exAdmin2 === admin2Lower && exCountry === countryLower && dist < 0.035) {
+        return true;
+      }
+
+      return false;
+    });
+
+    if (existingIndex >= 0) {
+      // If existing item lacked postal code but new item has it, enrich the existing entry
+      const existing = unique[existingIndex];
+      if ((!existing.postcodes || existing.postcodes.length === 0) && item.postcodes && item.postcodes.length > 0) {
+        existing.postcodes = item.postcodes;
+      }
+    } else {
+      unique.push(item);
+    }
+  }
+
+  return unique;
+}
+
+/**
+ * Searches locations using the Open-Meteo Geocoding API with multi-source fallback
+ * (Photon OSM Geocoding & India Post API) to ensure complete coverage worldwide.
  *
  * Open-Meteo Geocoding API:
  * https://geocoding-api.open-meteo.com/v1/search?name={location}&count=10&language=en&format=json
@@ -90,110 +220,53 @@ export async function searchLocations(
 
   const isNumericPostal = /^\d{3,10}$/.test(query);
   const isIndianPin = /^\d{6}$/.test(query);
+  const lowerQuery = query.toLowerCase();
 
-  // 1. If not a numeric postal code, query Open-Meteo Geocoding API first
-  if (!isNumericPostal) {
-    try {
-      const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
-        query
-      )}&count=${count}&language=en&format=json`;
+  // Extract any standalone numbers in query (e.g. '858', '1', '2')
+  const queryNumbers = query.match(/\b\d+\b/g) || [];
+  const queryVariants = getSpellingVariants(query);
 
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-        },
-        signal,
-      });
+  const collected: GeocodingResult[] = [];
 
-      if (response.ok) {
-        const data: GeocodingApiResponse = await response.json();
-        if (Array.isArray(data.results) && data.results.length > 0) {
-          return data.results.map((r) => ({
-            ...r,
-            city: isPostalCodeString(r.name) ? r.admin2 || r.admin1 || "" : r.name,
-          }));
-        }
-      }
-    } catch (err: any) {
-      if (err.name === "AbortError") throw err;
-      console.warn("Open-Meteo query had no matches or failed, trying fallback:", err);
-    }
-  }
-
-  // 2. Special handling for 6-digit Indian PIN codes (e.g. 411057, 444203, 400001)
+  // 1. Special handling for 6-digit Indian PIN codes (e.g. 411057, 444203, 400001)
   if (isIndianPin) {
     try {
-      const [indiaPostRes, nominatimPinRes] = await Promise.allSettled([
-        fetch(`https://api.postalpincode.in/pincode/${query}`, { signal }),
-        fetch(
-          `https://nominatim.openstreetmap.org/search?postalcode=${query}&country=India&format=json&addressdetails=1&limit=5`,
-          {
-            headers: { Accept: "application/json" },
-            signal,
-          }
-        ),
-      ]);
-
-      let osmLat = 0;
-      let osmLon = 0;
-      let osmAddress: any = null;
-
-      if (nominatimPinRes.status === "fulfilled" && nominatimPinRes.value.ok) {
-        const osmData = await nominatimPinRes.value.json();
-        if (Array.isArray(osmData) && osmData.length > 0) {
-          osmLat = parseFloat(osmData[0].lat);
-          osmLon = parseFloat(osmData[0].lon);
-          osmAddress = osmData[0].address;
-        }
-      }
-
-      if (indiaPostRes.status === "fulfilled" && indiaPostRes.value.ok) {
-        const ipData = await indiaPostRes.value.json();
+      const indiaPostRes = await fetch(`https://api.postalpincode.in/pincode/${query}`, { signal });
+      if (indiaPostRes.ok) {
+        const ipData = await indiaPostRes.json();
         const postOffices: any[] = ipData?.[0]?.PostOffice || [];
 
         if (Array.isArray(postOffices) && postOffices.length > 0) {
           const firstPO = postOffices[0];
-          const district = firstPO.District || cleanAdminName(osmAddress?.state_district) || "Pune";
-          const state = firstPO.State || osmAddress?.state || "Maharashtra";
+          const district = firstPO.District || "Pune";
+          const state = firstPO.State || "Maharashtra";
 
-          // If OSM coordinates with country=India was missing, query quick fallback
-          if (!osmLat && !osmLon) {
-            try {
-              const fallbackOsm = await fetch(
-                `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
-                  `${query}, India`
-                )}&format=json&limit=1`,
-                { headers: { Accept: "application/json" }, signal }
-              );
-              if (fallbackOsm.ok) {
-                const fbData = await fallbackOsm.json();
-                if (fbData?.[0]) {
-                  osmLat = parseFloat(fbData[0].lat);
-                  osmLon = parseFloat(fbData[0].lon);
-                }
+          // Fetch coordinates for PIN code via Photon
+          let pinLat = 0;
+          let pinLon = 0;
+          try {
+            const phRes = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=1`, { signal });
+            if (phRes.ok) {
+              const phData = await phRes.json();
+              if (phData.features?.[0]?.geometry?.coordinates) {
+                pinLat = phData.features[0].geometry.coordinates[1];
+                pinLon = phData.features[0].geometry.coordinates[0];
               }
-            } catch {
-              // Ignore fallback coords failure
             }
+          } catch {}
+
+          if (!pinLat && !pinLon) {
+            pinLat = 18.5204;
+            pinLon = 73.8567;
           }
 
-          const results: GeocodingResult[] = [];
-
           // Primary District/City result
-          const primaryTown =
-            postOffices.find(
-              (p) =>
-                p.Name?.toLowerCase() === p.Block?.toLowerCase() ||
-                p.Name?.toLowerCase() === district.toLowerCase()
-            )?.Name || district;
-
-          results.push({
+          collected.push({
             id: Number(query) * 100,
-            name: primaryTown !== district ? `${primaryTown}, ${district}` : district,
-            city: primaryTown,
-            latitude: osmLat || 18.5204,
-            longitude: osmLon || 73.8567,
+            name: district,
+            city: district,
+            latitude: pinLat,
+            longitude: pinLon,
             country: "India",
             country_code: "IN",
             admin1: state,
@@ -202,17 +275,17 @@ export async function searchLocations(
           });
 
           // Distinct sub-office localities (e.g. Hinjawadi, Wakad, Marunji)
-          for (let i = 0; i < Math.min(postOffices.length, count - 1); i++) {
+          for (let i = 0; i < Math.min(postOffices.length, count); i++) {
             const po = postOffices[i];
-            const cleanPoName = po.Name?.replace(/\s*\([^)]*\)/g, "").trim() || po.Name;
-            if (cleanPoName.toLowerCase() === primaryTown.toLowerCase()) continue;
+            const rawPoName = (po.Name || "").replace(/\s+/g, " ").trim();
+            if (rawPoName.toLowerCase() === district.toLowerCase()) continue;
 
-            results.push({
+            collected.push({
               id: Number(query) * 100 + i + 1,
-              name: `${po.Name}, ${district}`,
+              name: `${rawPoName}, ${district}`,
               city: district,
-              latitude: osmLat,
-              longitude: osmLon,
+              latitude: pinLat,
+              longitude: pinLon,
               country: "India",
               country_code: "IN",
               admin1: state,
@@ -220,127 +293,217 @@ export async function searchLocations(
               postcodes: [query],
             });
           }
-
-          if (results.length > 0) {
-            return results;
-          }
         }
       }
     } catch (err: any) {
       if (err.name === "AbortError") throw err;
-      console.warn("India Post PIN search failed, falling back to general Nominatim:", err);
+      console.warn("India Post PIN search failed, using fallback providers:", err);
     }
   }
 
-  // 3. Fallback to OpenStreetMap Nominatim for general and international postal codes
-  try {
-    const fallbackUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
-      query
-    )}&format=json&addressdetails=1&limit=${count}`;
+  // 2. Open-Meteo Geocoding API (using requested endpoint with spelling variants of the query)
+  if (!isNumericPostal) {
+    for (const variant of queryVariants) {
+      try {
+        const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
+          variant
+        )}&count=${Math.max(count * 2, 20)}&language=en&format=json`;
 
-    const fallbackResponse = await fetch(fallbackUrl, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-      },
-      signal,
-    });
+        const response = await fetch(url, {
+          method: "GET",
+          headers: { Accept: "application/json" },
+          signal,
+        });
 
-    if (fallbackResponse.ok) {
-      const osmResults: any[] = await fallbackResponse.json();
-      if (Array.isArray(osmResults) && osmResults.length > 0) {
-        const mappedResults: GeocodingResult[] = [];
-
-        for (let index = 0; index < osmResults.length; index++) {
-          const item = osmResults[index];
-          let addr = item.address || {};
-          const isPostcodeItem =
-            item.type === "postcode" ||
-            item.addresstype === "postcode" ||
-            isPostalCodeString(item.name);
-
-          // If it's a postal code point without city/town, reverse geocode coordinates to find the suburb/city
-          if (isPostcodeItem && !addr.city && !addr.town && !addr.suburb && index === 0) {
-            try {
-              const revRes = await fetch(
-                `https://nominatim.openstreetmap.org/reverse?lat=${item.lat}&lon=${item.lon}&format=json&addressdetails=1`,
-                { headers: { Accept: "application/json" }, signal }
-              );
-              if (revRes.ok) {
-                const revData = await revRes.json();
-                if (revData?.address) {
-                  addr = { ...addr, ...revData.address };
-                }
-              }
-            } catch {
-              // Ignore reverse geocode failures
+        if (response.ok) {
+          const data: GeocodingApiResponse = await response.json();
+          if (Array.isArray(data.results) && data.results.length > 0) {
+            for (const r of data.results) {
+              collected.push({
+                ...r,
+                city: resolveCityFromGeocoding(r),
+              });
             }
+            if (collected.length > 0) break;
+          }
+        }
+      } catch (err: any) {
+        if (err.name === "AbortError") throw err;
+        console.warn(`Open-Meteo query (${variant}) failed:`, err);
+      }
+    }
+  }
+
+  // 3. Photon OSM Geocoding (high-accuracy global coverage with postcodes, localities & CORS)
+  let photonFeatures: any[] = [];
+  try {
+    for (const variant of queryVariants) {
+      const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(variant)}&limit=${Math.max(count * 2, 15)}`;
+      const phRes = await fetch(photonUrl, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        signal,
+      });
+
+      if (phRes.ok) {
+        const phData = await phRes.json();
+        const features = phData.features || [];
+        photonFeatures.push(...features);
+
+        for (let i = 0; i < features.length; i++) {
+          const f = features[i];
+          const p = f.properties || {};
+          const osmKey = p.osm_key;
+
+          // Exclude commercial shops, gas stations, clinics, offices - keep only real places / boundaries / streets / areas
+          if (osmKey === "amenity" || osmKey === "office" || osmKey === "shop" || osmKey === "building" || osmKey === "craft") {
+            continue;
           }
 
-          const city = resolveCityFromAddress(addr);
-          const suburb = addr.suburb || addr.neighbourhood || "";
-          let displayName = city;
+          const primaryName = p.name || p.street || p.city || query;
+          const city = p.city || p.district || p.county || "";
+          const admin2 = cleanAdminName(p.district || p.county || city);
 
-          if (suburb && city && suburb.toLowerCase() !== city.toLowerCase()) {
-            displayName = `${suburb}, ${city}`;
-          } else if (!displayName) {
-            displayName = cleanAdminName(addr.county) || cleanAdminName(addr.state_district) || query;
+          let displayName = primaryName;
+          if (city && primaryName.toLowerCase() !== city.toLowerCase()) {
+            displayName = `${primaryName}, ${city}`;
           }
 
-          const postcodes: string[] = [];
-          if (addr.postcode) {
-            postcodes.push(String(addr.postcode).trim());
-          } else if (isPostalCodeString(query)) {
-            postcodes.push(query);
-          }
-
-          mappedResults.push({
-            id: Number(item.place_id) || index + 1,
+          collected.push({
+            id: 8000000 + (f.properties?.osm_id || i),
             name: displayName,
             city: city || displayName,
-            latitude: parseFloat(item.lat),
-            longitude: parseFloat(item.lon),
-            country: addr.country || "",
-            country_code: addr.country_code ? addr.country_code.toUpperCase() : undefined,
-            admin1: addr.state || "",
-            admin2: cleanAdminName(addr.county) || cleanAdminName(addr.state_district) || "",
-            postcodes: postcodes.length > 0 ? postcodes : undefined,
+            latitude: f.geometry.coordinates[1],
+            longitude: f.geometry.coordinates[0],
+            country: p.country || "",
+            country_code: p.countrycode ? p.countrycode.toUpperCase() : undefined,
+            admin1: p.state || "",
+            admin2: admin2,
+            postcodes: p.postcode ? [String(p.postcode).trim()] : undefined,
           });
         }
-
-        return mappedResults;
+        if (collected.length > 0) break;
       }
     }
   } catch (err: any) {
     if (err.name === "AbortError") throw err;
-    console.warn("Nominatim fallback search failed:", err);
+    console.warn("Photon search failed:", err);
   }
 
-  return [];
+  // 4. Enrich any Open-Meteo items that lack postal codes with nearby Photon postal codes
+  if (photonFeatures.length > 0) {
+    for (const item of collected) {
+      if (!item.postcodes || item.postcodes.length === 0) {
+        const match = photonFeatures.find((p) => {
+          const pc = p.properties?.postcode;
+          if (!pc) return false;
+          const [lon, lat] = p.geometry?.coordinates || [];
+          return Math.hypot(lat - item.latitude, lon - item.longitude) < 0.08;
+        });
+        if (match?.properties?.postcode) {
+          item.postcodes = [String(match.properties.postcode).trim()];
+        }
+      }
+    }
+  }
+
+  // 5. Strict Relevance Validation:
+  // If the query contains standalone numbers (e.g. '858', '1', '2'),
+  // discard any result that does not genuinely contain all of those numbers!
+  // This guarantees queries for non-existent places like "Hinjewadi phase 858" return 0 results.
+  const validResults = collected.filter((item) => {
+    const fullText = (
+      (item.name || "") + " " +
+      (item.city || "") + " " +
+      (item.admin2 || "") + " " +
+      (item.admin1 || "") + " " +
+      (item.country || "") + " " +
+      (item.postcodes ? item.postcodes.join(" ") : "")
+    ).toLowerCase();
+
+    for (const num of queryNumbers) {
+      const regex = new RegExp(`\\b${num}\\b`, "i");
+      if (!regex.test(fullText)) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  // 6. Deduplicate all verified genuine locations
+  const deduped = deduplicateGeocodingResults(validResults);
+
+  // 7. Intelligent Ranking:
+  // - Exact matches to the searched query come first
+  // - Locations starting with the searched query come second
+  // - Locations with postal codes and higher geographic relevance next
+  deduped.sort((a, b) => {
+    const aName = (a.name || "").toLowerCase();
+    const bName = (b.name || "").toLowerCase();
+
+    // Exact match to query
+    const aExact = aName === lowerQuery || aName.startsWith(`${lowerQuery},`);
+    const bExact = bName === lowerQuery || bName.startsWith(`${lowerQuery},`);
+    if (aExact && !bExact) return -1;
+    if (!aExact && bExact) return 1;
+
+    // Starts with query
+    const aStarts = aName.startsWith(lowerQuery);
+    const bStarts = bName.startsWith(lowerQuery);
+    if (aStarts && !bStarts) return -1;
+    if (!aStarts && bStarts) return 1;
+
+    // Has postal code
+    const aHasPost = a.postcodes && a.postcodes.length > 0;
+    const bHasPost = b.postcodes && b.postcodes.length > 0;
+    if (aHasPost && !bHasPost) return -1;
+    if (!aHasPost && bHasPost) return 1;
+
+    return 0;
+  });
+
+  return deduped.slice(0, count * 2);
 }
 
 /**
- * Reverse geocodes coordinates to fetch postal code if Open-Meteo returned null postcodes.
- * Uses OpenStreetMap reverse geocoding API.
+ * Reverse geocodes coordinates to fetch postal code if not directly present.
+ * Uses CORS-enabled Photon reverse geocoding with OpenStreetMap fallback.
  */
 export async function fetchPostalCodeFromCoordinates(
   lat: number,
   lon: number,
   signal?: AbortSignal
 ): Promise<string> {
+  // 1. Try Photon reverse geocoding (CORS-friendly, accurate worldwide)
+  try {
+    const photonUrl = `https://photon.komoot.io/reverse?lat=${lat}&lon=${lon}`;
+    const res = await fetch(photonUrl, {
+      headers: { Accept: "application/json" },
+      signal,
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const postcode = data?.features?.[0]?.properties?.postcode;
+      if (postcode) return String(postcode).trim();
+    }
+  } catch {}
+
+  // 2. OpenStreetMap reverse geocoding fallback
   try {
     const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`;
     const res = await fetch(url, {
       headers: { Accept: "application/json" },
       signal,
     });
-    if (!res.ok) return "";
-    const data = await res.json();
-    const postcode = data?.address?.postcode;
-    return typeof postcode === "string" ? postcode.trim() : "";
-  } catch {
-    return "";
-  }
+    if (res.ok) {
+      const data = await res.json();
+      const postcode = data?.address?.postcode;
+      return typeof postcode === "string" ? postcode.trim() : "";
+    }
+  } catch {}
+
+  return "";
 }
 
 /**
@@ -353,8 +516,8 @@ export function formatGeocodingAddress(item: GeocodingResult): string {
 
   const rawParts = [
     primaryName,
-    item.admin2 && item.admin2 !== primaryName && item.admin2 !== item.city ? item.admin2 : null,
-    item.admin1 && item.admin1 !== primaryName ? item.admin1 : null,
+    item.admin2 && !primaryName.toLowerCase().includes(item.admin2.toLowerCase()) ? item.admin2 : null,
+    item.admin1 && !primaryName.toLowerCase().includes(item.admin1.toLowerCase()) ? item.admin1 : null,
     item.country,
   ].filter(Boolean) as string[];
 

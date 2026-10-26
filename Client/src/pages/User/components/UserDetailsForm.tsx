@@ -32,6 +32,7 @@ import {
   extractPostalCode,
   fetchPostalCodeFromCoordinates,
   isPostalCodeString,
+  resolveCityFromGeocoding,
   type GeocodingResult,
 } from "@/services";
 import { cn } from "@/lib/utils";
@@ -125,10 +126,12 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
     const postalCode = extractPostalCode(result);
     
     // Resolve clean city name - ensure numeric postal codes never become city name
-    const isPostcode = isPostalCodeString(result.name);
+    const cleanName = result.name.replace(/^\d+[\s,-]*/, "").trim();
+    const isPostcode = isPostalCodeString(result.name) || /^\d+/.test(result.name.trim());
     const resolvedCity =
-      result.city ||
-      (!isPostcode ? result.name : "") ||
+      resolveCityFromGeocoding(result) ||
+      (result.city && !/^\d+/.test(result.city.trim()) ? result.city : "") ||
+      (!isPostcode && cleanName ? cleanName : "") ||
       result.admin2 ||
       result.admin1 ||
       "";
