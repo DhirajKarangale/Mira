@@ -3,6 +3,8 @@ export type CaptureStatus = "Started" | "Stopped";
 export interface OperatorConfigResponse {
   CAPTURE_INTERVAL_SECS?: number;
   AUTO_START?: boolean;
+  mic_auto_start?: boolean;
+  MIC_AUTO_START?: boolean;
   KNOWLEDGE_BASE_RETENTION_PERIOD?: string;
   knowledge_base_retention_period?: string;
 }

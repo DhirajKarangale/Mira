@@ -1,7 +1,8 @@
 export type ConfigurationsSubTabId =
+  | "activity-control"
+  | "microphone"
   | "ai-config"
   | "workers"
-  | "activity-control"
   | "capture"
   | "captured-data"
   | "redis"

@@ -103,6 +103,8 @@ VALID_KB_RETENTIONS = ['Never auto delete', '5 years', '3 years', '1 year', '9 m
 class OperatorConfigUpdateRequest(BaseModel):
     CAPTURE_INTERVAL_SECS: Optional[int] = Field(None, ge=1, le=3600)
     AUTO_START: Optional[bool] = None
+    mic_auto_start: Optional[bool] = None
+    MIC_AUTO_START: Optional[bool] = None
     KNOWLEDGE_BASE_RETENTION_PERIOD: Optional[str] = None
     knowledge_base_retention_period: Optional[str] = None
 
@@ -114,6 +116,10 @@ async def update_operator_config(request: OperatorConfigUpdateRequest):
             val = updates.pop('knowledge_base_retention_period')
             if 'KNOWLEDGE_BASE_RETENTION_PERIOD' not in updates and val is not None:
                 updates['KNOWLEDGE_BASE_RETENTION_PERIOD'] = val
+        if 'MIC_AUTO_START' in updates:
+            val = updates.pop('MIC_AUTO_START')
+            if 'mic_auto_start' not in updates and val is not None:
+                updates['mic_auto_start'] = val
         if 'KNOWLEDGE_BASE_RETENTION_PERIOD' in updates and updates['KNOWLEDGE_BASE_RETENTION_PERIOD'] is not None:
             retention_val = str(updates['KNOWLEDGE_BASE_RETENTION_PERIOD']).strip()
             matched = False

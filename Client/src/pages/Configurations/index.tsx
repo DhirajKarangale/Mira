@@ -13,21 +13,29 @@ import {
   MonitorPlay,
   Database,
   Terminal,
+  Mic,
 } from "lucide-react";
 import { AiConfigPage } from "./AiConfig";
 import { WorkersPage } from "./Workers";
 import { CapturedDataPage } from "./Capture";
 import { RedisPage } from "./Redis";
 import { LogsPage } from "./Logs";
+import { MicrophonePage } from "./Microphone";
 
 export { AiConfigPage } from "./AiConfig";
 export { WorkersPage } from "./Workers";
+export { MicrophonePage } from "./Microphone";
 
 const CONFIGURATIONS_SIDEBAR_ITEMS: readonly SidebarItem[] = [
   {
     key: "activity-control",
     name: "Activity Control",
     icon: MonitorPlay,
+  },
+  {
+    key: "microphone",
+    name: "Microphone",
+    icon: Mic,
   },
   {
     key: "ai-config",
@@ -92,6 +100,7 @@ export const ConfigurationsPage: FC = () => {
             path="captured-data/*"
             element={<Navigate to="/configurations/activity-control/data" replace />}
           />
+          <Route path="microphone/*" element={<MicrophonePage />} />
           <Route path="ai-config/*" element={<AiConfigPage />} />
           <Route path="workers/*" element={<WorkersPage />} />
           <Route path="redis/*" element={<RedisPage />} />

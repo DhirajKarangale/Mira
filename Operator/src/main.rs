@@ -5,6 +5,7 @@ mod capture;
 mod config;
 mod flow;
 mod local_state;
+mod microphone;
 mod permissions;
 mod vault_logger;
 
@@ -107,6 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let manager = CaptureManager::new(permissions.clone());
+    let microphone = microphone::MicrophoneManager::new(cfg.mic_auto_start);
 
     local_state::save_local_state(false);
 
@@ -124,7 +126,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    let state = AppState { manager, permissions };
+    if cfg.mic_auto_start {
+        info!("mic_auto_start is enabled. Turning microphone on on startup...");
+        let auto_mic = microphone.clone();
+        tokio::spawn(async move {
+            match auto_mic.start().await {
+                Ok(true) => info!("Microphone auto-started successfully on boot."),
+                Ok(false) => info!("Microphone already running."),
+                Err(err) => tracing::error!("Failed to auto-start microphone: {}", err),
+            }
+        });
+    } else {
+        info!("mic_auto_start is disabled. Keeping microphone off on startup.");
+        let _ = microphone.stop().await;
+    }
+
+    let state = AppState {
+        manager,
+        permissions,
+        microphone,
+    };
 
     let cors = CorsLayer::new()
         .allow_origin(Any)

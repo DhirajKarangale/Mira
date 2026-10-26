@@ -103,4 +103,79 @@ export const operatorService = {
     });
     return response.data;
   },
+
+  async getMicrophoneStatus(): Promise<MicrophoneStatusResponse> {
+    try {
+      const response = await operatorApi.get<MicrophoneStatusResponse>("/microphone/status");
+      return response.data;
+    } catch {
+      return {
+        state: "off",
+        is_on: false,
+        auto_start: false,
+        mic_auto_start: false,
+      };
+    }
+  },
+
+  async startMicrophone(): Promise<MicrophoneActionResponse> {
+    const response = await operatorApi.post<MicrophoneActionResponse>("/microphone/start");
+    return response.data;
+  },
+
+  async stopMicrophone(): Promise<MicrophoneActionResponse> {
+    const response = await operatorApi.post<MicrophoneActionResponse>("/microphone/stop");
+    return response.data;
+  },
+
+  async toggleMicrophone(nextState: "on" | "off"): Promise<MicrophoneActionResponse> {
+    const response = await operatorApi.post<MicrophoneActionResponse>("/microphone/state", {
+      state: nextState,
+      is_on: nextState === "on",
+    });
+    return response.data;
+  },
+
+  async getMicrophoneAutoStart(): Promise<MicrophoneAutoStartResponse> {
+    try {
+      const response = await operatorApi.get<MicrophoneAutoStartResponse>("/microphone/auto-start");
+      return response.data;
+    } catch {
+      return { auto_start: false, mic_auto_start: false };
+    }
+  },
+
+  async updateMicrophoneAutoStart(enabled: boolean): Promise<MicrophoneAutoStartResponse> {
+    const response = await operatorApi.post<MicrophoneAutoStartResponse>("/microphone/auto-start", {
+      auto_start: enabled,
+      mic_auto_start: enabled,
+    });
+    // Also synchronize to Vault
+    await vaultService.updateOperatorConfig({ mic_auto_start: enabled }).catch(() => {});
+    return response.data;
+  },
 };
+
+export interface MicrophoneStatusResponse {
+  service?: string;
+  state: "on" | "off";
+  is_on: boolean;
+  auto_start: boolean;
+  mic_auto_start?: boolean;
+  message?: string;
+}
+
+export interface MicrophoneActionResponse {
+  status: string;
+  state: "on" | "off";
+  is_on: boolean;
+  message: string;
+}
+
+export interface MicrophoneAutoStartResponse {
+  status?: string;
+  auto_start: boolean;
+  mic_auto_start?: boolean;
+  message?: string;
+}
+

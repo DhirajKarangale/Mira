@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS operator (
     id INTEGER PRIMARY KEY,
     CAPTURE_INTERVAL_SECS INTEGER DEFAULT 10,
     AUTO_START BOOLEAN DEFAULT 0,
+    mic_auto_start BOOLEAN DEFAULT 0,
     KNOWLEDGE_BASE_RETENTION_PERIOD TEXT DEFAULT 'Never auto delete'
 );
 
@@ -83,6 +84,16 @@ CREATE TABLE IF NOT EXISTS chats (
     role TEXT NOT NULL CHECK(role IN ('user', 'ai')),
     content TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS daily_suggestions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT UNIQUE NOT NULL,
+    suggestions TEXT DEFAULT '[]',
+    completed TEXT DEFAULT '',
+    whether TEXT DEFAULT '{}',
+    music TEXT DEFAULT '[]',
+    entertainment TEXT DEFAULT '[]'
 );
 
 

@@ -16,6 +16,7 @@ use crate::permissions::PermissionsManager;
 pub struct AppState {
     pub manager: CaptureManager,
     pub permissions: PermissionsManager,
+    pub microphone: crate::microphone::MicrophoneManager,
 }
 
 #[derive(Debug, Deserialize)]
@@ -35,6 +36,20 @@ pub struct UpdatePermissionRequest {
     pub allowed_to_capture: bool,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct MicrophoneStateRequest {
+    pub state: Option<String>,
+    pub enabled: Option<bool>,
+    pub is_on: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MicrophoneAutoStartRequest {
+    pub auto_start: Option<bool>,
+    pub mic_auto_start: Option<bool>,
+    pub enabled: Option<bool>,
+}
+
 pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health_handler))
@@ -46,6 +61,13 @@ pub fn create_router(state: AppState) -> Router {
         .route("/apps", get(get_apps_handler))
         .route("/apps/refresh", post(refresh_apps_handler))
         .route("/apps/permission", post(update_app_permission_handler))
+        // Microphone routes
+        .route("/microphone", get(get_microphone_status_handler).post(set_microphone_state_handler))
+        .route("/microphone/status", get(get_microphone_status_handler))
+        .route("/microphone/state", get(get_microphone_state_handler).post(set_microphone_state_handler))
+        .route("/microphone/start", post(start_microphone_handler))
+        .route("/microphone/stop", post(stop_microphone_handler))
+        .route("/microphone/auto-start", get(get_microphone_auto_start_handler).post(update_microphone_auto_start_handler))
         .with_state(state)
 }
 
@@ -98,7 +120,10 @@ async fn status_handler(State(state): State<AppState>) -> impl IntoResponse {
             "is_running": running,
             "is_capturing": running,
             "auto_start": auto_start,
-            "capture_interval_secs": interval
+            "capture_interval_secs": interval,
+            "microphone_state": state.microphone.get_state(),
+            "is_microphone_on": state.microphone.is_on(),
+            "mic_auto_start": state.microphone.get_auto_start()
         })),
     )
 }
@@ -285,6 +310,167 @@ async fn update_app_permission_handler(
             "message": "App permission updated successfully",
             "app_id": app_id,
             "allowed_to_capture": payload.allowed_to_capture
+        })),
+    )
+}
+
+// =============================================================================
+// Microphone Handlers
+// =============================================================================
+
+async fn get_microphone_status_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let mic_state = state.microphone.get_state();
+    let is_on = state.microphone.is_on();
+    let auto_start = state.microphone.get_auto_start();
+    (
+        StatusCode::OK,
+        Json(json!({
+            "service": "Operator",
+            "state": mic_state,
+            "is_on": is_on,
+            "auto_start": auto_start,
+            "mic_auto_start": auto_start,
+            "message": format!("Microphone is {}", mic_state)
+        })),
+    )
+}
+
+async fn get_microphone_state_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let mic_state = state.microphone.get_state();
+    let is_on = state.microphone.is_on();
+    (
+        StatusCode::OK,
+        Json(json!({
+            "state": mic_state,
+            "is_on": is_on
+        })),
+    )
+}
+
+async fn start_microphone_handler(State(state): State<AppState>) -> impl IntoResponse {
+    match state.microphone.start().await {
+        Ok(true) => (
+            StatusCode::OK,
+            Json(json!({
+                "status": "started",
+                "state": "on",
+                "is_on": true,
+                "message": "Microphone turned on"
+            })),
+        ),
+        Ok(false) => (
+            StatusCode::OK,
+            Json(json!({
+                "status": "already_started",
+                "state": "on",
+                "is_on": true,
+                "message": "Microphone is already on"
+            })),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "status": "error",
+                "message": e
+            })),
+        ),
+    }
+}
+
+async fn stop_microphone_handler(State(state): State<AppState>) -> impl IntoResponse {
+    match state.microphone.stop().await {
+        Ok(true) => (
+            StatusCode::OK,
+            Json(json!({
+                "status": "stopped",
+                "state": "off",
+                "is_on": false,
+                "message": "Microphone turned off"
+            })),
+        ),
+        Ok(false) => (
+            StatusCode::OK,
+            Json(json!({
+                "status": "already_stopped",
+                "state": "off",
+                "is_on": false,
+                "message": "Microphone is already off"
+            })),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "status": "error",
+                "message": e
+            })),
+        ),
+    }
+}
+
+async fn set_microphone_state_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<MicrophoneStateRequest>,
+) -> impl IntoResponse {
+    let should_start = if let Some(ref s) = payload.state {
+        s.trim().eq_ignore_ascii_case("on") || s.trim().eq_ignore_ascii_case("start")
+    } else if let Some(e) = payload.enabled {
+        e
+    } else if let Some(on) = payload.is_on {
+        on
+    } else {
+        false
+    };
+
+    if should_start {
+        let _ = state.microphone.start().await;
+    } else {
+        let _ = state.microphone.stop().await;
+    }
+
+    let current_state = state.microphone.get_state();
+    let is_on = state.microphone.is_on();
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "status": if is_on { "started" } else { "stopped" },
+            "state": current_state,
+            "is_on": is_on,
+            "message": format!("Microphone turned {}", current_state)
+        })),
+    )
+}
+
+async fn get_microphone_auto_start_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let auto_start = state.microphone.get_auto_start();
+    (
+        StatusCode::OK,
+        Json(json!({
+            "auto_start": auto_start,
+            "mic_auto_start": auto_start
+        })),
+    )
+}
+
+async fn update_microphone_auto_start_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<MicrophoneAutoStartRequest>,
+) -> impl IntoResponse {
+    let enabled = payload
+        .auto_start
+        .or(payload.mic_auto_start)
+        .or(payload.enabled)
+        .unwrap_or(false);
+
+    state.microphone.set_auto_start(enabled).await;
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "status": "updated",
+            "auto_start": enabled,
+            "mic_auto_start": enabled,
+            "message": format!("Microphone auto-start setting updated to {}", if enabled { "ON" } else { "OFF" })
         })),
     )
 }

@@ -26,6 +26,8 @@ export const QUERY_KEYS = {
     config: ["vault", "config", "operator"] as const,
     status: ["operator", "status"] as const,
     apps: ["operator", "apps"] as const,
+    microphone: ["operator", "microphone"] as const,
+    microphoneStatus: ["operator", "microphone", "status"] as const,
   },
   redis: {
     all: ["redis"] as const,

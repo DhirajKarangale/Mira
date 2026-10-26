@@ -11,6 +11,8 @@ pub struct OperatorConfig {
     pub screenshots_dir: PathBuf,
     pub os: String,
     pub auto_start: bool,
+    #[serde(default)]
+    pub mic_auto_start: bool,
 }
 
 static CONFIG: OnceLock<OperatorConfig> = OnceLock::new();
@@ -22,6 +24,8 @@ struct VaultOperatorConfigResponse {
     capture_interval_secs: Option<u64>,
     #[serde(rename = "AUTO_START")]
     auto_start: Option<bool>,
+    #[serde(rename = "mic_auto_start", alias = "MIC_AUTO_START")]
+    mic_auto_start: Option<bool>,
 }
 
 fn get_service_map() -> &'static RwLock<HashMap<String, String>> {
@@ -103,6 +107,7 @@ pub async fn init_config() -> &'static OperatorConfig {
     let vault_url = get_vault_url();
     let mut capture_interval_secs = 10u64;
     let mut auto_start = false;
+    let mut mic_auto_start = false;
     let mut os = "Windows".to_string();
 
     if !vault_url.is_empty() {
@@ -122,9 +127,10 @@ pub async fn init_config() -> &'static OperatorConfig {
                             capture_interval_secs = secs;
                         }
                         auto_start = vault_data.auto_start.unwrap_or(false);
+                        mic_auto_start = vault_data.mic_auto_start.unwrap_or(false);
                         info!(
-                            "Successfully loaded configuration from Vault: CAPTURE_INTERVAL_SECS={}, AUTO_START={}",
-                            capture_interval_secs, auto_start
+                            "Successfully loaded configuration from Vault: CAPTURE_INTERVAL_SECS={}, AUTO_START={}, mic_auto_start={}",
+                            capture_interval_secs, auto_start, mic_auto_start
                         );
                     }
                 }
@@ -173,6 +179,7 @@ pub async fn init_config() -> &'static OperatorConfig {
         screenshots_dir,
         os,
         auto_start,
+        mic_auto_start,
     };
 
     CURRENT_INTERVAL_SECS.store(capture_interval_secs, std::sync::atomic::Ordering::Relaxed);
