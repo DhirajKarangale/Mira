@@ -178,7 +178,8 @@ export const LocationSearch: FC<LocationSearchProps> = ({
           className="text-xs font-medium text-zinc-300 flex items-center gap-1.5"
         >
           <Compass className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Location Lookup (Open-Meteo Geocoding API)</span>
+          <span>Location Lookup</span>
+          <span className="text-rose-400 font-bold">*</span>
         </label>
         <span className="text-[11px] text-zinc-500 font-mono flex items-center gap-1">
           <Globe className="w-3 h-3 text-cyan-500/70" />

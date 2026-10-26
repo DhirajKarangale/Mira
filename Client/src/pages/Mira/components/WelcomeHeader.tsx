@@ -1,5 +1,6 @@
 import { useMemo, type FC, type ReactNode } from "react";
-import { Sun, Moon, Sparkles } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Sun, Moon, Sparkles, User } from "lucide-react";
 
 interface WelcomeHeaderProps {
   userName?: string;
@@ -42,7 +43,9 @@ const ANYTIME_MESSAGES = [
 ];
 
 export const WelcomeHeader: FC<WelcomeHeaderProps> = ({ userName }) => {
-  const displayName = userName?.trim() ? userName.trim() : "there";
+  const navigate = useNavigate();
+  const hasName = Boolean(userName?.trim());
+  const displayName = hasName ? userName!.trim() : "there";
 
   const { greetingMessage, timeIcon, timeLabel } = useMemo(() => {
     const currentHour = new Date().getHours();
@@ -86,29 +89,42 @@ export const WelcomeHeader: FC<WelcomeHeaderProps> = ({ userName }) => {
   return (
     <div
       id="mira-welcome-header"
-      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-2xl bg-zinc-900/40 border border-white/[0.08] backdrop-blur-xl shadow-[0_8px_30px_rgb(0,0,0,0.2)]"
+      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-2xl bg-zinc-900/40 border border-white/[0.08] backdrop-blur-xl shadow-[0_8px_30px_rgb(0,0,0,0.2)]"
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-1 min-w-0">
         <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-500/10 border border-cyan-500/30 text-cyan-300 shadow-[0_0_20px_rgba(6,182,212,0.15)] shrink-0">
           <Sparkles className="w-5 h-5 text-cyan-400" />
         </div>
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight bg-gradient-to-r from-zinc-100 via-zinc-200 to-zinc-400 bg-clip-text text-transparent">
-              {greetingMessage}
-            </h1>
-          </div>
-          <p className="text-xs text-zinc-400 mt-0.5">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight bg-gradient-to-r from-zinc-100 via-zinc-200 to-zinc-400 bg-clip-text text-transparent">
+            {greetingMessage}
+          </h1>
+          <p className="text-xs text-zinc-400 mt-1">
             Your personal AI intelligence hub • Here's your curated outlook for today.
           </p>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-zinc-800/80 border border-zinc-700/60 text-zinc-300">
-          {timeIcon}
-          <span>{timeLabel}</span>
+      <div className="flex flex-col items-start sm:items-end gap-1.5 shrink-0 self-start sm:self-center">
+        <div className="flex items-center gap-2">
+          {!hasName && (
+            <button
+              type="button"
+              id="header-set-username-btn"
+              onClick={() => navigate("/user")}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-300 hover:bg-amber-500/25 hover:border-amber-500/50 transition-all cursor-pointer shadow-sm active:scale-95"
+              title="Set your name in the Me tab"
+            >
+              <User className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>Name not set</span>
+            </button>
+          )}
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-zinc-800/80 border border-zinc-700/60 text-zinc-300">
+            {timeIcon}
+            <span>{timeLabel}</span>
+          </div>
         </div>
+
         <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-mono font-medium bg-cyan-500/10 border border-cyan-500/20 text-cyan-300">
           {formattedDate}
         </div>

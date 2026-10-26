@@ -1,4 +1,4 @@
-import { type FC } from "react";
+import { useMemo, type FC } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Cloud,
@@ -70,6 +70,51 @@ export const WeatherWidget: FC<WeatherWidgetProps> = ({
   const daily = activeWeather?.daily || [];
   const todayForecast = daily[0];
   const hourly = activeWeather?.hourly || [];
+
+  // Filter hourly forecasts: strictly after current time AND for today only
+  const todayUpcomingHourly = useMemo(() => {
+    if (!hourly || hourly.length === 0) return [];
+
+    const now = new Date();
+    const todayYear = now.getFullYear();
+    const todayMonth = now.getMonth();
+    const todayDate = now.getDate();
+    const currentMillis = now.getTime();
+
+    return hourly.filter((h) => {
+      if (!h.time) return false;
+      const parsed = new Date(h.time);
+      if (isNaN(parsed.getTime())) {
+        // Fallback parsing for "YYYY-MM-DDTHH:MM"
+        const parts = String(h.time).split("T");
+        if (parts.length === 2) {
+          const dateParts = parts[0].split("-").map(Number);
+          const timeParts = parts[1].split(":").map(Number);
+          if (dateParts.length === 3 && timeParts.length >= 2) {
+            const manualDate = new Date(dateParts[0], dateParts[1] - 1, dateParts[2], timeParts[0], timeParts[1]);
+            return (
+              manualDate.getFullYear() === todayYear &&
+              manualDate.getMonth() === todayMonth &&
+              manualDate.getDate() === todayDate &&
+              manualDate.getTime() > currentMillis
+            );
+          }
+        }
+        return false;
+      }
+
+      // 1. Must be for today only
+      const isToday =
+        parsed.getFullYear() === todayYear &&
+        parsed.getMonth() === todayMonth &&
+        parsed.getDate() === todayDate;
+
+      // 2. Must be strictly after current time
+      const isAfterCurrentTime = parsed.getTime() > currentMillis;
+
+      return isToday && isAfterCurrentTime;
+    });
+  }, [hourly]);
 
   return (
     <div
@@ -144,7 +189,7 @@ export const WeatherWidget: FC<WeatherWidgetProps> = ({
           <div className="space-y-1">
             <p className="text-sm font-semibold text-zinc-200">Location Not Configured</p>
             <p className="text-xs text-zinc-400 max-w-[240px] leading-relaxed">
-              Weather forecasts and daily environmental notes require your city and country. Please set your location in the <strong>Me</strong> tab.
+              Weather forecasts and daily environmental notes require your city and country. Please set your <strong className="font-bold">location</strong> in the <strong className="font-bold">Me</strong> tab.
             </p>
           </div>
           <button
@@ -243,20 +288,29 @@ export const WeatherWidget: FC<WeatherWidgetProps> = ({
             </div>
           )}
 
-          {/* Mini Hourly Forecast Ribbon (If available) */}
-          {hourly.length > 0 && (
-            <div className="flex items-center gap-2 overflow-x-auto py-1 px-0.5 no-scrollbar">
-              {hourly.slice(0, 4).map((h, i) => (
-                <div
-                  key={i}
-                  className="flex flex-col items-center justify-center p-1.5 px-2.5 rounded-lg bg-zinc-800/40 border border-white/[0.04] text-[10px] shrink-0"
-                >
-                  <span className="text-zinc-400 font-mono text-[9px]">{h.formatted_time?.replace(":00 ", " ")}</span>
-                  <span className="font-semibold text-zinc-200 font-mono mt-0.5">
-                    {h.temperature_celsius !== undefined ? Math.round(h.temperature_celsius) : "--"}°
-                  </span>
-                </div>
-              ))}
+          {/* Mini Hourly Forecast Ribbon: Strictly for today only, and after current time */}
+          {todayUpcomingHourly.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[10px] text-zinc-400 font-medium px-0.5">
+                <span className="flex items-center gap-1 text-cyan-400 font-mono">
+                  <Clock className="w-3 h-3 text-cyan-400" />
+                  <span>Later Today</span>
+                </span>
+                <span className="text-zinc-500 font-mono text-[9px]">Hourly forecast</span>
+              </div>
+              <div className="flex items-center gap-2 overflow-x-auto py-1 px-0.5 no-scrollbar">
+                {todayUpcomingHourly.slice(0, 6).map((h, i) => (
+                  <div
+                    key={i}
+                    className="flex flex-col items-center justify-center p-1.5 px-2.5 rounded-lg bg-zinc-800/40 border border-white/[0.04] hover:border-cyan-500/20 text-[10px] shrink-0 transition-colors"
+                  >
+                    <span className="text-zinc-400 font-mono text-[9px]">{h.formatted_time?.replace(":00 ", " ")}</span>
+                    <span className="font-semibold text-zinc-200 font-mono mt-0.5">
+                      {h.temperature_celsius !== undefined ? Math.round(h.temperature_celsius) : "--"}°
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

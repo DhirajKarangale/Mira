@@ -31,7 +31,7 @@ export function validateField(
 
     case "email": {
       if (!trimmed) {
-        return "Email address is required.";
+        return undefined;
       }
       if (!EMAIL_REGEX.test(trimmed)) {
         return "Please enter a valid email address (e.g. user@example.com).";
@@ -44,7 +44,7 @@ export function validateField(
 
     case "phone_number": {
       if (!trimmed) {
-        return "Phone number is required.";
+        return undefined;
       }
       if (!PHONE_CHARS_REGEX.test(trimmed)) {
         return "Phone number can only contain digits, spaces, hyphens, parentheses, and optional leading '+'.";
@@ -192,8 +192,6 @@ export function isFormValid(errors: UserFormErrors, values: UserFormState): bool
 
   const requiredFields: (keyof UserFormState)[] = [
     "user_name",
-    "email",
-    "phone_number",
     "city",
     "state",
     "country",
@@ -205,6 +203,8 @@ export function isFormValid(errors: UserFormErrors, values: UserFormState): bool
     if (validateField(field, value)) return false;
   }
 
+  if (values.email && validateField("email", values.email)) return false;
+  if (values.phone_number && validateField("phone_number", values.phone_number)) return false;
   if (values.address && validateField("address", values.address)) return false;
   if (values.postal_code && validateField("postal_code", values.postal_code)) return false;
   if (values.latitude != null && validateField("latitude", values.latitude)) return false;

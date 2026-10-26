@@ -123,7 +123,7 @@ export const NewsWidget: FC<NewsWidgetProps> = ({
           <div className="space-y-1">
             <p className="text-sm font-semibold text-zinc-200">Location Not Configured</p>
             <p className="text-xs text-zinc-400 max-w-[240px] leading-relaxed">
-              Top national headlines and regional news will appear once your location is configured. Please set your location in the <strong>Me</strong> tab.
+              Top national headlines and regional news will appear once your location is configured. Please set your <strong className="font-bold">location</strong> in the <strong className="font-bold">Me</strong> tab.
             </p>
           </div>
           <button

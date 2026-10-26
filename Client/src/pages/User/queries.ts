@@ -26,17 +26,26 @@ export function useSaveUserDetailsMutation() {
       queryClient.setQueryData(QUERY_KEYS.user.details, savedDetails);
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.user.details });
 
-      // Invalidate daily suggestions and trigger background refresh when location is configured
-      // so the /mira page updates with fresh weather and news without requiring a manual refresh
+      // Invalidate daily suggestions and trigger background refresh with updated location
+      // so the form closes immediately without blocking on weather/news/suggestions APIs
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.dailySuggestions.pageData });
+
       const hasLocation = Boolean(
         (savedDetails.city && savedDetails.city.trim()) ||
         (savedDetails.latitude != null && savedDetails.longitude != null)
       );
       if (hasLocation) {
-        dailySuggestionsService.triggerRefresh("all").catch((err) => {
-          console.debug("Background daily suggestions refresh failed:", err);
-        });
+        Promise.all([
+          dailySuggestionsService.triggerRefresh("weather"),
+          dailySuggestionsService.triggerRefresh("news"),
+        ])
+          .catch((err) => {
+            console.debug("Background weather/news refresh failed:", err);
+          })
+          .finally(() => {
+            queryClient.invalidateQueries({ queryKey: QUERY_KEYS.dailySuggestions.pageData });
+            queryClient.refetchQueries({ queryKey: QUERY_KEYS.dailySuggestions.pageData });
+          });
       }
     },
   });

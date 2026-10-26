@@ -4,30 +4,7 @@ MIRA is a personal AI assistant designed to collect digital activity, organize p
 
 ---
 
-## 1. Planned Features
-
-- **Personal Knowledge Base:** Store personal information, notes, files, and digital activity locally.
-- **Smart Memory:** Remember important details, preferences, and past activities.
-- **Contextual Recall:** Retrieve relevant information from past activities and conversations.
-- **AI Chat:** Answer questions using relevant personal context.
-- **Voice Assistant:** Support voice interaction through cloud AI models.
-- **Privacy Control:** Send only relevant information to cloud AI models.
-- **Project Continuity:** Remember project details and help continue unfinished work.
-
-## 2. Future Scope — Advanced Features
-
-- **Proactive Job Search:** Find suitable job opportunities and notify the user.
-- **Personalized Learning:** Discover relevant courses, tutorials, and study resources.
-- **Daily Planning:** Create personalized daily schedules and task plans.
-- **Scheduled News:** Deliver personalized news at a specified time, such as 10 AM.
-- **Smart Recommendations:** Suggest music, movies, and other content based on preferences.
-- **Weekend Planning:** Recommend activities and plans for weekends.
-- **Smart Reminders:** Remind the user about tasks, goals, and recurring routines.
-- **Activity Insights:** Identify patterns in activities and suggest useful actions.
-- **Computer Automation:** Perform supported computer tasks with permission.
-- **Personalized Assistance:** Learn from preferences and adapt recommendations over time.
-
-## 3. System Architecture
+## System Architecture
 
 All inter-module data transfers route through the central **Message Broker**. All application configurations, parameters, logs, and sensitive credentials are centrally stored and managed by **Vault**.
 
@@ -71,7 +48,7 @@ All inter-module data transfers route through the central **Message Broker**. Al
 
 ---
 
-## 4. Modules
+## Modules
 
 ### Message Broker
 

@@ -281,25 +281,32 @@ export function useMiraData() {
     [refetch]
   );
 
-  // Proactively auto-refresh on mount if today's sections are empty
+  // Proactively auto-refresh on mount if sections are empty or mismatched
   const hasTriggeredInitialRefresh = useRef(false);
 
   useEffect(() => {
     if (!isPageLoading && pageData && !hasTriggeredInitialRefresh.current) {
-      const hasSuggestions = today.suggestions && today.suggestions.length > 0;
       const hasNews = today.news && today.news.length > 0;
       const hasWeather = today.weather && (today.weather.current || today.weather.suggestion);
 
-      if (!hasSuggestions || (isLocationConfigured && (!hasNews || !hasWeather))) {
+      // Check if current cached weather belongs to a different location
+      const userCity = (userDetails?.city || "").trim().toLowerCase();
+      const weatherCity = (today.weather?.location?.name || "").toLowerCase();
+      const isWeatherMismatched = Boolean(
+        isLocationConfigured && userCity && weatherCity && !weatherCity.includes(userCity)
+      );
+
+      if (isLocationConfigured && (!hasNews || !hasWeather || isWeatherMismatched)) {
         hasTriggeredInitialRefresh.current = true;
-        if (isLocationConfigured) {
-          handleRefresh("all");
-        } else if (!hasSuggestions) {
-          handleRefresh("suggestions");
+        if (!hasWeather || isWeatherMismatched) {
+          handleRefresh("weather");
+        }
+        if (!hasNews) {
+          handleRefresh("news");
         }
       }
     }
-  }, [isPageLoading, pageData, today, isLocationConfigured, handleRefresh]);
+  }, [isPageLoading, pageData, today, isLocationConfigured, userDetails, handleRefresh]);
 
   // Seamlessly update page when location is saved or updated in Me tab without requiring a manual refresh
   const prevLocationConfiguredRef = useRef<boolean | null>(null);
@@ -309,6 +316,7 @@ export function useMiraData() {
     if (isUserLoading) return;
 
     const locKey = `${userDetails?.city || ""}_${userDetails?.country || ""}_${userDetails?.latitude ?? ""}_${userDetails?.longitude ?? ""}`;
+    const storedLastLocKey = sessionStorage.getItem("mira_last_location_key");
 
     if (prevLocationConfiguredRef.current !== null) {
       const becameConfigured = !prevLocationConfiguredRef.current && isLocationConfigured;
@@ -318,8 +326,17 @@ export function useMiraData() {
         prevLocationKeyRef.current !== locKey;
 
       if (becameConfigured || locationChanged) {
-        handleRefresh("all");
+        handleRefresh("weather");
+        handleRefresh("news");
       }
+    } else if (isLocationConfigured && storedLastLocKey && storedLastLocKey !== locKey) {
+      // Detected location was updated in the Me tab while on another route
+      handleRefresh("weather");
+      handleRefresh("news");
+    }
+
+    if (isLocationConfigured && locKey) {
+      sessionStorage.setItem("mira_last_location_key", locKey);
     }
 
     prevLocationConfiguredRef.current = isLocationConfigured;

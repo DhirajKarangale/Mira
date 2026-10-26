@@ -1,6 +1,6 @@
 import type { FC } from "react";
 import { useNavigate } from "react-router-dom";
-import { MapPin, ArrowRight, RefreshCw } from "lucide-react";
+import { MapPin, User, UserX, ArrowRight, RefreshCw } from "lucide-react";
 import { useMiraData } from "./Mira/useMiraData";
 import {
   WelcomeHeader,
@@ -23,7 +23,10 @@ export const MiraPage: FC = () => {
     toggleSuggestionCompletion,
     refreshingSection,
     handleRefresh,
+    isPageLoading,
   } = useMiraData();
+
+  const hasUsername = Boolean(userDetails?.user_name?.trim());
 
   return (
     <div
@@ -34,16 +37,34 @@ export const MiraPage: FC = () => {
       <div className="absolute top-10 left-1/4 w-[500px] h-[300px] bg-cyan-500/5 rounded-full blur-[140px] pointer-events-none -z-10" />
       <div className="absolute bottom-10 right-1/4 w-[400px] h-[300px] bg-blue-500/5 rounded-full blur-[140px] pointer-events-none -z-10" />
 
-      {/* Missing Location Configuration Notice */}
-      {!isUserLoading && !isLocationConfigured && (
+      {/* Missing Profile / Location Configuration Notice */}
+      {!isUserLoading && (!isLocationConfigured || !hasUsername) && (
         <div
           id="mira-location-not-configured-banner"
           className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 px-4 rounded-xl border border-amber-500/25 bg-amber-500/10 backdrop-blur-xl animate-in fade-in duration-300 shadow-md shadow-amber-500/5"
         >
           <div className="flex items-center gap-2.5 text-xs text-amber-200">
-            <MapPin className="w-4 h-4 text-amber-400 shrink-0" />
+            {!hasUsername && !isLocationConfigured ? (
+              <UserX className="w-4 h-4 text-amber-400 shrink-0" />
+            ) : !isLocationConfigured ? (
+              <MapPin className="w-4 h-4 text-amber-400 shrink-0" />
+            ) : (
+              <User className="w-4 h-4 text-amber-400 shrink-0" />
+            )}
             <span>
-              Your location is not configured. Please set your location in the <strong>Me</strong> tab to view local weather and personalized regional news.
+              {!hasUsername && !isLocationConfigured ? (
+                <>
+                  Your <strong className="font-bold">username</strong> and <strong className="font-bold">location</strong> are not configured. Please set your details in the <strong className="font-bold">Me</strong> tab to personalize your daily greetings, local weather, and news.
+                </>
+              ) : !isLocationConfigured ? (
+                <>
+                  Your <strong className="font-bold">location</strong> is not configured. Please set your location in the <strong className="font-bold">Me</strong> tab to view local weather and personalized regional news.
+                </>
+              ) : (
+                <>
+                  Your <strong className="font-bold">username</strong> is not configured. Please set your username in the <strong className="font-bold">Me</strong> tab to personalize your daily greetings and AI recommendations.
+                </>
+              )}
             </span>
           </div>
           <button
@@ -52,7 +73,13 @@ export const MiraPage: FC = () => {
             onClick={() => navigate("/user")}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white shadow-md shadow-amber-500/20 transition-all duration-200 active:scale-95 cursor-pointer shrink-0"
           >
-            <span>Set Location in Me Tab</span>
+            <span>
+              {!hasUsername && !isLocationConfigured
+                ? "Configure Me Tab"
+                : !isLocationConfigured
+                ? "Set Location in Me Tab"
+                : "Set Username in Me Tab"}
+            </span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -71,6 +98,7 @@ export const MiraPage: FC = () => {
             completedIndices={completedIndices}
             onToggleComplete={toggleSuggestionCompletion}
             isRefreshing={Boolean(refreshingSection.suggestions)}
+            isLoading={isPageLoading}
             onRefresh={() => handleRefresh("suggestions")}
           />
 

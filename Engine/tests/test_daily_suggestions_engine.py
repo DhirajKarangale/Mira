@@ -10,12 +10,14 @@ from daily_suggestions.weather_section import (
     generate_rest_of_day_overview,
     generate_weather_short_summary,
     generate_weather_funny_suggestion,
+    refresh_weather_forecast,
 )
 from daily_suggestions.news_section import (
     is_news_refresh_needed,
     select_top_three_stories_with_llm,
     verify_article_timestamp,
     normalize_story_title,
+    refresh_news,
 )
 from daily_suggestions.suggestions_section import (
     is_suggestions_refresh_needed,
@@ -246,6 +248,29 @@ class TestDailySuggestionsEngine(unittest.TestCase):
         norm_a = normalize_story_title("NASA's Mars Rover Finds Water Ice On Red Planet!")
         norm_b = normalize_story_title("nasas mars rover finds water ice on red planet")
         self.assertEqual(norm_a, norm_b)
+
+    def test_weather_skipped_when_location_not_configured(self):
+        """Verify refresh_weather_forecast does not call Open-Meteo or LLM when location is not configured."""
+        import asyncio
+        empty_profile = {"user_name": "TestUser", "city": "", "latitude": None, "longitude": None}
+
+        with patch("daily_suggestions.weather_section.get_user_profile", return_value=empty_profile), \
+             patch("daily_suggestions.weather_section.get_user_coordinates", return_value=(None, None, empty_profile)), \
+             patch("daily_suggestions.weather_section.get_weather_forecast") as mock_forecast:
+            res = asyncio.run(refresh_weather_forecast(force=True))
+            mock_forecast.assert_not_called()
+            self.assertEqual(res, {})
+
+    def test_news_skipped_when_location_not_configured(self):
+        """Verify refresh_news does not call GNews or LLM when user location is not configured."""
+        import asyncio
+        empty_profile = {"user_name": "TestUser", "country": "", "city": "", "state": "", "latitude": None, "longitude": None}
+
+        with patch("daily_suggestions.news_section.get_user_profile", return_value=empty_profile), \
+             patch("daily_suggestions.news_section.fetch_news_from_gnews") as mock_gnews:
+            res = asyncio.run(refresh_news(force=True))
+            mock_gnews.assert_not_called()
+            self.assertEqual(res, [])
 
 
 if __name__ == "__main__":

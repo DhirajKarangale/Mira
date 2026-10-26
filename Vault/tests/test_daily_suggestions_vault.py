@@ -10,6 +10,13 @@ class TestDailySuggestionsVault(unittest.TestCase):
         config_storage.init_config_storage()
         cls.client = TestClient(app)
 
+    @classmethod
+    def tearDownClass(cls):
+        if config_storage._DB_CONN is not None:
+            config_storage._DB_CONN.execute("DELETE FROM daily_suggestions")
+            config_storage._DB_CONN.commit()
+            config_storage.save_config_storage()
+
     def test_schema_daily_suggestions(self):
         """Verify daily_suggestions table columns in schema."""
         tables = config_storage.parse_schema_file()
@@ -30,8 +37,13 @@ class TestDailySuggestionsVault(unittest.TestCase):
 
     def test_save_and_retrieve_daily_suggestions(self):
         """Verify saving and retrieving daily suggestions."""
+        expected_suggestions = [
+            "Review active sprint priorities and milestones",
+            "Run automated test suite to ensure code health",
+            "Document architectural decisions and API models",
+        ]
         payload = {
-            "suggestions": ["Task A", "Task B", "Task C"],
+            "suggestions": expected_suggestions,
             "weather": {"current": {"temperature_celsius": 25}, "suggestion": "Wear sunscreen"},
             "news": [{"title": "Headline 1", "summary": "Summary 1", "url": "https://example.com/1", "source": "BBC"}],
             "date_weather": "2026-10-26T12:00:00Z",
@@ -40,7 +52,7 @@ class TestDailySuggestionsVault(unittest.TestCase):
         }
         saved = config_storage.save_daily_suggestions(payload)
         self.assertIsNotNone(saved.get("id"))
-        self.assertEqual(saved.get("suggestions"), ["Task A", "Task B", "Task C"])
+        self.assertEqual(saved.get("suggestions"), expected_suggestions)
         self.assertEqual(saved.get("weather", {}).get("suggestion"), "Wear sunscreen")
         self.assertEqual(len(saved.get("news", [])), 1)
 
@@ -49,7 +61,7 @@ class TestDailySuggestionsVault(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data.get("id"), saved["id"])
-        self.assertEqual(data.get("suggestions"), ["Task A", "Task B", "Task C"])
+        self.assertEqual(data.get("suggestions"), expected_suggestions)
 
     def test_completion_tracking_and_duplicate_prevention(self):
         """Verify completion state, duplicate index prevention, and index removal on uncheck."""

@@ -344,8 +344,8 @@ def format_weather_report(
     hourly_structured: List[Dict[str, Any]] = []
     hourly_lines: List[str] = []
 
-    # Take up to 24 hourly points, sampling every 3 hours or when rain/snow is forecasted
-    limit_hours = min(len(h_times), 24)
+    # Take up to 48 hourly points so full day and upcoming hours are preserved
+    limit_hours = min(len(h_times), 48)
     for idx in range(limit_hours):
         t_iso = h_times[idx]
         temp = h_temps[idx] if idx < len(h_temps) else None
@@ -395,7 +395,7 @@ def format_weather_report(
         "forecast_days": requested_days,
         "current": current_structured,
         "daily": daily_structured,
-        "hourly_highlights": hourly_structured[:24],
+        "hourly_highlights": hourly_structured,
     }
 
     # Clean textual summary for synthesis

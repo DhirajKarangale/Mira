@@ -186,32 +186,36 @@ class EngineMemoryConfig:
         v_log(f'Engine configuration initialized from Vault. Priorities: {self.ai_priorities}, Active: {self.active_provider}, User: {self.user_profile.get("user_name", "Unknown")}')
         return success
 
-    def get_user_profile(self) -> Dict[str, Any]:
+    def get_user_profile(self, force_refresh: bool = False) -> Dict[str, Any]:
         with self._lock:
-            if not self.user_profile:
+            if not self.user_profile or force_refresh:
+                # 1. Direct Vault config_storage lookup (fastest & guaranteed latest committed SQLite data)
+                try:
+                    import sys
+                    vault_dir = Path(__file__).resolve().parent.parent / 'Vault'
+                    if str(vault_dir) not in sys.path:
+                        sys.path.insert(0, str(vault_dir))
+                    import config_storage
+                    config_storage.init_config_storage()
+                    u_cfg = config_storage.get_configuration('user_details')
+                    if isinstance(u_cfg, dict) and u_cfg:
+                        self.user_profile = u_cfg
+                        return dict(self.user_profile)
+                except Exception:
+                    pass
+
+                # 2. Vault HTTP API fallback
                 try:
                     vault_url = VAULT_URL or get_service_url('vault')
                     if vault_url:
                         resp = requests.get(f"{vault_url.rstrip('/')}/user", timeout=1.5)
                         if resp.status_code == 200:
                             data = resp.json()
-                            if isinstance(data, dict):
+                            if isinstance(data, dict) and data:
                                 self.user_profile = data
+                                return dict(self.user_profile)
                 except Exception:
                     pass
-                if not self.user_profile:
-                    try:
-                        import sys
-                        vault_dir = Path(__file__).resolve().parent.parent / 'Vault'
-                        if str(vault_dir) not in sys.path:
-                            sys.path.insert(0, str(vault_dir))
-                        import config_storage
-                        config_storage.init_config_storage()
-                        u_cfg = config_storage.get_configuration('user_details')
-                        if isinstance(u_cfg, dict):
-                            self.user_profile = u_cfg
-                    except Exception:
-                        pass
             return dict(self.user_profile)
 
     def set_user_profile(self, profile: Dict[str, Any]) -> None:

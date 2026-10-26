@@ -206,19 +206,33 @@ Do not output any introductory or concluding text outside the JSON array."""
 async def refresh_news(force: bool = False) -> List[Dict[str, Any]]:
     """
     Executes News refresh:
-      1. Checks daily_suggestions table.
-      2. If not needed and not forced, returns current data.
-      3. Retrieves user's country and city/region from Vault.
-      4. Queries News Tool prioritizing Country first, then City/Region.
-      5. Verifies publication timestamps (prioritizing last 36 hours) and eliminates duplicates.
-      6. Selects top 3 distinct, trending, impactful stories with concise factual summaries.
-      7. Stores in news and date_news in Vault.
-      8. Broadcasts updated news to frontend via WebSockets.
+      1. Checks if user location is configured. If not, skips immediately.
+      2. Checks daily_suggestions table.
+      3. If not needed and not forced, returns current data.
+      4. Retrieves user's country and city/region from Vault.
+      5. Queries News Tool prioritizing Country first, then City/Region.
+      6. Verifies publication timestamps (prioritizing last 36 hours) and eliminates duplicates.
+      7. Selects top 3 distinct, trending, impactful stories with concise factual summaries.
+      8. Stores in news and date_news in Vault.
+      9. Broadcasts updated news to frontend via WebSockets.
     """
+    # 1. Check whether user location is configured before making any calls
+    user_profile = await asyncio.to_thread(get_user_profile, force_refresh=True) or {}
+    raw_country = (user_profile.get("country") or "").strip()
+    city = (user_profile.get("city") or "").strip()
+    state = (user_profile.get("state") or "").strip()
+    lat = user_profile.get("latitude")
+    lon = user_profile.get("longitude")
+
+    has_location = bool(raw_country or city or state or (lat is not None and lon is not None))
+    if not has_location:
+        log("[NewsSection] User location is not configured. Skipping location-based news refresh.")
+        return []
+
     current_record = await asyncio.to_thread(fetch_latest_daily_suggestions)
     if not force and not is_news_refresh_needed(current_record):
         log("[NewsSection] News headlines are already up-to-date. Skipping refresh.")
-        return current_record.get("news") or []
+        return current_record.get("news") or [] if current_record else []
 
     log("[NewsSection] Initiating news headlines refresh...")
 
@@ -228,11 +242,7 @@ async def refresh_news(force: bool = False) -> List[Dict[str, Any]]:
     except Exception:
         pass
 
-    user_profile = await asyncio.to_thread(get_user_profile) or {}
-    country_input = user_profile.get("country") or "us"
-    city = (user_profile.get("city") or "").strip()
-    state = (user_profile.get("state") or "").strip()
-
+    country_input = raw_country or "us"
     country_code = resolve_country_code(country_input)
     location_desc = f"{city}, {country_input}" if city else country_input
 

@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 
 from .vault_client import fetch_latest_daily_suggestions, save_daily_suggestions_data
 from .config import DEFAULT_WEATHER_INTERVAL_HOURS
-from chat.workflow.weather_tool import get_weather_forecast
+from chat.workflow.weather_tool import get_weather_forecast, get_user_coordinates
 from chat.websocket import ws_manager
 from config import get_user_profile
 from llm import call_llm
@@ -207,9 +207,9 @@ def generate_weather_suggestion(
 async def refresh_weather_forecast(force: bool = False) -> Dict[str, Any]:
     """
     Executes Weather Forecast refresh:
-      1. Checks daily_suggestions table.
-      2. If not needed and not forced, returns current data.
-      3. Retrieves location from Vault.
+      1. Checks if user location/coordinates are configured. If not, skips immediately.
+      2. Checks daily_suggestions table.
+      3. If not needed and not forced, returns current data.
       4. Queries existing Weather Forecast Tool.
       5. Generates two versions:
          - Short summary: concise overview of current weather and forecast.
@@ -217,10 +217,17 @@ async def refresh_weather_forecast(force: bool = False) -> Dict[str, Any]:
       6. Stores forecast & suggestions in weather, updating date_weather.
       7. Broadcasts update over WebSocket.
     """
+    # 1. Check whether user location is configured before making any calls
+    user_profile = await asyncio.to_thread(get_user_profile, force_refresh=True) or {}
+    lat, lon, _ = get_user_coordinates(user_profile)
+    if lat is None or lon is None:
+        log("[WeatherSection] User location/coordinates are not configured. Skipping weather forecast refresh.")
+        return {}
+
     current_record = await asyncio.to_thread(fetch_latest_daily_suggestions)
     if not force and not is_weather_refresh_needed(current_record):
         log("[WeatherSection] Weather forecast is already up-to-date. Skipping refresh.")
-        return current_record.get("weather") or {}
+        return current_record.get("weather") or {} if current_record else {}
 
     log("[WeatherSection] Initiating weather forecast refresh...")
 
@@ -230,7 +237,6 @@ async def refresh_weather_forecast(force: bool = False) -> Dict[str, Any]:
     except Exception:
         pass
 
-    user_profile = await asyncio.to_thread(get_user_profile) or {}
     user_name = user_profile.get("user_name") or "User"
     city = user_profile.get("city") or ""
 
@@ -268,7 +274,7 @@ async def refresh_weather_forecast(force: bool = False) -> Dict[str, Any]:
             "location": structured.get("location"),
             "current": structured.get("current"),
             "daily": structured.get("daily"),
-            "hourly": structured.get("hourly_highlights", [])[:12],
+            "hourly": structured.get("hourly_highlights", []),
             "short_summary": short_summary,
             "rest_of_day": short_summary,
             "funny_suggestion": funny_suggestion,

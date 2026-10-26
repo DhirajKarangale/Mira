@@ -218,22 +218,27 @@ def generate_daily_suggestions_with_llm(
     has_activity = bool(activity_summary and activity_summary.strip())
     activity_context = activity_summary if has_activity else "No screen activity recorded in the past 2 days."
 
-    prompt = f"""You are MIRA, a sharp, witty, and delightfully observant personal AI assistant.
+    raw_name = str(user_profile.get("user_name") or "").strip()
+    user_name = raw_name if raw_name else "there"
+    display_suffix = f", {raw_name}" if raw_name else ""
+    user_display = f"User Name: {raw_name}" if raw_name else "User Name: (Not configured yet)"
+
+    prompt = f"""You are MIRA, a helpful, intelligent, and highly practical personal AI assistant.
 Today is {day_name}, {date_str}.
-User Name: {user_name}
+{user_display}
 User Context: {profile_text}
 
 Confirmed Activity from Past 2 Days (from Activity Knowledge Base):
 {activity_context}
 
 Task:
-Generate exactly {target_count} personalized, slightly roast-like, funny, and highly actionable daily suggestions for {user_name} today.
+Generate exactly {target_count} personalized, practical, inspiring, and actionable daily recommendations for today.
 
 Strict Guidelines:
-1. Tone: Slightly roast-like, playful, and funny — tease {user_name} playfully about their coding marathons, endless browser tabs, sitting motionless forever, or obsessing over tiny details, while remaining genuinely supportive and motivating.
-2. Grounded & Actionable: Each suggestion MUST recommend a real, concrete, useful action directly tied to the user's actual confirmed activities and priorities (e.g. Mira project, Antigravity IDE, schema design, testing, documentation, or taking a proper break).
-3. Do NOT invent tasks, fake bugs, fake meetings, or imaginary deadlines. If activity evidence is minimal, playfully roast their planning habits and suggest tangible deep work routines.
-4. Keep each suggestion concise (1 to 2 short sentences, maximum 30 words), punchy, and clear.
+1. Tone: Motivating, actionable, professional, and practical. Focus on high productivity, deep work, code quality, and sustainable daily focus habits.
+2. Grounded & Actionable: Each suggestion MUST recommend a real, concrete, useful action tied to ongoing projects, coding tasks, architecture, testing, or balanced work routines.
+3. Absolutely NO joke or mock dummy tasks (do NOT mention "42 browser tabs", "chair memorized posture", or sarcastic roasts). Make them genuinely valuable and constructive.
+4. Keep each suggestion concise (1 to 2 short sentences, maximum 28 words), punchy, and clear.
 5. Return strictly a JSON array of {target_count} strings:
 [
   "Suggestion 1",
@@ -255,18 +260,8 @@ Do not output any introductory or concluding text outside the JSON array."""
     except Exception as e:
         log_error(f"[SuggestionsSection] LLM suggestion generation failed: {e}")
 
-    # Fallback suggestions if LLM or parse failed (witty, slightly roast-like, and actionable)
-    fallback_pool = [
-        f"Close those 42 browser tabs you swore you'd read later today and focus on your single biggest code priority, {user_name}.",
-        f"Your chair has officially memorized your posture — stand up, stretch for two minutes, and hydrate before tackling the next feature.",
-        f"Pick one high-impact task to finish before lunch instead of context-switching like a browser on 100% CPU.",
-        f"Step away from the screen for a real water break — coffee does not count as a hydration strategy, {user_name}.",
-        f"Review your top priorities for today before you end up spending three hours color-coding your notes again.",
-        f"Stop admiring your schema and code changes — run the test suite and verify everything actually works.",
-        f"Commit your local working changes before git decides to test your emotional resilience today.",
-    ]
-    random.shuffle(fallback_pool)
-    return fallback_pool[:target_count]
+    # Never return hardcoded or dummy suggestions. Return empty list so the frontend shows loading state.
+    return []
 
 
 async def refresh_suggestions(force: bool = False) -> List[str]:
@@ -294,8 +289,8 @@ async def refresh_suggestions(force: bool = False) -> List[str]:
     except Exception:
         pass
 
-    user_profile = await asyncio.to_thread(get_user_profile) or {}
-    user_name = user_profile.get("user_name") or "User"
+    user_profile = await asyncio.to_thread(get_user_profile, force_refresh=True) or {}
+    user_name = user_profile.get("user_name") or "there"
     user_tz = resolve_user_timezone(user_profile)
     now_in_tz = datetime.now(user_tz)
     is_weekend = now_in_tz.weekday() in (5, 6)
@@ -317,6 +312,10 @@ async def refresh_suggestions(force: bool = False) -> List[str]:
         activity_summary=activity_summary,
         now_dt=now_in_tz,
     )
+
+    if not suggestions:
+        log_error("[SuggestionsSection] LLM suggestion generation produced empty results. Skipping persistence.")
+        return []
 
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 

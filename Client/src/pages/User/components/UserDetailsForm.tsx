@@ -21,7 +21,6 @@ import { useSaveUserDetailsMutation } from "../queries";
 import { validateField, validateUserForm, isFormValid } from "../validation";
 import { LocationSearch } from "./LocationSearch";
 import {
-  DEFAULT_USER_DATA,
   type UserDetails,
   type UserFormState,
   type UserFormField,
@@ -54,16 +53,16 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
   const saveMutation = useSaveUserDetailsMutation();
 
   const initialValues: UserFormState = {
-    user_name: initialData?.user_name || DEFAULT_USER_DATA.user_name,
-    email: initialData?.email || DEFAULT_USER_DATA.email,
-    phone_number: initialData?.phone_number || DEFAULT_USER_DATA.phone_number,
-    city: initialData?.city || DEFAULT_USER_DATA.city,
-    state: initialData?.state || DEFAULT_USER_DATA.state,
-    country: initialData?.country || DEFAULT_USER_DATA.country,
-    address: initialData?.address ?? (initialData ? "" : DEFAULT_USER_DATA.address),
-    postal_code: initialData?.postal_code ?? (initialData ? "" : DEFAULT_USER_DATA.postal_code),
-    latitude: initialData?.latitude ?? (initialData ? null : DEFAULT_USER_DATA.latitude),
-    longitude: initialData?.longitude ?? (initialData ? null : DEFAULT_USER_DATA.longitude),
+    user_name: initialData?.user_name || "",
+    email: initialData?.email || "",
+    phone_number: initialData?.phone_number || "",
+    city: initialData?.city || "",
+    state: initialData?.state || "",
+    country: initialData?.country || "",
+    address: initialData?.address || "",
+    postal_code: initialData?.postal_code || "",
+    latitude: initialData?.latitude ?? null,
+    longitude: initialData?.longitude ?? null,
   };
 
   const [formData, setFormData] = useState<UserFormState>(initialValues);
@@ -89,28 +88,28 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
 
   const handleChange =
     (field: UserFormField) =>
-    (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      const rawVal = e.target.value;
-      let val: string | number | null = rawVal;
+      (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        const rawVal = e.target.value;
+        let val: string | number | null = rawVal;
 
-      if (field === "latitude" || field === "longitude") {
-        if (rawVal === "") {
-          val = null;
-        } else {
-          const parsed = parseFloat(rawVal);
-          val = Number.isNaN(parsed) ? (rawVal as any) : parsed;
+        if (field === "latitude" || field === "longitude") {
+          if (rawVal === "") {
+            val = null;
+          } else {
+            const parsed = parseFloat(rawVal);
+            val = Number.isNaN(parsed) ? (rawVal as any) : parsed;
+          }
         }
-      }
 
-      const updatedForm = { ...formData, [field]: val } as UserFormState;
-      setFormData(updatedForm);
+        const updatedForm = { ...formData, [field]: val } as UserFormState;
+        setFormData(updatedForm);
 
-      const fieldError = validateField(field, val);
-      setErrors((prev) => ({
-        ...prev,
-        [field]: fieldError,
-      }));
-    };
+        const fieldError = validateField(field, val);
+        setErrors((prev) => ({
+          ...prev,
+          [field]: fieldError,
+        }));
+      };
 
   const handleBlur = (field: UserFormField) => () => {
     setTouched((prev) => ({ ...prev, [field]: true }));
@@ -124,7 +123,7 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
   const handleLocationSelect = (result: GeocodingResult) => {
     const formattedAddress = formatGeocodingAddress(result);
     const postalCode = extractPostalCode(result);
-    
+
     // Resolve clean city name - ensure numeric postal codes never become city name
     const cleanName = result.name.replace(/^\d+[\s,-]*/, "").trim();
     const isPostcode = isPostalCodeString(result.name) || /^\d+/.test(result.name.trim());
@@ -329,8 +328,8 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
                   touched.user_name && errors.user_name
                     ? "border-rose-500/50 bg-rose-500/[0.03] focus:border-rose-500"
                     : touched.user_name && !errors.user_name && formData.user_name.trim()
-                    ? "border-emerald-500/40 bg-emerald-500/[0.02] focus:border-emerald-500"
-                    : "border-white/[0.08] focus:border-blue-500/50 hover:border-white/[0.14]"
+                      ? "border-emerald-500/40 bg-emerald-500/[0.02] focus:border-emerald-500"
+                      : "border-white/[0.08] focus:border-blue-500/50 hover:border-white/[0.14]"
                 )}
               />
               {touched.user_name && !errors.user_name && formData.user_name.trim() && (
@@ -366,7 +365,7 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
               <span className="flex items-center gap-1.5">
                 <Mail className="w-3.5 h-3.5 text-blue-400" />
                 <span>Email Address</span>
-                <span className="text-rose-400">*</span>
+                <span className="text-[11px] text-zinc-500 font-normal">(Optional)</span>
               </span>
               <span className="text-[10px] text-zinc-500 font-mono">user@domain.com</span>
             </label>
@@ -386,8 +385,8 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
                   touched.email && errors.email
                     ? "border-rose-500/50 bg-rose-500/[0.03] focus:border-rose-500"
                     : touched.email && !errors.email && formData.email.trim()
-                    ? "border-emerald-500/40 bg-emerald-500/[0.02] focus:border-emerald-500"
-                    : "border-white/[0.08] focus:border-blue-500/50 hover:border-white/[0.14]"
+                      ? "border-emerald-500/40 bg-emerald-500/[0.02] focus:border-emerald-500"
+                      : "border-white/[0.08] focus:border-blue-500/50 hover:border-white/[0.14]"
                 )}
               />
               {touched.email && !errors.email && formData.email.trim() && (
@@ -413,7 +412,7 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
               <span className="flex items-center gap-1.5">
                 <Phone className="w-3.5 h-3.5 text-blue-400" />
                 <span>Phone Number</span>
-                <span className="text-rose-400">*</span>
+                <span className="text-[11px] text-zinc-500 font-normal">(Optional)</span>
               </span>
               <span className="text-[10px] text-zinc-500 font-mono">7-15 digits</span>
             </label>
@@ -433,8 +432,8 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
                   touched.phone_number && errors.phone_number
                     ? "border-rose-500/50 bg-rose-500/[0.03] focus:border-rose-500"
                     : touched.phone_number && !errors.phone_number && formData.phone_number.trim()
-                    ? "border-emerald-500/40 bg-emerald-500/[0.02] focus:border-emerald-500"
-                    : "border-white/[0.08] focus:border-blue-500/50 hover:border-white/[0.14]"
+                      ? "border-emerald-500/40 bg-emerald-500/[0.02] focus:border-emerald-500"
+                      : "border-white/[0.08] focus:border-blue-500/50 hover:border-white/[0.14]"
                 )}
               />
               {touched.phone_number && !errors.phone_number && formData.phone_number.trim() && (
@@ -520,7 +519,7 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
               <span className="flex items-center gap-1.5">
                 <Building2 className="w-3.5 h-3.5 text-purple-400" />
                 <span>City</span>
-                <span className="text-rose-400">*</span>
+                {/* <span className="text-rose-400">*</span> */}
               </span>
               <span className="text-[10px] text-zinc-500 font-mono flex items-center gap-1">
                 <Lock className="w-2.5 h-2.5" />
@@ -565,7 +564,7 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
               <span className="flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5 text-purple-400" />
                 <span>State / Region</span>
-                <span className="text-rose-400">*</span>
+                {/* <span className="text-rose-400">*</span> */}
               </span>
               <span className="text-[10px] text-zinc-500 font-mono flex items-center gap-1">
                 <Lock className="w-2.5 h-2.5" />
@@ -610,7 +609,7 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
               <span className="flex items-center gap-1.5">
                 <Globe className="w-3.5 h-3.5 text-purple-400" />
                 <span>Country</span>
-                <span className="text-rose-400">*</span>
+                {/* <span className="text-rose-400">*</span> */}
               </span>
               <span className="text-[10px] text-zinc-500 font-mono flex items-center gap-1">
                 <Lock className="w-2.5 h-2.5" />
@@ -659,8 +658,9 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
                 <Hash className="w-3.5 h-3.5 text-purple-400" />
                 <span>Postal / ZIP Code</span>
               </span>
-              <span className="text-[10px] text-zinc-500 font-mono">
-                Auto-derived or customizable
+              <span className="text-[10px] text-zinc-500 font-mono flex items-center gap-1">
+                <Lock className="w-2.5 h-2.5" />
+                <span>Read-only</span>
               </span>
             </label>
             <div className="relative">
@@ -668,34 +668,22 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
                 id="field-postal-code"
                 type="text"
                 value={formData.postal_code}
-                onChange={handleChange("postal_code")}
-                onBlur={handleBlur("postal_code")}
-                placeholder="e.g. 444203 or 411001"
-                autoComplete="postal-code"
-                disabled={submitting}
+                readOnly
+                tabIndex={-1}
+                placeholder="Auto-derived"
+                autoComplete="off"
                 className={cn(
-                  "w-full px-3.5 py-2.5 rounded-xl text-sm font-medium border transition-all duration-150 outline-none",
-                  "bg-zinc-800/40 border-white/[0.08] hover:border-white/[0.14] text-zinc-100 placeholder:text-zinc-600 focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/20",
-                  touched.postal_code && errors.postal_code && "border-rose-500/50"
+                  "w-full px-3.5 py-2.5 rounded-xl text-sm font-medium border transition-all duration-150 outline-none font-mono cursor-not-allowed select-all",
+                  "bg-zinc-900/70 border-white/[0.06] text-zinc-200 placeholder:text-zinc-600 hover:border-white/[0.08]"
                 )}
               />
               {formData.postal_code.trim() && (
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 absolute right-3 top-3 pointer-events-none" />
               )}
             </div>
-            {touched.postal_code && errors.postal_code ? (
-              <p
-                id="error-postal-code"
-                className="text-xs text-rose-400 flex items-center gap-1.5 pt-0.5 animate-in fade-in"
-              >
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                <span>{errors.postal_code}</span>
-              </p>
-            ) : (
-              <p className="text-[10px] text-zinc-500">
-                Populated from location API or PIN/postal code search. Can be fine-tuned.
-              </p>
-            )}
+            <p className="text-[10px] text-zinc-500">
+              Populated from location API or PIN/postal code search.
+            </p>
           </div>
 
           <div className="space-y-1.5">
