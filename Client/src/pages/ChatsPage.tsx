@@ -21,6 +21,11 @@ import {
   Trash2,
   ShieldCheck,
   AlertTriangle,
+  Mic,
+  MicOff,
+  Volume2,
+  Square,
+  ChevronDown,
 } from "lucide-react";
 import { Sidebar, type SidebarItem, type SidebarRenderItemState } from "@/components/Sidebar";
 import { toast, ChatMessageContent } from "@/components";
@@ -29,6 +34,9 @@ import {
   type ChatSession,
   type ChatMessage,
 } from "@/services/engine.service";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { useTTS } from "@/hooks/useTTS";
+import { recordTranscription } from "@/utils/transcribe";
 import { useChatStore, type SendingSessionDetails } from "@/store/useChatStore";
 import { cn } from "@/lib/utils";
 
@@ -144,6 +152,45 @@ export const ChatsPage: FC = () => {
   const [copiedSessionId, setCopiedSessionId] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [loadingMessageIndex, setLoadingMessageIndex] = useState<number>(0);
+
+  // Speech Recognition & Microphone Integration
+  const { isMicOn, isListening, toggleListening } = useSpeechRecognition(true);
+
+  // ElevenLabs Text-to-Speech (TTS) Integration
+  const {
+    stop: stopTTS,
+    togglePlay: toggleTTS,
+    isPlaying: isTTSPlaying,
+    currentChunk: ttsCurrentChunk,
+    totalChunks: ttsTotalChunks,
+    activeText: ttsActiveText,
+    selectedVoiceId,
+    setSelectedVoiceId,
+    availableVoices,
+  } = useTTS();
+
+  const activeTTSVoice =
+    availableVoices.find((v) => v.id === selectedVoiceId) || availableVoices[0];
+
+  // Automatically append transcribed voice text into chat input
+  useEffect(() => {
+    const handleTranscription = (e: any) => {
+      const record = e.detail;
+      // Only append genuine voice dictation to inputText (exclude typed chat submissions)
+      if (record && record.text && record.source !== "chat") {
+        setInputText((prev) => {
+          const updated = prev ? `${prev} ${record.text}` : record.text;
+          inputTextRef.current = updated;
+          return updated;
+        });
+      }
+    };
+
+    window.addEventListener("mira-transcription", handleTranscription);
+    return () => {
+      window.removeEventListener("mira-transcription", handleTranscription);
+    };
+  }, []);
 
   // Session & Input refs for fresh access inside async effects / callbacks
   const selectedSessionIdRef = useRef<string | null>(selectedSessionId);
@@ -955,6 +1002,9 @@ export const ChatsPage: FC = () => {
     const trimmed = inputText.trim();
     if (!trimmed) return;
 
+    // Store chat data into utils/transcribe.json (both Vite disk plugin & Operator)
+    recordTranscription(`User: ${trimmed}`, new Date().toISOString(), "chat").catch(() => {});
+
     // Upfront session determination: reuse existing or generate new UUID immediately
     const targetSessionId = selectedSessionId || generateUUID();
 
@@ -1060,6 +1110,9 @@ export const ChatsPage: FC = () => {
       if (response.ai_message) {
         resolveAiMessage(targetSessionId, jobId, response.user_message, response.ai_message);
         fetchSessions(1, null, false, true);
+        if (response.ai_message.content) {
+          recordTranscription(`Assistant: ${response.ai_message.content}`, new Date().toISOString(), "chat").catch(() => {});
+        }
       } else {
         // Job queued into llm_chat stream; replace tempId in-place with saved user msg
         replaceOptimisticUserMessage(targetSessionId, tempId, response.user_message);
@@ -1858,6 +1911,39 @@ export const ChatsPage: FC = () => {
                                 <Copy className="w-3 h-3" />
                               )}
                             </button>
+                            {/* ElevenLabs TTS Listen / Stop Button */}
+                            <button
+                              type="button"
+                              id={`btn-tts-msg-${msg.id}`}
+                              onClick={() => toggleTTS(msg.content)}
+                              title={
+                                isTTSPlaying && ttsActiveText === msg.content.trim()
+                                  ? `Speaking with ${activeTTSVoice?.name || "ElevenLabs"} (Chunk ${ttsCurrentChunk}/${ttsTotalChunks}). Click to stop.`
+                                  : `Read aloud with ${activeTTSVoice?.name || "ElevenLabs"} voice`
+                              }
+                              aria-label={
+                                isTTSPlaying && ttsActiveText === msg.content.trim()
+                                  ? `Stop ${activeTTSVoice?.name || "ElevenLabs"} speech`
+                                  : `Read aloud with ${activeTTSVoice?.name || "ElevenLabs"} voice`
+                              }
+                              className={cn(
+                                "p-1 rounded transition-all duration-150 cursor-pointer flex items-center gap-1",
+                                isTTSPlaying && ttsActiveText === msg.content.trim()
+                                  ? "text-cyan-400 bg-cyan-500/20 shadow-[0_0_8px_rgba(6,182,212,0.4)] animate-pulse"
+                                  : "text-zinc-400 hover:text-cyan-300 hover:bg-white/10"
+                              )}
+                            >
+                              {isTTSPlaying && ttsActiveText === msg.content.trim() ? (
+                                <>
+                                  <Volume2 className="w-3 h-3 text-cyan-400 animate-bounce" />
+                                  <span className="text-[10px] font-mono text-cyan-300">
+                                    {ttsCurrentChunk}/{ttsTotalChunks}
+                                  </span>
+                                </>
+                              ) : (
+                                <Volume2 className="w-3 h-3" />
+                              )}
+                            </button>
                           </>
                         )}
                       </div>
@@ -1934,6 +2020,41 @@ export const ChatsPage: FC = () => {
           )}
 
           <div className="max-w-6xl mx-auto w-full px-2 sm:px-6 space-y-2">
+            {/* Active ElevenLabs TTS Playback Indicator */}
+            {isTTSPlaying && (
+              <div
+                id="mira-tts-active-indicator"
+                className="flex items-center justify-between gap-3 px-3.5 py-2 rounded-xl bg-cyan-950/70 border border-cyan-500/40 shadow-[0_4px_20px_rgba(6,182,212,0.15)] backdrop-blur-md text-xs"
+              >
+                <div className="flex items-center gap-2.5 overflow-hidden">
+                  <span className="relative flex h-2.5 w-2.5 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-80" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-500 shadow-[0_0_8px_#06b6d4]" />
+                  </span>
+                  <div className="flex items-center gap-2 truncate">
+                    <span className="font-medium text-cyan-200 shrink-0">
+                      Speaking ({activeTTSVoice?.name || "ElevenLabs"}):
+                    </span>
+                    <span className="px-2 py-0.5 text-[11px] font-mono rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shrink-0">
+                      Chunk {ttsCurrentChunk || 1} / {ttsTotalChunks || 1}
+                    </span>
+                    <span className="text-zinc-400 truncate text-[11px] hidden md:inline">
+                      {ttsActiveText}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  id="btn-stop-tts"
+                  onClick={stopTTS}
+                  title="Stop speech playback"
+                  className="px-2.5 py-1 rounded-lg bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-300 hover:text-white border border-white/10 transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer shadow-sm text-xs font-mono"
+                >
+                  <Square className="w-3 h-3 fill-current text-rose-400" />
+                  <span>Stop</span>
+                </button>
+              </div>
+            )}
             <div className="relative flex items-end gap-2 bg-zinc-900/90 border border-white/[0.1] focus-within:border-cyan-500/50 focus-within:ring-1 focus-within:ring-cyan-500/30 rounded-2xl p-2 transition-all">
               <textarea
                 ref={textareaRef}
@@ -1949,6 +2070,102 @@ export const ChatsPage: FC = () => {
                 }
                 className="flex-1 max-h-44 min-h-[38px] bg-transparent resize-none text-xs sm:text-[13px] text-zinc-100 placeholder-zinc-500 focus:outline-none px-2 py-1.5 leading-relaxed overflow-y-auto"
               />
+
+              <button
+                type="button"
+                id="btn-voice-dictation"
+                onClick={toggleListening}
+                title={
+                  isMicOn
+                    ? "Microphone is active & transcribing. Click to mute."
+                    : "Click to start voice dictation"
+                }
+                aria-label={isMicOn ? "Mute microphone" : "Start voice dictation"}
+                className={cn(
+                  "p-2 rounded-xl transition-all duration-150 flex items-center justify-center shrink-0 cursor-pointer shadow-md",
+                  isMicOn
+                    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.2)] animate-pulse hover:bg-emerald-500/30"
+                    : "bg-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/80 border border-white/5"
+                )}
+              >
+                {isListening ? (
+                  <Volume2 className="w-4 h-4 text-emerald-400 animate-bounce" />
+                ) : isMicOn ? (
+                  <Mic className="w-4 h-4 text-emerald-400" />
+                ) : (
+                  <MicOff className="w-4 h-4 text-zinc-400" />
+                )}
+              </button>
+
+              {/* ElevenLabs Voice Model Selector Dropdown */}
+              <div
+                className="relative flex items-center shrink-0"
+                title={`Active ElevenLabs Model: ${activeTTSVoice?.name || "Voice"} (${activeTTSVoice?.description || ""})`}
+              >
+                <select
+                  id="select-chat-tts-voice"
+                  value={selectedVoiceId}
+                  onChange={(e) => {
+                    setSelectedVoiceId(e.target.value);
+                    const chosen = availableVoices.find((v) => v.id === e.target.value);
+                    if (chosen) {
+                      toast.success(`Voice set to ${chosen.name}`, { title: "ElevenLabs Model" });
+                    }
+                  }}
+                  aria-label="Select ElevenLabs Voice Model"
+                  className="appearance-none pl-2.5 pr-7 py-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-300 hover:text-white text-xs font-mono font-medium border border-white/10 focus:outline-none focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/30 cursor-pointer max-w-[105px] sm:max-w-[130px] transition-colors"
+                >
+                  <optgroup label="🌟 Requested Models">
+                    {availableVoices
+                      .filter((v) => v.category === "library")
+                      .map((v) => (
+                        <option key={v.id} value={v.id} className="bg-zinc-900 text-white">
+                          {v.name}
+                        </option>
+                      ))}
+                  </optgroup>
+                  <optgroup label="Standard Models">
+                    {availableVoices
+                      .filter((v) => v.category === "premade")
+                      .map((v) => (
+                        <option key={v.id} value={v.id} className="bg-zinc-900 text-zinc-300">
+                          {v.name}
+                        </option>
+                      ))}
+                  </optgroup>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400" />
+              </div>
+
+              {/* ElevenLabs Voice TTS Button */}
+              <button
+                type="button"
+                id="btn-speak-input-text"
+                onClick={() => {
+                  const toSpeak =
+                    inputText.trim() ||
+                    "LangChain is an open-source framework designed for building applications with large language models. It helps connect models to external data sources, tools, and APIs.";
+                  toggleTTS(toSpeak);
+                }}
+                title={
+                  isTTSPlaying
+                    ? `Speaking with ${activeTTSVoice?.name || "ElevenLabs"} (Chunk ${ttsCurrentChunk}/${ttsTotalChunks}). Click to stop.`
+                    : `Test ${activeTTSVoice?.name || "ElevenLabs"} Voice TTS (Speak text or LangChain sample)`
+                }
+                aria-label={isTTSPlaying ? "Stop speech" : `Read aloud with ${activeTTSVoice?.name || "ElevenLabs"}`}
+                className={cn(
+                  "p-2 rounded-xl transition-all duration-150 flex items-center justify-center shrink-0 cursor-pointer shadow-md",
+                  isTTSPlaying
+                    ? "bg-violet-500/20 text-violet-400 border border-violet-500/40 shadow-[0_0_10px_rgba(139,92,246,0.3)] animate-pulse hover:bg-violet-500/30"
+                    : "bg-zinc-800/80 text-zinc-400 hover:text-violet-300 hover:bg-zinc-700/80 border border-white/5"
+                )}
+              >
+                {isTTSPlaying ? (
+                  <Volume2 className="w-4 h-4 text-violet-400 animate-bounce" />
+                ) : (
+                  <Volume2 className="w-4 h-4 text-zinc-400" />
+                )}
+              </button>
 
               <button
                 type="button"

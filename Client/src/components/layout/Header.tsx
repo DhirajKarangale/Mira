@@ -2,12 +2,14 @@ import type { FC } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { NavTabs } from "./NavTabs";
 import { WindowControls } from "./WindowControls";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Header: FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { isMicOn, toggleListening } = useSpeechRecognition(true);
 
   const isMiraActive =
     location.pathname === "/" || location.pathname === "/mira";
@@ -33,6 +35,22 @@ export const Header: FC = () => {
             : "hover:bg-white/5 border border-transparent"
         )}
       >
+        {/* Only one small green blinking dot at MIRA top corner when mic is on */}
+        {isMicOn && (
+          <span
+            id="mira-top-corner-mic-indicator"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleListening();
+            }}
+            title="Microphone is ON (Listening). Click to mute."
+            className="absolute -top-1 -right-1 flex h-2.5 w-2.5 z-20 cursor-pointer pointer-events-auto"
+          >
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-80" />
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 shadow-[0_0_8px_#10b981]" />
+          </span>
+        )}
+
         <div
           className={cn(
             "flex items-center justify-center h-5 w-5 rounded transition-all duration-150",

@@ -29,8 +29,124 @@ try {
 if (process.env.PORT) clientPort = Number(process.env.PORT);
 if (process.env.VITE_PORT) clientPort = Number(process.env.VITE_PORT);
 
+function localTranscribePlugin() {
+  const rootDir = path.resolve(__dirname, "..");
+  const clientTranscribePath = path.resolve(__dirname, "src/utils/transcribe.json");
+  const rootTranscribePath = path.resolve(rootDir, "utils/transcribe.json");
+  const operatorTranscribePath = path.resolve(rootDir, "Operator/utils/transcribe.json");
+
+  function saveRecord(record: { text: string; time?: string }) {
+    if (!record.text || !record.text.trim()) return;
+    const item = {
+      text: record.text.trim(),
+      time: record.time || new Date().toISOString(),
+    };
+
+    const targetPaths = [clientTranscribePath, rootTranscribePath, operatorTranscribePath];
+    for (const targetPath of targetPaths) {
+      try {
+        const dir = path.dirname(targetPath);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        let list: any[] = [];
+        if (fs.existsSync(targetPath)) {
+          try {
+            const content = fs.readFileSync(targetPath, "utf-8");
+            list = JSON.parse(content);
+            if (!Array.isArray(list)) list = [];
+          } catch {
+            list = [];
+          }
+        }
+        const isDuplicate = list.some(
+          (existing) => existing.text === item.text && existing.time === item.time
+        );
+        if (!isDuplicate) {
+          list.push(item);
+          fs.writeFileSync(targetPath, JSON.stringify(list, null, 2), "utf-8");
+        }
+      } catch (e) {
+        console.error(`[Vite Transcribe Plugin] Error writing to ${targetPath}:`, e);
+      }
+    }
+  }
+
+  return {
+    name: "local-transcribe-plugin",
+    handleHotUpdate({ file }: { file: string }) {
+      if (file.includes("transcribe.json")) {
+        // Suppress HMR and browser reloads when transcribe.json is written
+        return [];
+      }
+    },
+    configureServer(server: any) {
+      server.middlewares.use("/api/save-transcribe", (req: any, res: any) => {
+        if (req.method === "POST") {
+          let body = "";
+          req.on("data", (chunk: any) => {
+            body += chunk;
+          });
+          req.on("end", () => {
+            try {
+              const data = JSON.parse(body);
+              saveRecord(data);
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({ status: "success", saved: data }));
+            } catch (err: any) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ status: "error", message: err.message }));
+            }
+          });
+        } else {
+          res.statusCode = 405;
+          res.end();
+        }
+      });
+
+      server.middlewares.use("/api/get-transcribe", (_req: any, res: any) => {
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+
+        try {
+          let list: any[] = [];
+          const readList = (p: string) => {
+            if (fs.existsSync(p)) {
+              try {
+                const parsed = JSON.parse(fs.readFileSync(p, "utf-8"));
+                if (Array.isArray(parsed)) return parsed;
+              } catch {}
+            }
+            return [];
+          };
+
+          const clientList = readList(clientTranscribePath);
+          const rootList = readList(rootTranscribePath);
+
+          // Use the file with more records or merge them
+          if (clientList.length >= rootList.length && clientList.length > 0) {
+            list = clientList;
+          } else if (rootList.length > 0) {
+            list = rootList;
+            // Sync to clientTranscribePath as well
+            try {
+              fs.writeFileSync(clientTranscribePath, JSON.stringify(rootList, null, 2), "utf-8");
+            } catch {}
+          }
+
+          res.end(JSON.stringify(list));
+        } catch {
+          res.end("[]");
+        }
+      });
+    },
+  };
+}
+
 export default defineConfig(() => ({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), localTranscribePlugin()],
   define: {
     __SERVICES_CONFIG__: JSON.stringify(servicesConfig),
   },
@@ -57,7 +173,16 @@ export default defineConfig(() => ({
         }
       : undefined,
     watch: {
-      ignored: ["**/src-tauri/**"],
+      ignored: [
+        "**/src-tauri/**",
+        "**/src/utils/transcribe.json",
+        "**/utils/transcribe.json",
+        "**/*transcribe.json*",
+        "**/transcribe.json",
+        "**/*keys.json*",
+        /transcribe\.json$/,
+        /keys\.json$/,
+      ],
     },
   },
 }));

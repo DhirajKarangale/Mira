@@ -7,6 +7,9 @@ import {
 import { MicrophoneStatusHeader } from "./components/MicrophoneStatusHeader";
 import { MicrophonePrivacyCard } from "./components/MicrophonePrivacyCard";
 import { MicrophoneDeviceCard } from "./components/MicrophoneDeviceCard";
+import { MicrophoneTranscriptionsCard } from "./components/MicrophoneTranscriptionsCard";
+import { ElevenLabsVoiceCard } from "./components/ElevenLabsVoiceCard";
+import { transcribeManager } from "@/utils/transcribe";
 import { toast } from "@/components";
 
 export const MicrophonePage: FC = () => {
@@ -33,6 +36,11 @@ export const MicrophonePage: FC = () => {
     if (toggleMicMutation.isPending) return;
     const nextState = isOn ? "off" : "on";
     try {
+      if (nextState === "off") {
+        transcribeManager.stop();
+      } else {
+        transcribeManager.start();
+      }
       await toggleMicMutation.mutateAsync(nextState);
       toast.success(
         nextState === "on"
@@ -63,6 +71,16 @@ export const MicrophonePage: FC = () => {
     }
   };
 
+  const handleRefreshAll = async () => {
+    try {
+      await refetchStatus();
+      window.dispatchEvent(new CustomEvent("mira:refresh-transcriptions"));
+      toast.success("Microphone status & transcriptions refreshed");
+    } catch {
+      toast.error("Failed to refresh status");
+    }
+  };
+
   return (
     <div
       id="subpage-microphone-configurations"
@@ -76,11 +94,15 @@ export const MicrophonePage: FC = () => {
           autoStartLoading={updateAutoStartMutation.isPending}
           onToggleStatus={handleToggleStatus}
           onToggleAutoStart={handleToggleAutoStart}
-          onRefresh={() => refetchStatus()}
+          onRefresh={handleRefreshAll}
           refreshing={statusFetching}
         />
 
         <MicrophoneDeviceCard isOn={isOn} autoStart={autoStart} />
+
+        <MicrophoneTranscriptionsCard isOn={isOn} />
+
+        <ElevenLabsVoiceCard />
 
         <MicrophonePrivacyCard />
       </div>
