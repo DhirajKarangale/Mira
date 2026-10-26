@@ -37,7 +37,9 @@ AVAILABLE_ROUTES = {
         "precipitation, rain, snowfall, humidity, wind speed, or meteorological forecasts for today or upcoming days."
     ),
     "news": (
-        "User is asking about current or latest news, breaking news, headlines, top stories, or news briefings."
+        "User is asking about current news, latest news, breaking news, headlines, top stories, "
+        "country-specific news, location/city news, category news (technology, business, sports, entertainment, health, science, world, politics), "
+        "specific news topics, tags, or news from date ranges."
     ),
 }
 
@@ -106,7 +108,8 @@ Instructions:
    - "history_answer": The query is a follow-up, clarification, reformatting, or question whose answer is ALREADY present in the conversation history above (e.g. asking which browser was used when already listed, asking to summarize or reformat previous reply, asking about an entity already explained).
    - "user_activity": The user is asking about their personal activities, screen time, applications used, documents opened, or work history that REQUIRES querying the personal screen activity database.
    - "weather": The user is asking about current weather, weather forecasts, temperature, rain/precipitation, snowfall, humidity, wind speed, or meteorological conditions for today or upcoming days.
-   - "general_llm": General knowledge, coding help, definitions, reasoning, greeting, or chit-chat that does not query personal screen logs or weather.
+   - "news": The user is asking about current or latest news, breaking news, headlines, top stories, country or city news, category news (tech, business, sports, entertainment, health, science, world), specific news topics, or news from date ranges.
+   - "general_llm": General knowledge, coding help, definitions, reasoning, greeting, or chit-chat that does not query personal screen logs, weather, or news.
 2. Follow-Up & Context Resolution:
    - "is_follow_up": true if the query refers to, continues, or relies on previous messages in this session.
    - "can_answer_from_history": true if the conversation history above already contains enough information to answer the question without querying Qdrant/vector store.
@@ -123,10 +126,21 @@ Instructions:
        CRITICAL: If the user is asking broadly about projects, ongoing work, apps used, or work history WITHOUT specifying a date/time (e.g. "give me list of projects I am working on", "what projects am I working on?", "what have I worked on recently?"), set "time_expression" to null so that ALL available Knowledge Bases across all dates are searched.
    - If route is "weather":
      - "forecast_days": Integer (1 to 16) indicating number of forecast days requested. Set to 1 for current weather/today, 2 for tomorrow, 7 for a week, or the specific number of days asked (e.g. 3, 5, 10). Default to 7 if unspecified.
+   - If route is "news":
+     - "news_plan":
+       - "operation": "top_headlines" for trending, breaking, or category headlines; OR "search" for specific topics, entities, companies, people, events, cities/regions, or date ranges.
+       - "q": Search keywords or topic query (max 200 chars), or null for broad headlines.
+       - "category": Category string if applicable ("general", "world", "nation", "business", "technology", "entertainment", "sports", "science", "health"), or null.
+       - "country": 2-letter ISO country code if specific country requested (e.g. "us", "in", "gb"), or null.
+       - "location": Specific city or region name if mentioned (e.g. "Chicago", "Tokyo", "London"), or null.
+       - "lang": 2-letter language code (default "en").
+       - "sortby": "publishedAt" or "relevance".
+       - "time_expression": Time period if specified (e.g. "yesterday", "past week", "past 24 hours"), or null.
+       - "max_results": Integer 1 to 10 (enforce max 10 for free plan).
 
 Return strictly a valid JSON object matching this schema:
 {{
-  "route": "user_activity" | "history_answer" | "weather" | "general_llm",
+  "route": "user_activity" | "history_answer" | "weather" | "news" | "general_llm",
   "reasoning": "<brief 1-sentence explanation>",
   "is_follow_up": <true | false>,
   "can_answer_from_history": <true | false>,
@@ -136,7 +150,18 @@ Return strictly a valid JSON object matching this schema:
     "search_query": "<string or null>",
     "app_name": "<string or null>",
     "time_expression": "<string or null>",
-    "forecast_days": <integer or null>
+    "forecast_days": <integer or null>,
+    "news_plan": {{
+      "operation": "top_headlines" | "search",
+      "q": "<string or null>",
+      "category": "<string or null>",
+      "country": "<string or null>",
+      "location": "<string or null>",
+      "lang": "<string or null>",
+      "sortby": "publishedAt" | "relevance",
+      "time_expression": "<string or null>",
+      "max_results": <integer or null>
+    }}
   }}
 }}
 Do not include any extra text outside the JSON object.
@@ -192,11 +217,20 @@ Do not include any extra text outside the JSON object.
         except Exception:
             forecast_days = 7
 
+    news_plan = retrieval_plan.get("news_plan")
+    if route == "news":
+        try:
+            from .news_tool import plan_news_query
+            news_plan = plan_news_query(user_query, user_profile, llm_plan=news_plan)
+        except Exception:
+            pass
+
     tool_params = {
         "search_query": retrieval_plan.get("search_query"),
         "app_name": retrieval_plan.get("app_name"),
         "time_expression": retrieval_plan.get("time_expression") or user_query,
         "forecast_days": forecast_days,
+        "news_plan": news_plan,
         "detail_level": detail_level,
         "resolved_query": resolved_query,
         "is_follow_up": is_follow_up,
@@ -297,6 +331,16 @@ def _heuristic_fallback(query: str, chat_history: Optional[List[Dict[str, Any]]]
     ]
     if any(p in q for p in weather_phrases):
         return "weather", "Heuristic matched weather inquiry phrase"
+
+    # News indicators
+    news_phrases = [
+        "news", "headlines", "headline", "top stories", "breaking news",
+        "current events", "latest news", "tech news", "sports news",
+        "business news", "world news", "news update", "news briefing",
+        "daily news", "in the news", "what's the news", "what is the news"
+    ]
+    if any(p in q for p in news_phrases):
+        return "news", "Heuristic matched news inquiry phrase"
 
     # Explicit activity phrases
     activity_phrases = [

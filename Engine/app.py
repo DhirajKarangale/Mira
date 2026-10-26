@@ -10,6 +10,12 @@ from llm import call_llm, get_work_config
 from ocr_summarization import start_ocr_summarization, stop_ocr_summarization, get_summarization_status
 from embedding import initialize_embedding_model, get_embedding_status
 from chat import router as chat_router, start_chat_workers, stop_chat_workers, get_chat_status
+from daily_suggestions import (
+    daily_suggestions_router,
+    start_daily_suggestions,
+    stop_daily_suggestions,
+    get_daily_suggestions_status,
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -31,8 +37,16 @@ async def lifespan(app: FastAPI):
         await start_chat_workers()
     except Exception as e:
         log_error(f'Failed to start Chat module workers: {e}')
+    try:
+        await start_daily_suggestions()
+    except Exception as e:
+        log_error(f'Failed to start Daily Suggestions module: {e}')
     yield
     log('Engine service shutting down cleanly...')
+    try:
+        await stop_daily_suggestions()
+    except Exception as e:
+        log_error(f'Error stopping Daily Suggestions module: {e}')
     try:
         await stop_chat_workers()
     except Exception as e:
@@ -52,6 +66,7 @@ app.add_middleware(
     expose_headers=['*'],
 )
 app.include_router(chat_router)
+app.include_router(daily_suggestions_router)
 
 
 
@@ -76,6 +91,7 @@ async def get_status():
     summarization = get_summarization_status()
     embedding_status = get_embedding_status()
     chat_status = get_chat_status()
+    ds_status = get_daily_suggestions_status()
     return {
         'service': 'Engine',
         'status': 'online',
@@ -85,6 +101,7 @@ async def get_status():
         'ocr_summarization': summarization,
         'embedding_model': embedding_status,
         'chat_workers': chat_status,
+        'daily_suggestions': ds_status,
     }
 
 @app.get('/embedding/status', status_code=status.HTTP_200_OK)

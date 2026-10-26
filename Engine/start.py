@@ -14,6 +14,7 @@ from vault_logger import log, log_error
 from ocr_summarization import start_ocr_summarization, stop_ocr_summarization, get_summarization_status
 from embedding import initialize_embedding_model, get_embedding_status
 from chat import start_chat_workers, stop_chat_workers, get_chat_status
+from daily_suggestions import start_daily_suggestions, stop_daily_suggestions, get_daily_suggestions_status
 
 async def run_standalone_workers():
     log('Initializing Engine configuration from Vault...')
@@ -32,6 +33,9 @@ async def run_standalone_workers():
     log('Starting Chat module workers...')
     await start_chat_workers()
     log(f'Chat module workers initialized. Status: {get_chat_status()}')
+    log('Starting Daily Suggestions scheduler...')
+    await start_daily_suggestions()
+    log(f'Daily Suggestions scheduler initialized. Status: {get_daily_suggestions_status()}')
     stop_event = asyncio.Event()
 
     def _signal_handler():
@@ -46,6 +50,11 @@ async def run_standalone_workers():
     except (KeyboardInterrupt, SystemExit):
         pass
     finally:
+        log('Shutting down Daily Suggestions scheduler...')
+        try:
+            await stop_daily_suggestions()
+        except Exception as e:
+            log_error(f'Error stopping daily suggestions scheduler: {e}')
         log('Shutting down Chat module workers...')
         try:
             await stop_chat_workers()

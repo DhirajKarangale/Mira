@@ -109,6 +109,39 @@ class ChatWebSocketManager:
         log(f"[ChatWebSocket] Broadcasted rename for session={session_id} to '{chat_name}' ({sent_count} client(s)).")
         return sent_count
 
+    async def broadcast_daily_suggestions_update(
+        self,
+        section: str,
+        data: Dict[str, Any],
+    ) -> int:
+        """
+        Broadcast Daily Suggestions update event to all connected WebSocket clients.
+        """
+        payload: Dict[str, Any] = {
+            "type": "daily_suggestions_update",
+            "section": str(section),
+            "data": data,
+        }
+        message_str = json.dumps(payload)
+        sent_count = 0
+        dead_connections: List[WebSocket] = []
+
+        async with self._lock:
+            for connection in self._active_connections:
+                try:
+                    await connection.send_text(message_str)
+                    sent_count += 1
+                except Exception as e:
+                    logger.debug(f"Failed to send daily suggestions update to client: {e}")
+                    dead_connections.append(connection)
+
+            for dead in dead_connections:
+                if dead in self._active_connections:
+                    self._active_connections.remove(dead)
+
+        log(f"[ChatWebSocket] Broadcasted daily suggestions update (section={section}) to {sent_count} client(s).")
+        return sent_count
+
     def get_connections_count(self) -> int:
         return len(self._active_connections)
 

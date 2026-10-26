@@ -832,4 +832,109 @@ async def cleanup_vault_chats():
         )
 
 
+# ==============================================================================
+# Daily Suggestions Endpoints
+# ==============================================================================
+
+class DailySuggestionsUpdateRequest(BaseModel):
+    record_id: Optional[int] = None
+    date_suggestions: Optional[str] = None
+    suggestions: Optional[List[str]] = None
+    completed: Optional[Union[List[int], str]] = None
+    date_weather: Optional[str] = None
+    weather: Optional[Dict[str, Any]] = None
+    date_news: Optional[str] = None
+    news: Optional[List[Dict[str, Any]]] = None
+    date_music: Optional[str] = None
+    music: Optional[List[Dict[str, Any]]] = None
+    date_entertainment: Optional[str] = None
+    entertainment: Optional[List[Dict[str, Any]]] = None
+
+
+class SuggestionCompleteRequest(BaseModel):
+    index: int
+    completed: bool = True
+    record_id: Optional[int] = None
+
+
+@router.get('/daily_suggestions', status_code=status.HTTP_200_OK)
+@router.get('/daily_suggestions/latest', status_code=status.HTTP_200_OK)
+async def get_latest_daily_suggestions_endpoint():
+    try:
+        data = config_storage.get_latest_daily_suggestions()
+        if not data:
+            return {
+                "id": None,
+                "suggestions": [],
+                "completed": [],
+                "weather": {},
+                "news": [],
+                "music": [],
+                "entertainment": [],
+            }
+        return data
+    except Exception as e:
+        logger.error(f"Failed to fetch daily suggestions: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={'message': f'Failed to retrieve daily suggestions: {str(e)}'}
+        )
+
+
+@router.get('/daily_suggestions/previous', status_code=status.HTTP_200_OK)
+async def get_previous_daily_suggestions_endpoint(skip_today: bool = Query(True)):
+    try:
+        data = config_storage.get_previous_daily_suggestions(skip_today=skip_today)
+        return data or {}
+    except Exception as e:
+        logger.error(f"Failed to fetch previous daily suggestions: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={'message': f'Failed to retrieve previous daily suggestions: {str(e)}'}
+        )
+
+
+@router.get('/daily_suggestions/history', status_code=status.HTTP_200_OK)
+async def get_daily_suggestions_history_endpoint(days: int = Query(14, ge=1, le=90)):
+    try:
+        return config_storage.get_daily_suggestions_history(days=days)
+    except Exception as e:
+        logger.error(f"Failed to fetch daily suggestions history: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={'message': f'Failed to retrieve suggestions history: {str(e)}'}
+        )
+
+
+@router.post('/daily_suggestions', status_code=status.HTTP_200_OK)
+async def save_daily_suggestions_endpoint(request: DailySuggestionsUpdateRequest):
+    try:
+        data = request.model_dump(exclude_unset=True)
+        record_id = data.pop("record_id", None)
+        return config_storage.save_daily_suggestions(data, record_id=record_id)
+    except Exception as e:
+        logger.error(f"Failed to save daily suggestions: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={'message': f'Failed to save daily suggestions: {str(e)}'}
+        )
+
+
+@router.post('/daily_suggestions/completed', status_code=status.HTTP_200_OK)
+async def update_suggestion_completion_endpoint(request: SuggestionCompleteRequest):
+    try:
+        return config_storage.update_suggestion_completion(
+            index=request.index,
+            completed=request.completed,
+            record_id=request.record_id,
+        )
+    except Exception as e:
+        logger.error(f"Failed to update suggestion completion: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={'message': f'Failed to update completion state: {str(e)}'}
+        )
+
+
+
 

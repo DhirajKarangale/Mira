@@ -146,6 +146,12 @@ export function useGlobalChatSync() {
                   ai_message?.id || job_id
                 );
               }
+            } else if (data.type === "daily_suggestions_update") {
+              window.dispatchEvent(
+                new CustomEvent("mira:daily_suggestions_update", {
+                  detail: data,
+                })
+              );
             }
           } catch (e) {
             console.debug("[Global Chat WS] Message parsing error:", e);

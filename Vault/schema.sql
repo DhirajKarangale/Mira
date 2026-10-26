@@ -95,14 +95,14 @@ CREATE TABLE IF NOT EXISTS daily_suggestions (
     date_suggestions TIMESTAMP,
     suggestions TEXT DEFAULT '[]',
     completed TEXT DEFAULT '',
-    date_whether TIMESTAMP,
-    whether TEXT DEFAULT '{}',
+    date_weather TIMESTAMP,
+    weather TEXT DEFAULT '{}',
     date_music TIMESTAMP,
     music TEXT DEFAULT '[]',
     date_entertainment TIMESTAMP,
     entertainment TEXT DEFAULT '[]',
     date_news TIMESTAMP,
-    news TEXT DEFAULT '[]',
+    news TEXT DEFAULT '[]'
 );
 
 CREATE TABLE IF NOT EXISTS gnews_config (

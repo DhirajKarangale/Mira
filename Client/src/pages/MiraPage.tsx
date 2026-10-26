@@ -1,70 +1,120 @@
 import type { FC } from "react";
 import { useNavigate } from "react-router-dom";
-import { Sparkles, UserX, ArrowRight, UserCheck, Loader2 } from "lucide-react";
-import { useUserDetailsQuery } from "./User/queries";
+import { UserX, ArrowRight, RefreshCw } from "lucide-react";
+import { useMiraData } from "./Mira/useMiraData";
+import {
+  WelcomeHeader,
+  WeatherWidget,
+  NewsWidget,
+  DailySuggestionsWidget,
+  MusicWidget,
+  EntertainmentWidget,
+} from "./Mira/components";
 
 export const MiraPage: FC = () => {
   const navigate = useNavigate();
-  const { data: details, isLoading } = useUserDetailsQuery();
+  const {
+    userDetails,
+    isUserLoading,
+    today,
+    previous,
+    completedIndices,
+    toggleSuggestionCompletion,
+    refreshingSection,
+    handleRefresh,
+  } = useMiraData();
 
-  const hasData = Boolean(
-    details?.user_name?.trim() ||
-    details?.email?.trim() ||
-    details?.phone_number?.trim() ||
-    details?.city?.trim() ||
-    details?.state?.trim() ||
-    details?.country?.trim() ||
-    details?.address?.trim()
+  const hasUserData = Boolean(
+    userDetails?.user_name?.trim() ||
+    userDetails?.city?.trim() ||
+    userDetails?.country?.trim()
   );
 
   return (
     <div
       id="page-content-mira"
-      className="relative flex flex-col items-center justify-center h-full w-full overflow-hidden select-none"
+      className="relative flex flex-col h-full w-full overflow-y-auto mira-scrollbar p-4 sm:p-6 lg:p-7 gap-5 select-none"
     >
-      <div className="absolute w-[450px] h-[450px] bg-cyan-500/10 rounded-full blur-[120px] pointer-events-none -z-10" />
+      {/* Background Ambient Glows */}
+      <div className="absolute top-10 left-1/4 w-[500px] h-[300px] bg-cyan-500/5 rounded-full blur-[140px] pointer-events-none -z-10" />
+      <div className="absolute bottom-10 right-1/4 w-[400px] h-[300px] bg-blue-500/5 rounded-full blur-[140px] pointer-events-none -z-10" />
 
-      <div className="flex flex-col items-center gap-5 text-center z-10 px-6 max-w-lg">
-        <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shadow-[0_0_30px_rgba(6,182,212,0.15)] mb-1">
-          <Sparkles className="w-8 h-8" />
+      {/* Optional Missing Profile Notice */}
+      {!isUserLoading && !hasUserData && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 px-4 rounded-xl border border-amber-500/25 bg-amber-500/10 backdrop-blur-xl animate-in fade-in duration-300">
+          <div className="flex items-center gap-2.5 text-xs text-amber-200">
+            <UserX className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>
+              Your profile is not yet configured. Set your city and country in the <strong>Me</strong> tab for accurate local weather and news.
+            </span>
+          </div>
+          <button
+            type="button"
+            id="mira-go-to-me-tab-btn"
+            onClick={() => navigate("/user")}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white shadow-md shadow-amber-500/20 transition-all duration-200 active:scale-95 cursor-pointer shrink-0"
+          >
+            <span>Configure Me Tab</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Unified Dashboard Grid: Left Column (Welcome, Suggestions, Coming Soon) | Right Column (Weather Card, News) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1 items-start">
+        {/* Left Column (approx 7 columns) */}
+        <div className="lg:col-span-7 flex flex-col gap-5">
+          <WelcomeHeader userName={userDetails?.user_name || undefined} />
+
+          {/* Prominent Daily Suggestions */}
+          <DailySuggestionsWidget
+            suggestions={today.suggestions}
+            previousSuggestions={previous.suggestions}
+            completedIndices={completedIndices}
+            onToggleComplete={toggleSuggestionCompletion}
+            isRefreshing={Boolean(refreshingSection.suggestions)}
+            onRefresh={() => handleRefresh("suggestions")}
+          />
+
+          {/* Music & Entertainment Containers (Side-by-side) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <MusicWidget />
+            <EntertainmentWidget />
+          </div>
         </div>
 
-        <h1 className="text-4xl sm:text-5xl font-bold tracking-tight bg-gradient-to-b from-zinc-100 via-zinc-200 to-zinc-400 bg-clip-text text-transparent">
-          MIRA
-        </h1>
+        {/* Right Column: Top-Right Weather Card + News Stories Below It (approx 5 columns) */}
+        <div className="lg:col-span-5 flex flex-col gap-5">
+          <WeatherWidget
+            weather={today.weather}
+            previousWeather={previous.weather}
+            isRefreshing={Boolean(refreshingSection.weather)}
+            onRefresh={() => handleRefresh("weather")}
+          />
 
-        {isLoading ? (
-          <div className="flex items-center gap-2 text-zinc-400 text-sm font-mono mt-2">
-            <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
-            <span>Checking user profile...</span>
-          </div>
-        ) : !hasData ? (
-          <div className="flex flex-col items-center gap-3 p-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="flex items-center gap-2 text-amber-300 text-sm font-medium">
-              <UserX className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>User data not found enter your details in Me tab.</span>
-            </div>
-            <button
-              type="button"
-              id="mira-go-to-me-tab-btn"
-              onClick={() => navigate("/user")}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-lg shadow-cyan-500/20 transition-all duration-200 active:scale-95 cursor-pointer mt-1"
-            >
-              <span>Go to Me tab</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center gap-2 animate-in fade-in duration-300">
-            <p className="text-lg font-medium text-zinc-200">
-              Welcome back, <span className="text-cyan-300 font-semibold">{details?.user_name || "User"}</span>
-            </p>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-              <UserCheck className="w-3.5 h-3.5" />
-              <span>Profile Active</span>
-            </div>
-          </div>
-        )}
+          <NewsWidget
+            news={today.news}
+            previousNews={previous.news}
+            isRefreshing={Boolean(refreshingSection.news)}
+            onRefresh={() => handleRefresh("news")}
+          />
+        </div>
+      </div>
+
+      {/* Subtle Bottom Refresh Status Bar */}
+      <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-2 px-1 border-t border-white/[0.04]">
+        <div className="flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
+          <span>Real-time WebSocket intelligence active</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => handleRefresh("all")}
+          className="inline-flex items-center gap-1.5 text-zinc-400 hover:text-cyan-400 transition-colors cursor-pointer"
+        >
+          <RefreshCw className="w-3 h-3" />
+          <span>Refresh All Sections</span>
+        </button>
       </div>
     </div>
   );

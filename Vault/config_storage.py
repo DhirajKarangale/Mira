@@ -79,6 +79,19 @@ def init_config_storage(schema_path: Optional[Path]=None, enc_db_path: Optional[
                     logger.info(f"Adding missing column '{col_name}' to table '{table_name}'")
                     _DB_CONN.execute(f'ALTER TABLE {table_name} ADD COLUMN {col_def}')
                     _DB_CONN.commit()
+            if table_name == 'daily_suggestions':
+                if 'whether' in existing_cols and 'weather' in target_cols:
+                    try:
+                        _DB_CONN.execute("UPDATE daily_suggestions SET weather = whether WHERE (weather IS NULL OR weather = '{}') AND whether IS NOT NULL")
+                        _DB_CONN.commit()
+                    except Exception:
+                        pass
+                if 'date_whether' in existing_cols and 'date_weather' in target_cols:
+                    try:
+                        _DB_CONN.execute("UPDATE daily_suggestions SET date_weather = date_whether WHERE date_weather IS NULL AND date_whether IS NOT NULL")
+                        _DB_CONN.commit()
+                    except Exception:
+                        pass
             for col_key, col_name in existing_cols.items():
                 if col_key not in target_cols and col_key != 'id':
                     logger.info(f"Dropping obsolete column '{col_name}' from table '{table_name}'")
@@ -187,6 +200,8 @@ def get_configuration(key: str) -> Dict[str, Any]:
         return get_engine_workers()
     elif normalized_key in ('system', 'system_storage', 'storage'):
         return {'system_storage_path': str(config.SYSTEM_DIR.resolve()), 'knowledge_base_path': str((config.SYSTEM_DIR / 'knowledge_base').resolve()), 'logs_path': str(config.LOGS_DIR.resolve())}
+    elif normalized_key in ('daily_suggestions', 'suggestions', 'daily_suggestion'):
+        return get_latest_daily_suggestions() or {}
     if normalized_key in _PARSED_SCHEMA:
         table_name = normalized_key
         table_spec = _PARSED_SCHEMA[table_name]
@@ -1257,6 +1272,253 @@ def delete_all_chats() -> int:
     _DB_CONN.commit()
     save_config_storage()
     return deleted_count
+
+
+# ==============================================================================
+# Daily Suggestions Storage
+# ==============================================================================
+
+def parse_completed_column(raw: Any) -> List[int]:
+    """Parses completed column into a unique, sorted list of integer indices."""
+    if not raw:
+        return []
+    if isinstance(raw, list):
+        return sorted(list(set(int(x) for x in raw if str(x).strip().isdigit())))
+    s = str(raw).strip()
+    if not s:
+        return []
+    if s.startswith("["):
+        try:
+            parsed = json.loads(s)
+            if isinstance(parsed, list):
+                return sorted(list(set(int(x) for x in parsed if str(x).strip().isdigit())))
+        except Exception:
+            pass
+    indices = []
+    for part in s.split(","):
+        p = part.strip()
+        if p.isdigit():
+            indices.append(int(p))
+    return sorted(list(set(indices)))
+
+
+def format_completed_column(indices: Any) -> str:
+    """Formats indices into comma-separated string."""
+    cleaned = parse_completed_column(indices)
+    return ",".join(str(i) for i in cleaned)
+
+
+def _format_daily_suggestion_row(row: Any, cursor_description: Any) -> Dict[str, Any]:
+    if not row:
+        return {}
+    cols = [d[0].lower() for d in cursor_description]
+    raw_dict = dict(zip(cols, row))
+
+    def _parse_json(val: Any, default: Any):
+        if val is None or val == "":
+            return default
+        if isinstance(val, (dict, list)):
+            return val
+        try:
+            return json.loads(val)
+        except Exception:
+            return default
+
+    suggestions = _parse_json(raw_dict.get("suggestions"), [])
+    completed_indices = parse_completed_column(raw_dict.get("completed"))
+    weather = _parse_json(raw_dict.get("weather"), {})
+    news = _parse_json(raw_dict.get("news"), [])
+    music = _parse_json(raw_dict.get("music"), [])
+    entertainment = _parse_json(raw_dict.get("entertainment"), [])
+
+    return {
+        "id": raw_dict.get("id"),
+        "date_suggestions": raw_dict.get("date_suggestions"),
+        "suggestions": suggestions,
+        "completed": completed_indices,
+        "date_weather": raw_dict.get("date_weather"),
+        "weather": weather,
+        "date_news": raw_dict.get("date_news"),
+        "news": news,
+        "date_music": raw_dict.get("date_music"),
+        "music": music,
+        "date_entertainment": raw_dict.get("date_entertainment"),
+        "entertainment": entertainment,
+    }
+
+
+def get_latest_daily_suggestions() -> Optional[Dict[str, Any]]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+    cursor = _DB_CONN.execute("SELECT * FROM daily_suggestions ORDER BY id DESC LIMIT 1")
+    row = cursor.fetchone()
+    if not row:
+        return None
+    return _format_daily_suggestion_row(row, cursor.description)
+
+
+def get_previous_daily_suggestions(skip_today: bool = False) -> Optional[Dict[str, Any]]:
+    """Returns the latest record that has content, optionally skipping today's record."""
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+    cursor = _DB_CONN.execute("SELECT * FROM daily_suggestions ORDER BY id DESC LIMIT 10")
+    rows = cursor.fetchall()
+    if not rows:
+        return None
+    now_date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    for r in rows:
+        item = _format_daily_suggestion_row(r, cursor.description)
+        has_content = bool(item.get("suggestions") or item.get("weather") or item.get("news"))
+        if not has_content:
+            continue
+        if skip_today:
+            ts_str = str(item.get("date_suggestions") or item.get("date_weather") or item.get("date_news") or "")
+            if ts_str.startswith(now_date_str):
+                continue
+        return item
+    return None
+
+
+def get_daily_suggestions_history(days: int = 14) -> List[Dict[str, Any]]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+    cursor = _DB_CONN.execute(
+        "SELECT * FROM daily_suggestions ORDER BY id DESC LIMIT ?",
+        (max(1, int(days)),)
+    )
+    rows = cursor.fetchall()
+    return [_format_daily_suggestion_row(r, cursor.description) for r in rows]
+
+
+def save_daily_suggestions(updates: Dict[str, Any], record_id: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Upserts daily suggestions record.
+    If record_id is given, updates that specific record.
+    Otherwise, checks if a record for today (same calendar date) exists:
+      - If today's record exists, updates it.
+      - If no record exists or latest record is from a previous day, inserts a new record.
+    """
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+
+    target_id: Optional[int] = record_id
+    now_utc = datetime.now(timezone.utc)
+    now_date_str = now_utc.strftime("%Y-%m-%d")
+
+    if target_id is None:
+        cursor = _DB_CONN.execute("SELECT id, date_suggestions, date_weather, date_news FROM daily_suggestions ORDER BY id DESC LIMIT 1")
+        latest = cursor.fetchone()
+        if latest:
+            latest_id, d_sugg, d_weath, d_news = latest
+            for ts in (d_sugg, d_weath, d_news):
+                if ts and str(ts).strip().startswith(now_date_str):
+                    target_id = latest_id
+                    break
+
+    # If still None, insert a new record for today
+    if target_id is None:
+        cursor = _DB_CONN.execute("INSERT INTO daily_suggestions DEFAULT VALUES")
+        target_id = cursor.lastrowid
+        _DB_CONN.commit()
+
+    set_clauses: List[str] = []
+    params: List[Any] = []
+
+    valid_cols = {
+        "date_suggestions", "suggestions", "completed",
+        "date_weather", "weather",
+        "date_news", "news",
+        "date_music", "music",
+        "date_entertainment", "entertainment"
+    }
+
+    for k, v in updates.items():
+        k_clean = k.lower().strip()
+        if k_clean == "whether":
+            k_clean = "weather"
+        elif k_clean == "date_whether":
+            k_clean = "date_weather"
+
+        if k_clean not in valid_cols:
+            continue
+
+        if k_clean in ("suggestions", "weather", "news", "music", "entertainment"):
+            if isinstance(v, (dict, list)):
+                val_str = json.dumps(v, ensure_ascii=False)
+            else:
+                val_str = str(v) if v is not None else ("{}" if k_clean == "weather" else "[]")
+            set_clauses.append(f"{k_clean} = ?")
+            params.append(val_str)
+        elif k_clean == "completed":
+            set_clauses.append(f"{k_clean} = ?")
+            params.append(format_completed_column(v))
+        else:
+            set_clauses.append(f"{k_clean} = ?")
+            params.append(str(v) if v is not None else None)
+
+    if set_clauses:
+        params.append(target_id)
+        sql = f"UPDATE daily_suggestions SET {', '.join(set_clauses)} WHERE id = ?"
+        _DB_CONN.execute(sql, tuple(params))
+        _DB_CONN.commit()
+        save_config_storage()
+
+    cursor = _DB_CONN.execute("SELECT * FROM daily_suggestions WHERE id = ?", (target_id,))
+    row = cursor.fetchone()
+    return _format_daily_suggestion_row(row, cursor.description) if row else {}
+
+
+def update_suggestion_completion(index: int, completed: bool, record_id: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Updates completion state of suggestion by index:
+      - If completed is True: adds index to completed column (preventing duplicates)
+      - If completed is False: removes index from completed column
+    Persists to Vault storage.
+    """
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+
+    target_id: Optional[int] = record_id
+    if target_id is None:
+        cursor = _DB_CONN.execute("SELECT id, completed FROM daily_suggestions ORDER BY id DESC LIMIT 1")
+        latest = cursor.fetchone()
+        if not latest:
+            cursor = _DB_CONN.execute("INSERT INTO daily_suggestions DEFAULT VALUES")
+            target_id = cursor.lastrowid
+            _DB_CONN.commit()
+            current_completed_raw = ""
+        else:
+            target_id = latest[0]
+            current_completed_raw = latest[1]
+    else:
+        cursor = _DB_CONN.execute("SELECT completed FROM daily_suggestions WHERE id = ?", (target_id,))
+        row = cursor.fetchone()
+        current_completed_raw = row[0] if row else ""
+
+    completed_indices = set(parse_completed_column(current_completed_raw))
+
+    idx = int(index)
+    if completed:
+        completed_indices.add(idx)
+    else:
+        completed_indices.discard(idx)
+
+    formatted_str = ",".join(str(i) for i in sorted(completed_indices))
+    _DB_CONN.execute("UPDATE daily_suggestions SET completed = ? WHERE id = ?", (formatted_str, target_id))
+    _DB_CONN.commit()
+    save_config_storage()
+
+    return {
+        "id": target_id,
+        "completed": sorted(list(completed_indices)),
+        "status": "success",
+    }
+
 
 
 

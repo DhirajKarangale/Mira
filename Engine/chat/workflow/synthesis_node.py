@@ -29,6 +29,7 @@ def synthesis_node(state: AgentState) -> Dict[str, Any]:
     # Extract previous agent's answer
     previous_answer = (
         state.get("final_response")
+        or node_outputs.get("news_response")
         or node_outputs.get("weather_response")
         or node_outputs.get("activity_response")
         or node_outputs.get("history_response")
