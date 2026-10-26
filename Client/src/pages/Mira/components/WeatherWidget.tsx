@@ -314,13 +314,27 @@ export const WeatherWidget: FC<WeatherWidgetProps> = ({
             </div>
           )}
 
-          {/* Version 2: Playful / Funny Descriptive Weather Recommendation */}
+          {/* Version 2: Actionable Weather Advisory or All-Clear Time-of-Day Note */}
           {(activeWeather.funny_suggestion || activeWeather.suggestion) && (
-            <div className="flex items-start gap-2 p-2.5 rounded-xl bg-zinc-800/50 border border-amber-500/20 text-xs text-zinc-300 leading-relaxed shadow-sm">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+            <div
+              className={`flex items-start gap-2 p-2.5 rounded-xl text-xs leading-relaxed shadow-sm transition-colors ${
+                activeWeather.has_advisory
+                  ? "bg-amber-950/25 border border-amber-500/30 text-amber-200"
+                  : "bg-zinc-800/50 border border-emerald-500/20 text-zinc-300"
+              }`}
+            >
+              {activeWeather.has_advisory ? (
+                <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+              )}
               <div className="flex flex-col gap-0.5">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-400">
-                  MIRA's Weather Note
+                <span
+                  className={`text-[10px] font-semibold uppercase tracking-wider ${
+                    activeWeather.has_advisory ? "text-amber-400" : "text-emerald-400"
+                  }`}
+                >
+                  {activeWeather.has_advisory ? "Weather Advisory" : "Weather Status: All Clear"}
                 </span>
                 <p className="text-[11px] sm:text-xs text-zinc-200 font-sans leading-relaxed">
                   {activeWeather.funny_suggestion || activeWeather.suggestion}

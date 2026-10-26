@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 from .vault_client import fetch_latest_daily_suggestions, save_daily_suggestions_data
 from .config import DEFAULT_WEATHER_INTERVAL_HOURS
 from chat.workflow.weather_tool import get_weather_forecast, get_user_coordinates
+from chat.workflow.timezone_helper import resolve_user_timezone
 from chat.websocket import ws_manager
 from config import get_user_profile
 from llm import call_llm
@@ -126,72 +127,171 @@ def generate_rest_of_day_overview(
     return generate_weather_short_summary(structured_data, city_name)
 
 
+def check_weather_advisory_need(
+    structured_data: Dict[str, Any],
+) -> Tuple[bool, str, Dict[str, Any]]:
+    """
+    Checks if current or forecasted weather legitimately requires an actionable recommendation / warning.
+    Returns (has_advisory, advisory_type, details).
+    Types:
+      - 'rain': Precipitation, rain volume, rain probability >= 25%, drizzle, thunderstorm, snow.
+      - 'heat': Current temp >= 32°C or High >= 34°C, apparent temp >= 34°C.
+      - 'cold': Current temp <= 13°C or Low <= 10°C.
+      - 'wind': Wind gusts >= 24 km/h.
+      - 'none': Mild, calm, clear, or unremarkable weather requiring no special action.
+    """
+    cur = structured_data.get("current") or {}
+    cond = str(cur.get("condition") or "").lower()
+    temp = cur.get("temperature_celsius")
+    app_temp = cur.get("apparent_temperature_celsius")
+    wind = cur.get("wind_speed_kmh") or 0
+    rain = cur.get("rain_mm") or 0
+
+    daily = structured_data.get("daily") or []
+    today_max = daily[0].get("temp_max_celsius") if daily else temp
+    today_min = daily[0].get("temp_min_celsius") if daily else temp
+    rain_chance = daily[0].get("precipitation_probability_percent", 0) if daily else 0
+
+    hourly = structured_data.get("hourly_highlights") or []
+    cur_time = str(cur.get("time") or "")
+    remaining_hours = [h for h in hourly if not cur_time or str(h.get("time") or "") >= cur_time]
+    if not remaining_hours:
+        remaining_hours = hourly[:8]
+
+    rain_hour = None
+    for h in remaining_hours:
+        prob = h.get("precipitation_probability_percent", 0)
+        rmm = h.get("rain_mm", 0.0)
+        c = str(h.get("condition", "")).lower()
+        if prob >= 25 or rmm > 0.1 or any(w in c for w in ("rain", "drizzle", "shower", "thunder")):
+            rain_hour = h.get("formatted_time", "later today")
+            break
+
+    details = {
+        "condition": cond,
+        "temp": temp,
+        "app_temp": app_temp,
+        "today_max": today_max,
+        "today_min": today_min,
+        "rain_chance": rain_chance,
+        "rain_mm": rain,
+        "wind": wind,
+        "rain_hour": rain_hour,
+    }
+
+    # 1. Rain / Storm / Snow
+    if (rain and rain > 0.1) or (rain_chance and rain_chance >= 25) or rain_hour or any(w in cond for w in ("rain", "drizzle", "shower", "thunder", "storm", "snow")):
+        return True, "rain", details
+
+    # 2. Extreme Heat
+    if (temp is not None and temp >= 32) or (today_max is not None and today_max >= 34) or (app_temp is not None and app_temp >= 35):
+        return True, "heat", details
+
+    # 3. Severe Cold
+    if (temp is not None and temp <= 13) or (today_min is not None and today_min <= 10):
+        return True, "cold", details
+
+    # 4. Strong Wind
+    if wind and wind >= 24:
+        return True, "wind", details
+
+    return False, "none", details
+
+
+def get_time_of_day_context(now_dt: Optional[datetime] = None) -> Tuple[str, str]:
+    """
+    Returns (time_of_day_name, greeting_time_desc).
+    - Morning (05:00 - 11:59)
+    - Afternoon (12:00 - 16:59)
+    - Evening (17:00 - 20:59)
+    - Night (21:00 - 04:59)
+    """
+    dt = now_dt or datetime.now()
+    h = dt.hour
+    if 5 <= h < 12:
+        return "Morning", "this morning"
+    elif 12 <= h < 17:
+        return "Afternoon", "this afternoon"
+    elif 17 <= h < 21:
+        return "Evening", "this evening"
+    else:
+        return "Night", "tonight"
+
+
 def generate_weather_funny_suggestion(
     structured_data: Dict[str, Any],
     user_name: str = "User",
     city_name: str = "your city",
     short_summary: str = "",
+    now_dt: Optional[datetime] = None,
 ) -> str:
     """
-    Generates a playful, humorous, descriptive recommendation based on actual weather conditions
-    (e.g., carrying an umbrella when rain is expected, not melting into a puddle in the heat, etc.).
+    Generates actionable, valuable weather recommendations only when needed
+    (e.g. rain umbrella timing, heat hydration, cold bundling, wind).
+    When no suggestions are needed (calm, mild conditions), explicitly mentions that
+    no weather precautions/suggestions are needed, followed by an amusing time-of-day message.
     """
-    cur = structured_data.get("current") or {}
-    condition = cur.get("condition", "clear")
-    temp = cur.get("temperature_celsius")
-    app_temp = cur.get("apparent_temperature_celsius")
-    humidity = cur.get("relative_humidity_percent")
-    rain = cur.get("rain_mm", 0)
-    wind = cur.get("wind_speed_kmh", 0)
+    has_advisory, advisory_type, details = check_weather_advisory_need(structured_data)
+    time_of_day, greeting_desc = get_time_of_day_context(now_dt)
 
-    daily = structured_data.get("daily") or []
-    today_max = daily[0].get("temp_max_celsius") if daily else temp
-    today_min = daily[0].get("temp_min_celsius") if daily else temp
-    rain_chance = daily[0].get("precipitation_probability_percent") if daily else 0
+    cond = details.get("condition") or "clear"
+    temp = details.get("temp")
+    app_temp = details.get("app_temp")
+    today_max = details.get("today_max")
+    today_min = details.get("today_min")
+    rain_chance = details.get("rain_chance")
+    rain_mm = details.get("rain_mm")
+    wind = details.get("wind")
+    rain_hour = details.get("rain_hour")
 
-    prompt = f"""You are MIRA, a witty, observant, and delightfully funny personal AI assistant.
-Current weather report for {user_name} in {city_name}:
-- Condition: {condition}
-- Current Temp: {temp}°C (feels like {app_temp}°C)
+    loc_display = f" in {city_name}" if city_name else ""
+
+    prompt = f"""You are MIRA, a helpful, sharp, and delightfully witty personal AI assistant.
+Current weather report for {user_name}{loc_display}:
+- Condition: {cond}, Temp: {temp}°C (feels like {app_temp}°C)
 - High / Low: High of {today_max}°C, Low of {today_min}°C
-- Rain chance: {rain_chance}% (rain volume: {rain} mm)
-- Wind: {wind} km/h, Humidity: {humidity}%
-- Forecast Overview: {short_summary or 'Standard'}
+- Rain: {rain_mm} mm (Chance: {rain_chance}%, timing: {rain_hour or 'None'})
+- Wind: {wind} km/h
+- Time of Day: {time_of_day} ({greeting_desc})
+- Advisory Status: {'YES - ' + advisory_type.upper() if has_advisory else 'NO ADVISORY NEEDED (calm/mild)'}
 
-Task:
-Write a playful, humorous, descriptive recommendation for {user_name} based on the actual weather above (1 to 2 sentences max).
-Playful requirements:
-- Rain / Drizzle: Recommend carrying an umbrella unless they want an impromptu outdoor shower or are practicing their backstroke.
-- Heat / Sun: Remind them to hydrate aggressively, seek shade, and avoid melting into a human puddle under the scorching sun.
-- Cold / Chilly: Suggest bundling up like a cozy burrito and guarding their toes against the brisk chill.
-- Wind: Warn them that the wind is eager to redesign their hairstyle today.
-- Pleasant / Mild: Give a cheerful nudge to escape the screen and soak in some fresh air before the weather changes its mind.
-
-Strict rules:
-1. Make it genuinely funny, witty, and descriptive, while remaining factually accurate to the actual weather above.
-2. Address {user_name} directly in a playful, cheerful, slightly cheeky tone.
-3. Keep it under 2 sentences (max 35 words).
-4. Strictly return ONLY the recommendation text. Do NOT use quotation marks, pleasantry headers, or markdown asterisks."""
+Strict Rules:
+1. If Advisory Status is YES:
+   Provide a genuinely valuable, concise, actionable weather recommendation for {user_name} based on the actual conditions above (e.g. carry an umbrella with expected rain timing, hydrate in heat, bundle up in cold, wind caution). 1 to 2 sentences max.
+2. If Advisory Status is NO ADVISORY NEEDED:
+   Explicitly state that no weather precautions or suggestions are needed, followed by a witty, amusing, cheerful message tailored to {greeting_desc} for {user_name}. (e.g. "No weather precautions needed this afternoon — skies are calm and drama-free. Keep crushing your code in peace, {user_name}!").
+3. Address {user_name} directly in a friendly, conversational tone.
+4. Keep it concise (max 32 words, 1-2 sentences).
+5. Strictly return ONLY the message text without quotation marks or markdown asterisks."""
 
     try:
         raw_suggestion = call_llm(prompt, work="summarization").strip().strip('"').strip("'")
         if raw_suggestion and len(raw_suggestion) > 10 and not raw_suggestion.startswith("{"):
             return raw_suggestion
     except Exception as e:
-        log_error(f"[WeatherSection] LLM funny suggestion generation failed: {e}")
+        log_error(f"[WeatherSection] LLM suggestion generation failed: {e}")
 
-    # Deterministic funny fallback grounded in real weather data
-    loc_display = f" in {city_name}" if city_name else ""
-    if rain and rain > 0 or (rain_chance and rain_chance >= 35) or "rain" in str(condition).lower():
-        return f"Clouds are actively plotting against your dry clothes today{loc_display} — grab an umbrella unless your afternoon plans include swimming, {user_name}!"
-    elif temp is not None and temp >= 31:
-        return f"The sun is treating the outdoors like a giant frying pan today at {round(temp)}°C{loc_display} — hydrate aggressively and don't turn into a human puddle, {user_name}!"
-    elif temp is not None and temp <= 13:
-        return f"It's brisk enough outside{loc_display} at {round(temp)}°C to freeze your good mood — wrap up like a cozy burrito before stepping out, {user_name}!"
-    elif wind and wind >= 24:
-        return f"Hold onto your hat{loc_display}! Today's {round(wind)} km/h wind gusts will gladly redesign your hairstyle for free."
+    # Deterministic fallback tailored strictly to need and time-of-day
+    if has_advisory:
+        if advisory_type == "rain":
+            timing = f" around {rain_hour}" if rain_hour else ""
+            return f"Rain is on the radar{timing}{loc_display} — grab an umbrella so you don't get drenched, {user_name}!"
+        elif advisory_type == "heat":
+            return f"High of {round(today_max) if today_max is not None else 35}°C today{loc_display} — keep a water bottle handy and stay shaded during peak afternoon heat, {user_name}!"
+        elif advisory_type == "cold":
+            return f"Temperatures dropping to {round(today_min) if today_min is not None else 10}°C{loc_display} — carry a warm jacket if you're stepping out {greeting_desc}, {user_name}!"
+        elif advisory_type == "wind":
+            return f"Wind gusts reaching {round(wind)} km/h{loc_display} — hold onto loose items and expect a natural windblown hairstyle, {user_name}!"
+
+    # When NO suggestions are needed: mention it clearly with an amusing time-of-day message
+    if time_of_day == "Morning":
+        return f"No weather precautions needed this morning{loc_display} — clear and calm skies. Grab your morning coffee and conquer your day without weather drama, {user_name}!"
+    elif time_of_day == "Afternoon":
+        return f"No weather suggestions needed this afternoon{loc_display} — skies are calm and harmless. Carry on with your afternoon productivity without nature interrupting you, {user_name}."
+    elif time_of_day == "Evening":
+        return f"No weather warnings to report this evening{loc_display} — serene and pleasant skies all around. Great time to wrap up your day's work and unwind, {user_name}."
     else:
-        return f"Pleasant skies ahead{loc_display} at {round(temp) if temp is not None else 25}°C — perfect excuse to escape the screen for ten minutes, {user_name}!"
+        return f"No weather precautions needed tonight{loc_display} — quiet and peaceful night skies. Rest well and recharge for tomorrow, {user_name}!"
 
 
 def generate_weather_suggestion(
@@ -199,9 +299,10 @@ def generate_weather_suggestion(
     user_name: str = "User",
     city_name: str = "your city",
     rest_of_day: str = "",
+    now_dt: Optional[datetime] = None,
 ) -> str:
     """Wrapper mapping to generate_weather_funny_suggestion for backward compatibility."""
-    return generate_weather_funny_suggestion(structured_data, user_name, city_name, rest_of_day)
+    return generate_weather_funny_suggestion(structured_data, user_name, city_name, rest_of_day, now_dt=now_dt)
 
 
 async def refresh_weather_forecast(force: bool = False) -> Dict[str, Any]:
@@ -213,7 +314,8 @@ async def refresh_weather_forecast(force: bool = False) -> Dict[str, Any]:
       4. Queries existing Weather Forecast Tool.
       5. Generates two versions:
          - Short summary: concise overview of current weather and forecast.
-         - Funny descriptive suggestion: playful recommendation based on actual weather.
+         - Valuable weather recommendation when needed; otherwise mentions no suggestions needed
+           with an amusing time-of-day message.
       6. Stores forecast & suggestions in weather, updating date_weather.
       7. Broadcasts update over WebSocket.
     """
@@ -239,6 +341,8 @@ async def refresh_weather_forecast(force: bool = False) -> Dict[str, Any]:
 
     user_name = user_profile.get("user_name") or "User"
     city = user_profile.get("city") or ""
+    user_tz = resolve_user_timezone(user_profile)
+    now_local = datetime.now(user_tz)
 
     # Call existing Weather Forecast Tool
     forecast_result = await asyncio.to_thread(
@@ -260,14 +364,17 @@ async def refresh_weather_forecast(force: bool = False) -> Dict[str, Any]:
             city_name=loc_name,
         )
 
-        # 2. Version B: Playful, humorous descriptive recommendation based on actual weather
+        # 2. Version B: Actionable advice when needed; otherwise mentions no suggestion needed + time-of-day message
         funny_suggestion = await asyncio.to_thread(
             generate_weather_funny_suggestion,
             structured_data=structured,
             user_name=user_name,
             city_name=loc_name,
             short_summary=short_summary,
+            now_dt=now_local,
         )
+
+        has_advisory, advisory_type, _ = check_weather_advisory_need(structured)
 
         weather_payload: Dict[str, Any] = {
             "status": "success",
@@ -279,6 +386,8 @@ async def refresh_weather_forecast(force: bool = False) -> Dict[str, Any]:
             "rest_of_day": short_summary,
             "funny_suggestion": funny_suggestion,
             "suggestion": funny_suggestion,
+            "has_advisory": has_advisory,
+            "advisory_type": advisory_type,
             "summary_text": forecast_result.get("summary_text"),
             "updated_at": now_iso,
         }

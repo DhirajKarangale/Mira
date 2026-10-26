@@ -52,6 +52,8 @@ export interface WeatherData {
   rest_of_day?: string;
   funny_suggestion?: string;
   suggestion?: string;
+  has_advisory?: boolean;
+  advisory_type?: string;
   summary_text?: string;
   message?: string;
   updated_at?: string;

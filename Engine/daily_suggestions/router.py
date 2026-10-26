@@ -26,7 +26,8 @@ class SuggestionCompletePayload(BaseModel):
 
 
 class ManualRefreshPayload(BaseModel):
-    section: str = Field(default="all", description="Section to refresh: 'weather', 'news', 'suggestions', or 'all'")
+    section: str = Field(default="all", description="Section to refresh: 'weather', 'news', 'suggestions', 'location_change', or 'all'")
+    force_regenerate: bool = Field(default=False, description="Forces re-generation of daily suggestions even if on same day")
 
 
 @router.get("/daily_suggestions", status_code=status.HTTP_200_OK)
@@ -75,14 +76,21 @@ async def get_previous_daily_suggestions_endpoint(skip_today: bool = Query(True)
 
 
 @router.post("/daily_suggestions/refresh", status_code=status.HTTP_200_OK)
-async def trigger_manual_refresh(payload: Optional[ManualRefreshPayload] = None, section: Optional[str] = Query(None)):
+async def trigger_manual_refresh(
+    payload: Optional[ManualRefreshPayload] = None,
+    section: Optional[str] = Query(None),
+    force_regenerate: bool = Query(False),
+):
     """
     Manually triggers refresh for Weather, News, Suggestions, or All.
+    - Weather & News: always fetch fresh data, cancelling any in-progress tasks.
+    - Suggestions: constant for the day unless force_regenerate is True or it is a new day.
     """
     target_section = (section or (payload.section if payload else "all")).lower().strip()
+    force_regen = force_regenerate or (payload.force_regenerate if payload else False)
     try:
-        log(f"[DailySuggestionsRouter] Manual refresh requested for section: '{target_section}'")
-        results = await scheduler.trigger_refresh(target_section)
+        log(f"[DailySuggestionsRouter] Manual refresh requested for section: '{target_section}', force_regenerate: {force_regen}")
+        results = await scheduler.trigger_refresh(target_section, force_regenerate_suggestions=force_regen)
         return {
             "status": "success",
             "section": target_section,

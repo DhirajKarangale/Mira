@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app import app
@@ -10,6 +11,8 @@ from daily_suggestions.weather_section import (
     generate_rest_of_day_overview,
     generate_weather_short_summary,
     generate_weather_funny_suggestion,
+    check_weather_advisory_need,
+    get_time_of_day_context,
     refresh_weather_forecast,
 )
 from daily_suggestions.news_section import (
@@ -22,6 +25,9 @@ from daily_suggestions.news_section import (
 from daily_suggestions.suggestions_section import (
     is_suggestions_refresh_needed,
     determine_suggestion_count,
+    analyze_suggestions_history,
+    retrieve_rich_activity_signals,
+    generate_daily_suggestions_with_llm,
 )
 from daily_suggestions.scheduler import scheduler, get_daily_suggestions_status
 
@@ -272,6 +278,228 @@ class TestDailySuggestionsEngine(unittest.TestCase):
             mock_gnews.assert_not_called()
             self.assertEqual(res, [])
 
+    def test_same_day_suggestions_remain_constant_on_refresh(self):
+        """Verify suggestions for today remain constant on refresh and do NOT re-call LLM."""
+        import asyncio
+        from daily_suggestions.suggestions_section import refresh_suggestions, is_same_day_as_today
+
+        now_utc = datetime.now(timezone.utc)
+        today_record = {
+            "id": 42,
+            "suggestions": ["Constant Suggestion 1", "Constant Suggestion 2"],
+            "date_suggestions": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "completed": [0],
+        }
+
+        # 1. Verify is_same_day_as_today
+        self.assertTrue(is_same_day_as_today(today_record["date_suggestions"]))
+
+        # 2. When calling refresh_suggestions with today's record, it should NOT call LLM
+        with patch("daily_suggestions.suggestions_section.fetch_latest_daily_suggestions", return_value=today_record), \
+             patch("daily_suggestions.suggestions_section.get_user_profile", return_value={"timezone": "UTC"}), \
+             patch("daily_suggestions.suggestions_section.call_llm") as mock_llm:
+            res = asyncio.run(refresh_suggestions(force=False, force_regenerate=False))
+            mock_llm.assert_not_called()
+            self.assertEqual(res, ["Constant Suggestion 1", "Constant Suggestion 2"])
+
+    def test_location_change_cancels_and_reruns_weather_and_news(self):
+        """Verify handle_location_change cancels in-progress tasks and re-runs both weather & news."""
+        import asyncio
+
+        with patch.object(scheduler, "cancel_and_run_weather", return_value={"status": "success", "location": "NewCity"}) as mock_w, \
+             patch.object(scheduler, "cancel_and_run_news", return_value=[{"title": "New Headline"}]) as mock_n:
+            res = asyncio.run(scheduler.handle_location_change())
+            mock_w.assert_called_once_with(force=True)
+            mock_n.assert_called_once_with(force=True)
+    def test_weather_advisory_need_detection(self):
+        """Verify weather advisory detection accurately separates calm conditions from severe/actionable ones."""
+        # 1. Calm, mild conditions -> No advisory needed
+        mild_data = {
+            "current": {"condition": "Mainly clear", "temperature_celsius": 24, "apparent_temperature_celsius": 24, "wind_speed_kmh": 8, "rain_mm": 0},
+            "daily": [{"temp_max_celsius": 27, "temp_min_celsius": 18, "precipitation_probability_percent": 0}],
+            "hourly_highlights": [],
+        }
+        has_adv, adv_type, _ = check_weather_advisory_need(mild_data)
+        self.assertFalse(has_adv)
+        self.assertEqual(adv_type, "none")
+
+        # 2. Rain condition -> Rain advisory
+        rain_data = {
+            "current": {"condition": "Light rain shower", "temperature_celsius": 22, "wind_speed_kmh": 12, "rain_mm": 1.5},
+            "daily": [{"temp_max_celsius": 24, "temp_min_celsius": 19, "precipitation_probability_percent": 80}],
+            "hourly_highlights": [],
+        }
+        has_adv, adv_type, _ = check_weather_advisory_need(rain_data)
+        self.assertTrue(has_adv)
+        self.assertEqual(adv_type, "rain")
+
+        # 3. High heat -> Heat advisory
+        heat_data = {
+            "current": {"condition": "Clear", "temperature_celsius": 36, "apparent_temperature_celsius": 38, "wind_speed_kmh": 10, "rain_mm": 0},
+            "daily": [{"temp_max_celsius": 37, "temp_min_celsius": 26, "precipitation_probability_percent": 0}],
+            "hourly_highlights": [],
+        }
+        has_adv, adv_type, _ = check_weather_advisory_need(heat_data)
+        self.assertTrue(has_adv)
+        self.assertEqual(adv_type, "heat")
+
+    def test_weather_suggestion_all_clear_message(self):
+        """Verify when no advisory is needed, message explicitly mentions no precautions needed with time-of-day context."""
+        mild_data = {
+            "current": {"condition": "Clear", "temperature_celsius": 25, "apparent_temperature_celsius": 25, "wind_speed_kmh": 10, "rain_mm": 0},
+            "daily": [{"temp_max_celsius": 28, "temp_min_celsius": 19, "precipitation_probability_percent": 0}],
+            "hourly_highlights": [],
+        }
+        dt_afternoon = datetime(2026, 10, 26, 14, 30)
+        time_name, greeting = get_time_of_day_context(dt_afternoon)
+        self.assertEqual(time_name, "Afternoon")
+
+        # With LLM returning None / exception -> deterministic fallback
+        with patch("daily_suggestions.weather_section.call_llm", side_effect=Exception("LLM offline")):
+            msg = generate_weather_funny_suggestion(mild_data, user_name="Dhiraj", city_name="Shegaon", now_dt=dt_afternoon)
+            self.assertIn("No weather", msg)
+            self.assertIn("afternoon", msg.lower())
+
+    def test_news_domestic_country_prioritization(self):
+        """Verify news selection prioritizes domestic national stories over foreign/world stories."""
+        candidates = [
+            {
+                "title": "ISRO Launches Next-Gen Communications Satellite",
+                "description": "India space agency successfully placed advanced satellite in orbit.",
+                "url": "https://news.in/isro",
+                "source": {"name": "The Hindu"},
+                "_priority_tier": 1,
+                "_is_within_36h": True,
+                "_age_hours": 3.0,
+            },
+            {
+                "title": "Maharashtra Unveils High-Speed Freight Corridor",
+                "description": "Key industrial rail line inaugurated connecting ports.",
+                "url": "https://news.in/freight",
+                "source": {"name": "Indian Express"},
+                "_priority_tier": 2,
+                "_is_within_36h": True,
+                "_age_hours": 5.0,
+            },
+            {
+                "title": "Brazil Presidential Election Enters Intense Final Week",
+                "description": "Lula and opponents rally in Brasilia.",
+                "url": "https://world.com/brazil",
+                "source": {"name": "Reuters"},
+                "_priority_tier": 4,
+                "_is_within_36h": True,
+                "_age_hours": 2.0,
+            },
+        ]
+        # In deterministic fallback mode:
+        with patch("daily_suggestions.news_section.call_llm", side_effect=Exception("LLM offline")):
+            selected = select_top_three_stories_with_llm(
+                articles=candidates,
+                location_desc="Shegaon, India",
+                country_name="India"
+            )
+            self.assertGreaterEqual(len(selected), 2)
+            # The first selected story must be the domestic national one
+            self.assertIn("ISRO", selected[0]["title"])
+
+    def test_analyze_suggestions_history_extracts_pending_and_rates(self):
+        """Verify analyze_suggestions_history calculates completion rates and extracts yesterday's pending tasks."""
+        history = [
+            {
+                "id": 10,
+                "suggestions": ["Build Login UI", "Write Auth Endpoint", "Add Unit Tests", "Deploy to Staging"],
+                "completed": [0, 2],
+                "date_suggestions": "2026-10-25T09:00:00Z",  # Yesterday
+            },
+            {
+                "id": 9,
+                "suggestions": ["Task A", "Task B"],
+                "completed": [0, 1],
+                "date_suggestions": "2026-10-24T09:00:00Z",
+            },
+        ]
+        # Calling analyze_suggestions_history for today
+        signals = analyze_suggestions_history(history, is_weekend=False, user_profile={"timezone": "UTC"})
+        self.assertGreaterEqual(signals["overall_rate"], 0.6)
+        # Pending from yesterday should be index 1 ("Write Auth Endpoint") and index 3 ("Deploy to Staging")
+        self.assertEqual(signals["pending_from_yesterday"], ["Write Auth Endpoint", "Deploy to Staging"])
+        self.assertIn("pace_guidance", signals)
+
+    def test_activity_signals_frustration_only_with_evidence(self):
+        """Verify frustration is NOT assumed without supporting error/debugging evidence."""
+        # Case A: Normal smooth workflow -> No frustration
+        normal_records = [
+            {"app_name": "Code.exe", "summarized_text": "The user is editing suggestions_section.py and writing a test."},
+            {"app_name": "Code.exe", "summarized_text": "The user is running pytest successfully on Engine."},
+        ]
+        with patch("chat.workflow.user_activity_node._find_relevant_knowledge_bases", return_value=[Path("/tmp/kb")]), \
+             patch("chat.workflow.user_activity_node._search_across_knowledge_bases", return_value=normal_records), \
+             patch("chat.workflow.user_activity_node._build_session_blocks", return_value=[]):
+            signals = retrieve_rich_activity_signals({"timezone": "UTC"})
+            self.assertFalse(signals["frustration"]["detected"])
+            self.assertIn("No frustration", signals["frustration"]["evidence"])
+
+        # Case B: Recurring error patterns -> Frustration detected
+        error_records = [
+            {"app_name": "terminal", "summarized_text": "SyntaxError: invalid syntax at line 42"},
+            {"app_name": "terminal", "summarized_text": "ConnectionRefusedError: [WinError 10061] target machine actively refused"},
+            {"app_name": "terminal", "summarized_text": "Fatal error: failed test assertion during build"},
+        ]
+        with patch("chat.workflow.user_activity_node._find_relevant_knowledge_bases", return_value=[Path("/tmp/kb")]), \
+             patch("chat.workflow.user_activity_node._search_across_knowledge_bases", return_value=error_records), \
+             patch("chat.workflow.user_activity_node._build_session_blocks", return_value=[]):
+            signals = retrieve_rich_activity_signals({"timezone": "UTC"})
+            self.assertTrue(signals["frustration"]["detected"])
+
+    def test_activity_signals_learning_and_reminders(self):
+        """Verify learning opportunities and smart reminders are extracted from activity records."""
+        records = [
+            {"app_name": "chrome.exe", "summarized_text": "Browsing devpost.com hackathon registration page"},
+            {"app_name": "chrome.exe", "summarized_text": "Reading fastapi documentation and api reference for background tasks"},
+        ]
+        with patch("chat.workflow.user_activity_node._find_relevant_knowledge_bases", return_value=[Path("/tmp/kb")]), \
+             patch("chat.workflow.user_activity_node._search_across_knowledge_bases", return_value=records), \
+             patch("chat.workflow.user_activity_node._build_session_blocks", return_value=[]):
+            signals = retrieve_rich_activity_signals({"timezone": "UTC"})
+            self.assertTrue(signals["learning"]["detected"])
+            self.assertIn("Fastapi", signals["learning"]["topics"])
+            self.assertTrue(signals["reminders"]["detected"])
+            self.assertIn("hackathon", signals["reminders"]["items"][0].lower())
+
+    def test_generate_daily_suggestions_weekend_plan_and_fallbacks(self):
+        """Verify weekend planning produces balanced work, outings/family, and relaxation, with fallback honoring signals."""
+        now_saturday = datetime(2026, 10, 24, 10, 0, tzinfo=timezone.utc)
+        history_signals = {
+            "pending_from_yesterday": ["Finish Auth PR"],
+            "overall_rate": 0.7,
+            "pace_guidance": "Balanced pace",
+        }
+        activity_signals = {
+            "ongoing_work": ["Mira Engine Backend"],
+            "frustration": {"detected": False},
+            "context_switching": {"detected": False},
+            "learning": {"detected": True, "topics": ["FastAPI"]},
+            "reminders": {"detected": True, "items": ["Submit hackathon application"]},
+        }
+        # In fallback mode (LLM offline):
+        with patch("daily_suggestions.suggestions_section.call_llm", side_effect=Exception("LLM offline")):
+            suggestions = generate_daily_suggestions_with_llm(
+                target_count=5,
+                user_name="Dhiraj",
+                user_profile={"user_name": "Dhiraj", "city": "Shegaon"},
+                activity_summary="Active coding session",
+                now_dt=now_saturday,
+                history_signals=history_signals,
+                activity_signals=activity_signals,
+            )
+            self.assertEqual(len(suggestions), 5)
+            # Pending task from yesterday prioritized
+            self.assertIn("Finish Auth PR", suggestions[0])
+            # Contains weekend rejuvenation / family / outing or relaxation
+            has_weekend_balance = any("weekend" in s.lower() or "outing" in s.lower() or "family" in s.lower() or "unwind" in s.lower() for s in suggestions)
+            self.assertTrue(has_weekend_balance)
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -180,9 +180,19 @@ export function useMiraData() {
           }
           if ((section === "suggestions" || section === "all") && data.suggestions) {
             updatedToday.suggestions = safeParseArray<string>(data.suggestions);
+            const isNewDay = Boolean(
+              data.date_suggestions &&
+              updatedToday.date_suggestions &&
+              data.date_suggestions !== updatedToday.date_suggestions
+            );
             updatedToday.date_suggestions = data.date_suggestions;
-            updatedToday.completed = [];
-            setCompletedIndices([]);
+            if (Array.isArray(data.completed)) {
+              updatedToday.completed = data.completed;
+              setCompletedIndices(data.completed);
+            } else if (isNewDay) {
+              updatedToday.completed = [];
+              setCompletedIndices([]);
+            }
           }
           if (section === "completion" && data.completed !== undefined) {
             const compList = Array.isArray(data.completed) ? (data.completed as number[]) : [];
@@ -258,11 +268,12 @@ export function useMiraData() {
 
   // Manual refresh trigger
   const handleRefresh = useCallback(
-    async (section: "weather" | "news" | "suggestions" | "all" = "all") => {
+    async (section: "weather" | "news" | "suggestions" | "all" | "location_change" = "all") => {
       setRefreshingSection((prev) => ({
         ...prev,
         [section]: true,
         ...(section === "all" ? { weather: true, news: true, suggestions: true } : {}),
+        ...(section === "location_change" ? { weather: true, news: true } : {}),
       }));
 
       try {
@@ -275,6 +286,7 @@ export function useMiraData() {
           ...prev,
           [section]: false,
           ...(section === "all" ? { weather: false, news: false, suggestions: false } : {}),
+          ...(section === "location_change" ? { weather: false, news: false } : {}),
         }));
       }
     },
@@ -326,13 +338,11 @@ export function useMiraData() {
         prevLocationKeyRef.current !== locKey;
 
       if (becameConfigured || locationChanged) {
-        handleRefresh("weather");
-        handleRefresh("news");
+        handleRefresh("location_change");
       }
     } else if (isLocationConfigured && storedLastLocKey && storedLastLocKey !== locKey) {
       // Detected location was updated in the Me tab while on another route
-      handleRefresh("weather");
-      handleRefresh("news");
+      handleRefresh("location_change");
     }
 
     if (isLocationConfigured && locKey) {

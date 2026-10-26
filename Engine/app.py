@@ -125,13 +125,35 @@ async def summarization_stop_endpoint():
 
 @app.post('/config/sync', status_code=status.HTTP_200_OK)
 async def sync_config():
+    old_profile = config.CONFIG.get_user_profile() or {}
     success = await asyncio.to_thread(config.CONFIG.fetch_from_vault)
+    new_profile = config.CONFIG.get_user_profile() or {}
     try:
         from llm.config import load_work_configs
         load_work_configs()
     except Exception as e:
         log_error(f'Failed to reload LLM work configs during sync: {e}')
-    return {'status': 'success' if success else 'partial_or_failed', 'active_provider': config.CONFIG.get_active_provider(), 'ai_priorities': config.CONFIG.get_ai_priorities(), 'user_profile': config.CONFIG.get_user_profile()}
+
+    old_loc = (
+        (old_profile.get("city") or "").strip().lower(),
+        (old_profile.get("country") or "").strip().lower(),
+        (old_profile.get("state") or "").strip().lower(),
+        str(old_profile.get("latitude") or ""),
+        str(old_profile.get("longitude") or ""),
+    )
+    new_loc = (
+        (new_profile.get("city") or "").strip().lower(),
+        (new_profile.get("country") or "").strip().lower(),
+        (new_profile.get("state") or "").strip().lower(),
+        str(new_profile.get("latitude") or ""),
+        str(new_profile.get("longitude") or ""),
+    )
+    if old_loc != new_loc:
+        log(f"[Engine] Location changed via config sync from {old_loc} to {new_loc}. Canceling in-progress weather/news and re-running.")
+        from daily_suggestions import scheduler
+        asyncio.create_task(scheduler.handle_location_change())
+
+    return {'status': 'success' if success else 'partial_or_failed', 'active_provider': config.CONFIG.get_active_provider(), 'ai_priorities': config.CONFIG.get_ai_priorities(), 'user_profile': new_profile}
 
 @app.get('/user/profile', status_code=status.HTTP_200_OK)
 async def get_user_profile_endpoint():
@@ -139,8 +161,30 @@ async def get_user_profile_endpoint():
 
 @app.post('/user/profile', status_code=status.HTTP_200_OK)
 async def update_user_profile_endpoint(profile: Dict[str, Any]):
+    old_profile = config.CONFIG.get_user_profile() or {}
     config.CONFIG.set_user_profile(profile)
-    return {'status': 'updated', 'user_profile': config.CONFIG.get_user_profile()}
+    new_profile = config.CONFIG.get_user_profile() or {}
+
+    old_loc = (
+        (old_profile.get("city") or "").strip().lower(),
+        (old_profile.get("country") or "").strip().lower(),
+        (old_profile.get("state") or "").strip().lower(),
+        str(old_profile.get("latitude") or ""),
+        str(old_profile.get("longitude") or ""),
+    )
+    new_loc = (
+        (new_profile.get("city") or "").strip().lower(),
+        (new_profile.get("country") or "").strip().lower(),
+        (new_profile.get("state") or "").strip().lower(),
+        str(new_profile.get("latitude") or ""),
+        str(new_profile.get("longitude") or ""),
+    )
+    if old_loc != new_loc:
+        log(f"[Engine] Location changed from {old_loc} to {new_loc}. Canceling in-progress weather/news and re-running.")
+        from daily_suggestions import scheduler
+        asyncio.create_task(scheduler.handle_location_change())
+
+    return {'status': 'updated', 'user_profile': new_profile}
 
 
 @app.post('/llm/call', response_model=LLMCallResponse, status_code=status.HTTP_200_OK)

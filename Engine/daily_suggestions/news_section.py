@@ -94,10 +94,12 @@ def is_news_refresh_needed(
 def select_top_three_stories_with_llm(
     articles: List[Dict[str, Any]],
     location_desc: str = "",
+    country_name: str = "your country",
 ) -> List[Dict[str, Any]]:
     """
-    Uses LLM to select the three most relevant, trending, and impactful stories for the user:
-    - Prioritizes stories from the user's country, followed by regional/city interest.
+    Uses LLM to select the three most relevant, trending, and impactful domestic stories for the user:
+    - High priority for stories from the user's country (domestic national affairs, policy, economy).
+    - Strictly avoids selecting foreign-only international news when domestic stories are available.
     - Strictly avoids duplicate stories and overlapping event coverage.
     - Prioritizes articles published within the last 36 hours.
     - Generates concise, factually accurate summaries (1-2 sentences).
@@ -125,16 +127,20 @@ def select_top_three_stories_with_llm(
 
     combined = "\n\n".join(items_text)
     prompt = f"""You are MIRA's Chief News Editor.
-Candidate news stories for {location_desc or 'the user'}:
+The user lives in {country_name} ({location_desc or country_name}).
+
+Candidate news stories:
 {combined}
 
 Task:
-Select the THREE most relevant, trending, and impactful stories for the user.
+Select the THREE most relevant, trending, and impactful domestic news stories for the user.
 
-Strict Selection Rules:
-1. Priority: Prioritize major national news from the user's country, followed by impactful regional/city news.
+STRICT COUNTRY SELECTION RULES:
+1. HIGHEST PRIORITY FOR USER'S COUNTRY ({country_name.upper()}):
+   - You MUST prioritize stories directly about {country_name} (domestic national developments, policy, economy, infrastructure, science/space, society, or major national events).
+   - Under NO circumstances should you select foreign-only international news (e.g. elections in Brazil or other foreign countries) when domestic stories concerning {country_name} are available.
 2. Freshness: Strictly prioritize stories published within the last 36 hours.
-3. Impact & Relevance: Choose stories with broad significance, trending relevance, or notable public interest.
+3. Impact & Relevance: Choose stories with broad national significance or high public interest in {country_name}.
 4. No Duplicates: Every selected story MUST cover a distinct topic or event (never pick multiple stories about the same event).
 5. Factual Accuracy: For each story, provide a concise 1-2 sentence summary preserving 100% factual accuracy. Do NOT embellish or speculate.
 6. Output Format: Return strictly a valid JSON array of 3 objects:
@@ -170,7 +176,7 @@ Do not output any introductory or concluding text outside the JSON array."""
     except Exception as e:
         log_error(f"[NewsSection] LLM story selection failed: {e}")
 
-    # Deterministic fallback: pick top 3 unique articles matching the same criteria
+    # Deterministic fallback: strictly prioritize domestic country candidates
     fallback_stories: List[Dict[str, Any]] = []
     seen_keys = set()
     for art in articles:
@@ -244,7 +250,8 @@ async def refresh_news(force: bool = False) -> List[Dict[str, Any]]:
 
     country_input = raw_country or "us"
     country_code = resolve_country_code(country_input)
-    location_desc = f"{city}, {country_input}" if city else country_input
+    country_display = raw_country or country_code.upper()
+    location_desc = f"{city}, {country_display}" if city else country_display
 
     raw_candidates: List[Dict[str, Any]] = []
     seen_urls: Set[str] = set()
@@ -268,31 +275,32 @@ async def refresh_news(force: bool = False) -> List[Dict[str, Any]]:
         candidate = dict(art)
         candidate["published_at"] = iso_pub
         candidate["_origin"] = origin
-        candidate["_priority_tier"] = priority_tier  # 1 = Country, 2 = City/Region, 3 = Fallback
+        candidate["_priority_tier"] = priority_tier  # 1 = National Domestic, 2 = Regional, 3 = General National, 4 = Foreign/Fallback
         candidate["_is_within_36h"] = is_fresh
         candidate["_age_hours"] = age_hours
         raw_candidates.append(candidate)
 
-    # 1. Primary Priority: Top headlines from the user's country
+    # 1. Primary Priority: Top National Domestic News from user's country (category='nation')
     try:
-        log(f"[NewsSection] Querying top headlines for user's country: '{country_code}' ({country_input})...")
-        country_res = await asyncio.to_thread(
+        log(f"[NewsSection] Querying top national domestic news for user's country: '{country_code}' ({country_display}) [category=nation]...")
+        nation_res = await asyncio.to_thread(
             fetch_news_from_gnews,
             operation="top_headlines",
             country=country_code,
+            category="nation",
             max_results=10,
         )
-        if country_res.get("success") and country_res.get("articles"):
-            for a in country_res.get("articles", []):
-                add_article_candidate(a, origin=f"National ({country_code.upper()})", priority_tier=1)
+        if nation_res.get("success") and nation_res.get("articles"):
+            for a in nation_res.get("articles", []):
+                add_article_candidate(a, origin=f"National Domestic ({country_display})", priority_tier=1)
     except Exception as e:
-        log_error(f"[NewsSection] Country headlines query failed: {e}")
+        log_error(f"[NewsSection] Country national domestic headlines query failed: {e}")
 
-    # 2. Secondary Priority: Search news for user's city or region
+    # 2. Secondary Priority: Search news for user's city or region within country
     query_target = city or state
     if query_target:
         try:
-            log(f"[NewsSection] Querying regional news for: '{query_target}' ({country_code})...")
+            log(f"[NewsSection] Querying regional domestic news for: '{query_target}' ({country_code})...")
             city_res = await asyncio.to_thread(
                 fetch_news_from_gnews,
                 operation="search",
@@ -302,11 +310,59 @@ async def refresh_news(force: bool = False) -> List[Dict[str, Any]]:
             )
             if city_res.get("success") and city_res.get("articles"):
                 for a in city_res.get("articles", []):
-                    add_article_candidate(a, origin=f"Regional ({query_target})", priority_tier=2)
+                    add_article_candidate(a, origin=f"Regional ({query_target}, {country_display})", priority_tier=2)
         except Exception as e:
             logger.debug(f"[NewsSection] Regional news search failed: {e}")
 
-    # 3. Tertiary Fallback: Global top headlines if fewer than 3 candidates
+    # 3. Tertiary Priority: Search news specifically for the country name if candidates < 6
+    if len([c for c in raw_candidates if c.get("_priority_tier", 9) <= 2]) < 6 and country_display:
+        try:
+            log(f"[NewsSection] Querying domestic search news for: '{country_display}' ({country_code})...")
+            country_search_res = await asyncio.to_thread(
+                fetch_news_from_gnews,
+                operation="search",
+                q=country_display,
+                country=country_code,
+                max_results=10,
+            )
+            if country_search_res.get("success") and country_search_res.get("articles"):
+                for a in country_search_res.get("articles", []):
+                    add_article_candidate(a, origin=f"National Search ({country_display})", priority_tier=2)
+        except Exception as e:
+            logger.debug(f"[NewsSection] Country search query failed: {e}")
+
+    # 4. Quaternary Priority: General top headlines for user's country (filtering foreign-only stories)
+    try:
+        log(f"[NewsSection] Querying general headlines for user's country: '{country_code}' ({country_display})...")
+        general_res = await asyncio.to_thread(
+            fetch_news_from_gnews,
+            operation="top_headlines",
+            country=country_code,
+            category="general",
+            max_results=10,
+        )
+        if general_res.get("success") and general_res.get("articles"):
+            foreign_keywords = (
+                "brazil", "bolsonaro", "lula", "gaza", "israel", "netanyahu",
+                "lebanon", "ukraine", "russia", "putin", "zelensky", "taiwan",
+                "pentagon", "white house", "biden", "trump"
+            )
+            user_country_lower = country_display.lower()
+            for a in general_res.get("articles", []):
+                t_lower = (a.get("title") or "").lower()
+                desc_lower = (a.get("description") or "").lower()
+                is_foreign_only = (
+                    any(fk in t_lower or fk in desc_lower for fk in foreign_keywords)
+                    and user_country_lower not in t_lower
+                    and user_country_lower not in desc_lower
+                )
+                tier = 4 if is_foreign_only else 3
+                origin_label = "World/Foreign" if is_foreign_only else f"General Headlines ({country_display})"
+                add_article_candidate(a, origin=origin_label, priority_tier=tier)
+    except Exception as e:
+        log_error(f"[NewsSection] General headlines query failed: {e}")
+
+    # 5. Fallback: Global top headlines only if fewer than 3 total candidates exist
     if len(raw_candidates) < 3:
         try:
             log("[NewsSection] Querying general fallback headlines...")
@@ -318,29 +374,30 @@ async def refresh_news(force: bool = False) -> List[Dict[str, Any]]:
             )
             if fallback_res.get("success") and fallback_res.get("articles"):
                 for a in fallback_res.get("articles", []):
-                    add_article_candidate(a, origin="Global", priority_tier=3)
+                    add_article_candidate(a, origin="Global Fallback", priority_tier=5)
         except Exception as e:
             logger.debug(f"[NewsSection] Fallback headlines failed: {e}")
 
     # Sort candidates strictly prioritizing:
-    # 1. Freshness within last 36 hours (is_within_36h == True)
-    # 2. Country/National priority (priority_tier: 1 country, 2 city, 3 global)
+    # 1. Domestic country/regional priority first (priority_tier 1, then 2, then 3)
+    # 2. Freshness within last 36 hours (is_within_36h == True)
     # 3. Newest publication timestamp (smaller age_hours)
     raw_candidates.sort(
         key=lambda c: (
-            0 if c.get("_is_within_36h") else 1,
             c.get("_priority_tier", 9),
+            0 if c.get("_is_within_36h") else 1,
             c.get("_age_hours", 999.0)
         )
     )
 
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    # Select top 3 distinct, trending, and impactful stories with LLM
+    # Select top 3 distinct, trending, and impactful domestic stories with LLM
     selected_stories = await asyncio.to_thread(
         select_top_three_stories_with_llm,
         articles=raw_candidates,
         location_desc=location_desc,
+        country_name=country_display,
     )
 
     if not selected_stories:
