@@ -8,7 +8,6 @@ import {
 import { CaptureStatusHeader } from "./components/CaptureStatusHeader";
 import { CaptureIntervalCard } from "./components/CaptureIntervalCard";
 import { KnowledgeBaseManagerCard } from "./components/KnowledgeBaseManagerCard";
-import { UserKnowledgeBaseCard } from "./components/UserKnowledgeBaseCard";
 import type { CaptureStatus } from "../types";
 import { toast } from "@/components";
 
@@ -108,11 +107,8 @@ export const CaptureConfigurationsPage: FC = () => {
           isCapturing={status === "Started"}
         />
 
-        {/* Activity Knowledge Base: Vector Database Collections, Date Filter, Pagination, Delete */}
+        {/* Knowledge Base Management: Vector Database Collections, Date Filter, Pagination, Delete */}
         <KnowledgeBaseManagerCard />
-
-        {/* User Knowledge Base: Distilled Personal Preferences, Interests, Habits, Activities, and Deletion */}
-        <UserKnowledgeBaseCard />
 
         <div className="pt-4 pb-6 text-center text-xs text-zinc-500 font-mono flex items-center justify-center gap-2 flex-wrap">
           <span>Operator Engine</span>

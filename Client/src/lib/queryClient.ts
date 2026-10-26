@@ -55,9 +55,5 @@ export const QUERY_KEYS = {
     knowledgeBases: (filters?: unknown, page?: number, limit?: number) =>
       ["memory", "knowledgeBases", { ...((filters as Record<string, unknown>) || {}), page, limit }] as const,
   },
-  userKnowledgeBase: {
-    all: ["engine", "userKnowledgeBase"] as const,
-    data: (params?: unknown) => ["engine", "userKnowledgeBase", "data", params] as const,
-  },
 } as const;
 

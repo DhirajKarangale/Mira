@@ -1,7 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { vaultService, operatorService, memoryService, engineService } from "@/services";
+import { vaultService, operatorService, memoryService } from "@/services";
 import type { KnowledgeBaseListParams, KnowledgeBaseListResponse } from "@/services/memory.service";
-import type { UserKnowledgeBaseResponse } from "@/services/engine.service";
 import { QUERY_KEYS } from "@/lib/queryClient";
 import type {
   OperatorConfigResponse,
@@ -151,43 +150,6 @@ export function useDeleteKnowledgeBaseMutation() {
     mutationFn: (name: string) => memoryService.deleteKnowledgeBase(name),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.memory.all });
-    },
-  });
-}
-
-export function useUserKnowledgeBaseQuery(params?: {
-  query?: string;
-  category?: string;
-  limit?: number;
-}) {
-  return useQuery<UserKnowledgeBaseResponse>({
-    queryKey: QUERY_KEYS.userKnowledgeBase.data(params),
-    queryFn: () => engineService.getUserKnowledgeBase(params),
-    staleTime: 30 * 1000,
-    refetchOnMount: true,
-  });
-}
-
-export function useDeleteUserKnowledgeBaseMutation() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (clearIdentity: boolean = false) =>
-      engineService.deleteUserKnowledgeBase(clearIdentity),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.userKnowledgeBase.all });
-    },
-  });
-}
-
-export function useDeleteUserKnowledgeBaseRecordMutation() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ category, id }: { category: string; id: number | string }) =>
-      engineService.deleteUserKnowledgeBaseRecord(category, id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.userKnowledgeBase.all });
     },
   });
 }

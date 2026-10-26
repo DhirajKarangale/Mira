@@ -71,11 +71,9 @@ class EngineMemoryConfig:
             'screenshot_extraction_workers': 1,
             'screenshot_summarization_workers': 1,
             'embedding_vector_store_workers': 1,
-            'user_knowledge_base_workers': 1,
             'screenshot_extraction_poll_time': 5.0,
             'screenshot_summarization_poll_time': 5.0,
             'embedding_vector_store_workers_poll_time': 1.0,
-            'user_knowledge_base_workers_poll_time': 1.0,
         }
         self.ai_priorities: List[str] = ['gemini', 'groq']
         self.ai_configs: Dict[str, Dict[str, Any]] = {}
@@ -310,21 +308,6 @@ class EngineMemoryConfig:
         except (ValueError, TypeError):
             return 1.0
 
-    def get_user_knowledge_base_workers_count(self) -> int:
-        workers_cfg = self.get_workers_config()
-        count = workers_cfg.get('user_knowledge_base_workers', 1)
-        try:
-            return max(1, min(int(count), 50))
-        except (ValueError, TypeError):
-            return 1
-
-    def get_user_knowledge_base_workers_poll_time(self) -> float:
-        workers_cfg = self.get_workers_config()
-        poll = workers_cfg.get('user_knowledge_base_workers_poll_time', 1.0)
-        try:
-            return max(0.1, min(float(poll), 1800.0))
-        except (ValueError, TypeError):
-            return 1.0
 CONFIG = EngineMemoryConfig()
 try:
     CONFIG.fetch_from_vault()

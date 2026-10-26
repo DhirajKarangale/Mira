@@ -25,8 +25,6 @@ def get_consumer_group(consumer_key: str) -> Optional[str]:
         return consumer_key
     if consumer_key.upper() in ('CONSUMER_GROUP_LLM_CHAT', 'LLM_CHAT') and 'llm_chat' in groups:
         return groups['llm_chat']
-    if consumer_key.upper() in ('CONSUMER_GROUP_USER_KNOWLEDGE_BASE', 'USER_KNOWLEDGE_BASE') and 'user_knowledge_base' in groups:
-        return groups['user_knowledge_base']
     return None
 
 def get_all_consumer_groups() -> List[str]:
@@ -42,8 +40,6 @@ def get_stream_for_consumer_key(consumer_key: str) -> Optional[str]:
             return f'mira:stream:{k}'
     if consumer_key.upper() in ('CONSUMER_GROUP_LLM_CHAT', 'LLM_CHAT') and 'llm_chat' in groups:
         return 'mira:stream:llm_chat'
-    if consumer_key.upper() in ('CONSUMER_GROUP_USER_KNOWLEDGE_BASE', 'USER_KNOWLEDGE_BASE') and 'user_knowledge_base' in groups:
-        return 'mira:stream:user_knowledge_base'
     return None
 
 def get_stream_for_consumer_group(consumer_group: str) -> Optional[str]:
@@ -53,6 +49,4 @@ def get_stream_for_consumer_group(consumer_group: str) -> Optional[str]:
             return f'mira:stream:{key}'
     if consumer_group.upper() in ('CONSUMER_GROUP_LLM_CHAT', 'LLM_CHAT') and 'llm_chat' in mappings:
         return 'mira:stream:llm_chat'
-    if consumer_group.upper() in ('CONSUMER_GROUP_USER_KNOWLEDGE_BASE', 'USER_KNOWLEDGE_BASE') and 'user_knowledge_base' in mappings:
-        return 'mira:stream:user_knowledge_base'
     return None

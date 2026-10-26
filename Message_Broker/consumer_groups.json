@@ -2,6 +2,5 @@
   "ocr_extraction": "CONSUMER_GROUP_OCR_EXTRACTION",
   "ocr_summarization": "CONSUMER_GROUP_OCR_TEXT_SUMMARIZATION",
   "embedding_memory": "CONSUMER_GROUP_EMBEDDING_MEMORY",
-  "llm_chat": "CONSUMER_GROUP_LLM_CHAT",
-  "user_knowledge_base": "CONSUMER_GROUP_USER_KNOWLEDGE_BASE"
+  "llm_chat": "CONSUMER_GROUP_LLM_CHAT"
 }

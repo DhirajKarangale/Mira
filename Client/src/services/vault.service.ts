@@ -34,11 +34,9 @@ export interface EngineWorkersConfig {
   screenshot_extraction_workers: number;
   screenshot_summarization_workers: number;
   embedding_vector_store_workers: number;
-  user_knowledge_base_workers: number;
   screenshot_extraction_poll_time: number;
   screenshot_summarization_poll_time: number;
   embedding_vector_store_workers_poll_time: number;
-  user_knowledge_base_workers_poll_time: number;
   /** Deprecated backward compatibility alias */
   llm_workers?: number;
 }
@@ -49,11 +47,9 @@ export interface EngineWorkersUpdateRequest {
   screenshot_extraction_workers?: number;
   screenshot_summarization_workers?: number;
   embedding_vector_store_workers?: number;
-  user_knowledge_base_workers?: number;
   screenshot_extraction_poll_time?: number;
   screenshot_summarization_poll_time?: number;
   embedding_vector_store_workers_poll_time?: number;
-  user_knowledge_base_workers_poll_time?: number;
   /** Deprecated backward compatibility alias */
   llm_workers?: number;
 }

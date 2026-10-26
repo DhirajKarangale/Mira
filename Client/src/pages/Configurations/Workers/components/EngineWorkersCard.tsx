@@ -15,7 +15,6 @@ import {
   Layers,
   Database,
   MessageSquare,
-  BookOpen,
 } from "lucide-react";
 import type { EngineWorkersConfig, EngineWorkersUpdateRequest } from "@/services";
 import { cn } from "@/lib/utils";
@@ -38,13 +37,11 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
   const [screenshotExtractionWorkers, setScreenshotExtractionWorkers] = useState<string>("1");
   const [screenshotSummarizationWorkers, setScreenshotSummarizationWorkers] = useState<string>("1");
   const [embeddingVectorStoreWorkers, setEmbeddingVectorStoreWorkers] = useState<string>("1");
-  const [userKnowledgeBaseWorkers, setUserKnowledgeBaseWorkers] = useState<string>("1");
 
   const [chatWorkersPollTime, setChatWorkersPollTime] = useState<string>("1");
   const [screenshotExtractionPollTime, setScreenshotExtractionPollTime] = useState<string>("5");
   const [screenshotSummarizationPollTime, setScreenshotSummarizationPollTime] = useState<string>("5");
   const [embeddingVectorStoreWorkersPollTime, setEmbeddingVectorStoreWorkersPollTime] = useState<string>("1");
-  const [userKnowledgeBaseWorkersPollTime, setUserKnowledgeBaseWorkersPollTime] = useState<string>("1");
 
   const [isSaving, setIsSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
@@ -55,12 +52,10 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
       setScreenshotExtractionWorkers(String(config.screenshot_extraction_workers ?? 1));
       setScreenshotSummarizationWorkers(String(config.screenshot_summarization_workers ?? 1));
       setEmbeddingVectorStoreWorkers(String(config.embedding_vector_store_workers ?? 1));
-      setUserKnowledgeBaseWorkers(String(config.user_knowledge_base_workers ?? 1));
       setChatWorkersPollTime(String(config.chat_workers_poll_time ?? 1));
       setScreenshotExtractionPollTime(String(config.screenshot_extraction_poll_time ?? 5));
       setScreenshotSummarizationPollTime(String(config.screenshot_summarization_poll_time ?? 5));
       setEmbeddingVectorStoreWorkersPollTime(String(config.embedding_vector_store_workers_poll_time ?? 1));
-      setUserKnowledgeBaseWorkersPollTime(String(config.user_knowledge_base_workers_poll_time ?? 1));
     }
   }, [config]);
 
@@ -69,12 +64,10 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
     screenshot_extraction_workers: config?.screenshot_extraction_workers ?? 1,
     screenshot_summarization_workers: config?.screenshot_summarization_workers ?? 1,
     embedding_vector_store_workers: config?.embedding_vector_store_workers ?? 1,
-    user_knowledge_base_workers: config?.user_knowledge_base_workers ?? 1,
     chat_workers_poll_time: config?.chat_workers_poll_time ?? 1,
     screenshot_extraction_poll_time: config?.screenshot_extraction_poll_time ?? 5,
     screenshot_summarization_poll_time: config?.screenshot_summarization_poll_time ?? 5,
     embedding_vector_store_workers_poll_time: config?.embedding_vector_store_workers_poll_time ?? 1,
-    user_knowledge_base_workers_poll_time: config?.user_knowledge_base_workers_poll_time ?? 1,
   };
 
   const currentValues = {
@@ -82,12 +75,10 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
     screenshot_extraction_workers: parseInt(screenshotExtractionWorkers, 10),
     screenshot_summarization_workers: parseInt(screenshotSummarizationWorkers, 10),
     embedding_vector_store_workers: parseInt(embeddingVectorStoreWorkers, 10),
-    user_knowledge_base_workers: parseInt(userKnowledgeBaseWorkers, 10),
     chat_workers_poll_time: parseFloat(chatWorkersPollTime),
     screenshot_extraction_poll_time: parseFloat(screenshotExtractionPollTime),
     screenshot_summarization_poll_time: parseFloat(screenshotSummarizationPollTime),
     embedding_vector_store_workers_poll_time: parseFloat(embeddingVectorStoreWorkersPollTime),
-    user_knowledge_base_workers_poll_time: parseFloat(userKnowledgeBaseWorkersPollTime),
   };
 
   const hasChanges =
@@ -95,22 +86,18 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
     !isNaN(currentValues.screenshot_extraction_workers) &&
     !isNaN(currentValues.screenshot_summarization_workers) &&
     !isNaN(currentValues.embedding_vector_store_workers) &&
-    !isNaN(currentValues.user_knowledge_base_workers) &&
     !isNaN(currentValues.chat_workers_poll_time) &&
     !isNaN(currentValues.screenshot_extraction_poll_time) &&
     !isNaN(currentValues.screenshot_summarization_poll_time) &&
     !isNaN(currentValues.embedding_vector_store_workers_poll_time) &&
-    !isNaN(currentValues.user_knowledge_base_workers_poll_time) &&
     (currentValues.chat_workers !== persisted.chat_workers ||
       currentValues.screenshot_extraction_workers !== persisted.screenshot_extraction_workers ||
       currentValues.screenshot_summarization_workers !== persisted.screenshot_summarization_workers ||
       currentValues.embedding_vector_store_workers !== persisted.embedding_vector_store_workers ||
-      currentValues.user_knowledge_base_workers !== persisted.user_knowledge_base_workers ||
       Math.abs(currentValues.chat_workers_poll_time - persisted.chat_workers_poll_time) > 0.001 ||
       Math.abs(currentValues.screenshot_extraction_poll_time - persisted.screenshot_extraction_poll_time) > 0.001 ||
       Math.abs(currentValues.screenshot_summarization_poll_time - persisted.screenshot_summarization_poll_time) > 0.001 ||
-      Math.abs(currentValues.embedding_vector_store_workers_poll_time - persisted.embedding_vector_store_workers_poll_time) > 0.001 ||
-      Math.abs(currentValues.user_knowledge_base_workers_poll_time - persisted.user_knowledge_base_workers_poll_time) > 0.001);
+      Math.abs(currentValues.embedding_vector_store_workers_poll_time - persisted.embedding_vector_store_workers_poll_time) > 0.001);
 
   const validateWorkerCount = (valStr: string, fieldName: string): number | null => {
     const trimmed = valStr.trim();
@@ -169,9 +156,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
     const vecW = validateWorkerCount(embeddingVectorStoreWorkers, "Embedding vector store workers");
     if (vecW === null) return;
 
-    const kbW = validateWorkerCount(userKnowledgeBaseWorkers, "User knowledge base workers");
-    if (kbW === null) return;
-
     const chatPt = validatePollTime(chatWorkersPollTime, "Chat workers poll time");
     if (chatPt === null) return;
 
@@ -184,9 +168,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
     const vecPt = validatePollTime(embeddingVectorStoreWorkersPollTime, "Embedding vector store workers poll time");
     if (vecPt === null) return;
 
-    const kbPt = validatePollTime(userKnowledgeBaseWorkersPollTime, "User knowledge base poll time");
-    if (kbPt === null) return;
-
     try {
       setIsSaving(true);
       await onSave({
@@ -195,11 +176,9 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
         screenshot_extraction_workers: extW,
         screenshot_summarization_workers: sumW,
         embedding_vector_store_workers: vecW,
-        user_knowledge_base_workers: kbW,
         screenshot_extraction_poll_time: extPt,
         screenshot_summarization_poll_time: sumPt,
         embedding_vector_store_workers_poll_time: vecPt,
-        user_knowledge_base_workers_poll_time: kbPt,
       });
       setJustSaved(true);
       setTimeout(() => setJustSaved(false), 3000);
@@ -219,12 +198,10 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
     setScreenshotExtractionWorkers(String(persisted.screenshot_extraction_workers));
     setScreenshotSummarizationWorkers(String(persisted.screenshot_summarization_workers));
     setEmbeddingVectorStoreWorkers(String(persisted.embedding_vector_store_workers));
-    setUserKnowledgeBaseWorkers(String(persisted.user_knowledge_base_workers));
     setChatWorkersPollTime(String(persisted.chat_workers_poll_time));
     setScreenshotExtractionPollTime(String(persisted.screenshot_extraction_poll_time));
     setScreenshotSummarizationPollTime(String(persisted.screenshot_summarization_poll_time));
     setEmbeddingVectorStoreWorkersPollTime(String(persisted.embedding_vector_store_workers_poll_time));
-    setUserKnowledgeBaseWorkersPollTime(String(persisted.user_knowledge_base_workers_poll_time));
   };
 
   const adjustWorker = (
@@ -315,7 +292,7 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {/* Tile 1: Chat Workers */}
             <div className="rounded-xl border border-white/[0.08] bg-zinc-950/50 p-3 hover:border-white/15 transition-all flex flex-col justify-between gap-2.5">
               <div className="flex items-start justify-between gap-2">
@@ -536,60 +513,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
               </div>
             </div>
 
-            {/* Tile 5: User Knowledge Base (Engine) */}
-            <div className="rounded-xl border border-white/[0.08] bg-zinc-950/50 p-3 hover:border-white/15 transition-all flex flex-col justify-between gap-2.5">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="p-1 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                    <BookOpen className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-semibold text-white leading-tight">Knowledge Base</h4>
-                    <p className="text-[10px] text-zinc-400">User doc & KB index</p>
-                  </div>
-                </div>
-                <span className="text-[9px] font-mono text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded">
-                  Engine
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between gap-1.5 pt-1">
-                <div className="flex items-center gap-1 bg-zinc-900/90 border border-white/10 rounded-lg p-0.5">
-                  <button
-                    type="button"
-                    id="btn-dec-user-kb-workers"
-                    disabled={disabled || isSaving || currentValues.user_knowledge_base_workers <= 1}
-                    onClick={() => adjustWorker(setUserKnowledgeBaseWorkers, userKnowledgeBaseWorkers, -1)}
-                    className="w-6 h-6 rounded hover:bg-white/10 text-zinc-400 hover:text-white flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    <Minus className="w-3 h-3" />
-                  </button>
-                  <input
-                    type="number"
-                    id="input-user-kb-workers"
-                    min={1}
-                    max={50}
-                    step={1}
-                    disabled={disabled || isSaving || isLoading}
-                    value={userKnowledgeBaseWorkers}
-                    onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                      setUserKnowledgeBaseWorkers(e.target.value);
-                    }}
-                    className="w-10 text-center font-mono font-bold text-xs bg-transparent text-white focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    id="btn-inc-user-kb-workers"
-                    disabled={disabled || isSaving || currentValues.user_knowledge_base_workers >= 50}
-                    onClick={() => adjustWorker(setUserKnowledgeBaseWorkers, userKnowledgeBaseWorkers, 1)}
-                    className="w-6 h-6 rounded hover:bg-white/10 text-zinc-400 hover:text-white flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    <Plus className="w-3 h-3" />
-                  </button>
-                </div>
-                <span className="text-[11px] font-mono text-zinc-400">workers</span>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -607,7 +530,7 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {/* Poll 1: Chat Workers Poll Time */}
             <div className="rounded-xl border border-white/[0.08] bg-zinc-950/50 p-3 hover:border-white/15 transition-all flex flex-col justify-between gap-2.5">
               <div className="flex items-start justify-between gap-2">
@@ -919,84 +842,6 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
                 </div>
               </div>
             </div>
-
-            {/* Poll 4: User Knowledge Base Poll Time */}
-            <div className="rounded-xl border border-white/[0.08] bg-zinc-950/50 p-3 hover:border-white/15 transition-all flex flex-col justify-between gap-2.5">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="p-1 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                    <Clock className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-semibold text-white leading-tight">KB Interval</h4>
-                    <p className="text-[10px] text-zinc-400">KB queue poll</p>
-                  </div>
-                </div>
-                <span className="text-[9px] font-mono text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded">
-                  Seconds
-                </span>
-              </div>
-
-              <div className="space-y-1.5 pt-0.5">
-                <div className="flex items-center justify-between gap-1.5">
-                  <div className="flex items-center gap-1 bg-zinc-900/90 border border-white/10 rounded-lg p-0.5">
-                    <button
-                      type="button"
-                      id="btn-dec-user-kb-poll-time"
-                      disabled={disabled || isSaving || currentValues.user_knowledge_base_workers_poll_time <= 0.1}
-                      onClick={() => adjustPollTime(setUserKnowledgeBaseWorkersPollTime, userKnowledgeBaseWorkersPollTime, -1)}
-                      className="w-6 h-6 rounded hover:bg-white/10 text-zinc-400 hover:text-white flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                    >
-                      <Minus className="w-3 h-3" />
-                    </button>
-                    <input
-                      type="number"
-                      id="input-user-kb-poll-time"
-                      min={0.1}
-                      max={1800}
-                      step={0.5}
-                      disabled={disabled || isSaving || isLoading}
-                      value={userKnowledgeBaseWorkersPollTime}
-                      onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                        setUserKnowledgeBaseWorkersPollTime(e.target.value);
-                      }}
-                      className="w-14 text-center font-mono font-bold text-xs bg-transparent text-white focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      id="btn-inc-user-kb-poll-time"
-                      disabled={disabled || isSaving || currentValues.user_knowledge_base_workers_poll_time >= 1800}
-                      onClick={() => adjustPollTime(setUserKnowledgeBaseWorkersPollTime, userKnowledgeBaseWorkersPollTime, 1)}
-                      className="w-6 h-6 rounded hover:bg-white/10 text-zinc-400 hover:text-white flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </button>
-                  </div>
-                  <span className="text-[11px] font-mono text-zinc-400">sec</span>
-                </div>
-
-                {/* Preset Chips */}
-                <div className="flex items-center gap-1 flex-wrap pt-0.5">
-                  {pollPresets.map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => {
-                        setUserKnowledgeBaseWorkersPollTime(String(p));
-                      }}
-                      className={cn(
-                        "px-1.5 py-0.5 rounded text-[9px] font-mono cursor-pointer transition-colors border",
-                        currentValues.user_knowledge_base_workers_poll_time === p
-                          ? "bg-amber-500/20 text-amber-300 border-amber-500/30 font-bold"
-                          : "bg-white/[0.03] text-zinc-400 border-white/5 hover:text-white"
-                      )}
-                    >
-                      {p}s
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -1015,12 +860,10 @@ export const EngineWorkersCard: FC<EngineWorkersCardProps> = ({
           <span>{persisted.screenshot_summarization_workers} sum</span>
           <span className="text-zinc-600">/</span>
           <span>{persisted.embedding_vector_store_workers} vec</span>
-          <span className="text-zinc-600">/</span>
-          <span>{persisted.user_knowledge_base_workers} kb</span>
           <span className="text-zinc-600 hidden sm:inline">|</span>
           <span className="text-zinc-400 hidden sm:inline">Poll:</span>
           <span className="hidden sm:inline">
-            {persisted.chat_workers_poll_time}s / {persisted.screenshot_extraction_poll_time}s / {persisted.screenshot_summarization_poll_time}s / {persisted.embedding_vector_store_workers_poll_time}s / {persisted.user_knowledge_base_workers_poll_time}s
+            {persisted.chat_workers_poll_time}s / {persisted.screenshot_extraction_poll_time}s / {persisted.screenshot_summarization_poll_time}s / {persisted.embedding_vector_store_workers_poll_time}s
           </span>
         </div>
 
