@@ -1,6 +1,6 @@
 import type { FC } from "react";
 import { useNavigate } from "react-router-dom";
-import { UserX, ArrowRight, RefreshCw } from "lucide-react";
+import { MapPin, ArrowRight, RefreshCw } from "lucide-react";
 import { useMiraData } from "./Mira/useMiraData";
 import {
   WelcomeHeader,
@@ -16,6 +16,7 @@ export const MiraPage: FC = () => {
   const {
     userDetails,
     isUserLoading,
+    isLocationConfigured,
     today,
     previous,
     completedIndices,
@@ -23,12 +24,6 @@ export const MiraPage: FC = () => {
     refreshingSection,
     handleRefresh,
   } = useMiraData();
-
-  const hasUserData = Boolean(
-    userDetails?.user_name?.trim() ||
-    userDetails?.city?.trim() ||
-    userDetails?.country?.trim()
-  );
 
   return (
     <div
@@ -39,22 +34,25 @@ export const MiraPage: FC = () => {
       <div className="absolute top-10 left-1/4 w-[500px] h-[300px] bg-cyan-500/5 rounded-full blur-[140px] pointer-events-none -z-10" />
       <div className="absolute bottom-10 right-1/4 w-[400px] h-[300px] bg-blue-500/5 rounded-full blur-[140px] pointer-events-none -z-10" />
 
-      {/* Optional Missing Profile Notice */}
-      {!isUserLoading && !hasUserData && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 px-4 rounded-xl border border-amber-500/25 bg-amber-500/10 backdrop-blur-xl animate-in fade-in duration-300">
+      {/* Missing Location Configuration Notice */}
+      {!isUserLoading && !isLocationConfigured && (
+        <div
+          id="mira-location-not-configured-banner"
+          className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 px-4 rounded-xl border border-amber-500/25 bg-amber-500/10 backdrop-blur-xl animate-in fade-in duration-300 shadow-md shadow-amber-500/5"
+        >
           <div className="flex items-center gap-2.5 text-xs text-amber-200">
-            <UserX className="w-4 h-4 text-amber-400 shrink-0" />
+            <MapPin className="w-4 h-4 text-amber-400 shrink-0" />
             <span>
-              Your profile is not yet configured. Set your city and country in the <strong>Me</strong> tab for accurate local weather and news.
+              Your location is not configured. Please set your location in the <strong>Me</strong> tab to view local weather and personalized regional news.
             </span>
           </div>
           <button
             type="button"
             id="mira-go-to-me-tab-btn"
             onClick={() => navigate("/user")}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white shadow-md shadow-amber-500/20 transition-all duration-200 active:scale-95 cursor-pointer shrink-0"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white shadow-md shadow-amber-500/20 transition-all duration-200 active:scale-95 cursor-pointer shrink-0"
           >
-            <span>Configure Me Tab</span>
+            <span>Set Location in Me Tab</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -90,6 +88,8 @@ export const MiraPage: FC = () => {
             previousWeather={previous.weather}
             isRefreshing={Boolean(refreshingSection.weather)}
             onRefresh={() => handleRefresh("weather")}
+            isLocationConfigured={isLocationConfigured}
+            isUserLoading={isUserLoading}
           />
 
           <NewsWidget
@@ -97,6 +97,8 @@ export const MiraPage: FC = () => {
             previousNews={previous.news}
             isRefreshing={Boolean(refreshingSection.news)}
             onRefresh={() => handleRefresh("news")}
+            isLocationConfigured={isLocationConfigured}
+            isUserLoading={isUserLoading}
           />
         </div>
       </div>

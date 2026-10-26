@@ -57,5 +57,9 @@ export const QUERY_KEYS = {
     knowledgeBases: (filters?: unknown, page?: number, limit?: number) =>
       ["memory", "knowledgeBases", { ...((filters as Record<string, unknown>) || {}), page, limit }] as const,
   },
+  dailySuggestions: {
+    all: ["daily_suggestions"] as const,
+    pageData: ["daily_suggestions", "page_data"] as const,
+  },
 } as const;
 

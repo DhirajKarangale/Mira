@@ -1,4 +1,5 @@
 import { type FC } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Newspaper,
   ExternalLink,
@@ -6,6 +7,7 @@ import {
   Loader2,
   AlertCircle,
   Globe,
+  ArrowRight,
 } from "lucide-react";
 import type { NewsArticle } from "@/services/dailySuggestions.service";
 
@@ -14,6 +16,8 @@ interface NewsWidgetProps {
   previousNews: NewsArticle[];
   isRefreshing: boolean;
   onRefresh: () => void;
+  isLocationConfigured?: boolean;
+  isUserLoading?: boolean;
 }
 
 function formatRelativeTime(dateStr?: string) {
@@ -38,9 +42,13 @@ export const NewsWidget: FC<NewsWidgetProps> = ({
   previousNews,
   isRefreshing,
   onRefresh,
+  isLocationConfigured = true,
+  isUserLoading = false,
 }) => {
-  const hasCurrentData = Boolean(news && news.length > 0);
-  const hasPreviousData = Boolean(previousNews && previousNews.length > 0);
+  const navigate = useNavigate();
+
+  const hasCurrentData = Boolean(isLocationConfigured && news && news.length > 0);
+  const hasPreviousData = Boolean(isLocationConfigured && previousNews && previousNews.length > 0);
 
   const activeNews = hasCurrentData ? news : (isRefreshing && hasPreviousData ? previousNews : []);
   const isDisplayingOutdated = !hasCurrentData && isRefreshing && hasPreviousData;
@@ -60,20 +68,26 @@ export const NewsWidget: FC<NewsWidgetProps> = ({
             <h2 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
               <span>Top Headlines</span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700/60 font-normal">
-                3 Key Stories
+                {isLocationConfigured ? "3 Key Stories" : "Location Required"}
               </span>
             </h2>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {isDisplayingOutdated && (
+          {!isLocationConfigured && !isUserLoading && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/15 border border-amber-500/30 text-amber-300">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              Location Required
+            </span>
+          )}
+          {isLocationConfigured && isDisplayingOutdated && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/15 border border-amber-500/30 text-amber-300">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
               Previous
             </span>
           )}
-          {isRefreshing && (
+          {isLocationConfigured && isRefreshing && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-cyan-500/15 border border-cyan-500/30 text-cyan-300">
               <Loader2 className="w-3 h-3 animate-spin" />
               Updating
@@ -82,17 +96,47 @@ export const NewsWidget: FC<NewsWidgetProps> = ({
           <button
             type="button"
             onClick={onRefresh}
-            disabled={isRefreshing}
-            title="Refresh News Headlines"
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-cyan-300 hover:bg-zinc-800/80 transition-colors disabled:opacity-50 cursor-pointer"
+            disabled={isRefreshing || !isLocationConfigured}
+            title={
+              !isLocationConfigured
+                ? "Configure location in Me tab to enable news"
+                : "Refresh News Headlines"
+            }
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-cyan-300 hover:bg-zinc-800/80 transition-colors disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
           >
-            <RotateCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin text-cyan-400" : ""}`} />
+            <RotateCw className={`w-3.5 h-3.5 ${isRefreshing && isLocationConfigured ? "animate-spin text-cyan-400" : ""}`} />
           </button>
         </div>
       </div>
 
       {/* Content */}
-      {activeNews.length === 0 ? (
+      {isUserLoading ? (
+        <div className="flex-1 flex flex-col items-center justify-center py-8 text-center text-zinc-400 gap-2">
+          <Loader2 className="w-6 h-6 animate-spin text-cyan-400" />
+          <p className="text-xs text-zinc-400">Loading user profile...</p>
+        </div>
+      ) : !isLocationConfigured ? (
+        <div className="flex-1 flex flex-col items-center justify-center py-8 px-4 text-center text-zinc-400 gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center shadow-[0_0_20px_rgba(6,182,212,0.1)]">
+            <Globe className="w-6 h-6 text-cyan-400" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-zinc-200">Location Not Configured</p>
+            <p className="text-xs text-zinc-400 max-w-[240px] leading-relaxed">
+              Top national headlines and regional news will appear once your location is configured. Please set your location in the <strong>Me</strong> tab.
+            </p>
+          </div>
+          <button
+            type="button"
+            id="news-widget-set-location-btn"
+            onClick={() => navigate("/user")}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-md shadow-cyan-500/20 transition-all duration-200 active:scale-95 cursor-pointer mt-1"
+          >
+            <span>Set Location in Me Tab</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ) : activeNews.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center py-8 text-center text-zinc-400 gap-2">
           {isRefreshing ? (
             <>

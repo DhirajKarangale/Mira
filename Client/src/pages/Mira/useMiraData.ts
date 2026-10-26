@@ -8,8 +8,22 @@ import {
   type NewsArticle,
 } from "@/services/dailySuggestions.service";
 import { useUserDetailsQuery } from "../User/queries";
+import type { UserDetails } from "../User/types";
+import { QUERY_KEYS } from "@/lib/queryClient";
 
-export const DAILY_SUGGESTIONS_QUERY_KEY = ["daily_suggestions", "page_data"];
+export const DAILY_SUGGESTIONS_QUERY_KEY = QUERY_KEYS.dailySuggestions.pageData;
+
+export function checkIsLocationConfigured(details?: UserDetails | null): boolean {
+  if (!details) return false;
+  const hasCity = Boolean(details.city && details.city.trim().length > 0);
+  const hasCoordinates =
+    details.latitude != null &&
+    details.longitude != null &&
+    !Number.isNaN(Number(details.latitude)) &&
+    !Number.isNaN(Number(details.longitude));
+
+  return hasCity || hasCoordinates;
+}
 
 function safeParseArray<T>(val: unknown): T[] {
   if (!val) return [];
@@ -42,6 +56,11 @@ function safeParseObject<T>(val: unknown): T | null {
 export function useMiraData() {
   const queryClient = useQueryClient();
   const { data: userDetails, isLoading: isUserLoading } = useUserDetailsQuery();
+
+  const isLocationConfigured = useMemo(
+    () => checkIsLocationConfigured(userDetails),
+    [userDetails]
+  );
 
   const [refreshingSection, setRefreshingSection] = useState<Record<string, boolean>>({
     weather: false,
@@ -271,16 +290,46 @@ export function useMiraData() {
       const hasNews = today.news && today.news.length > 0;
       const hasWeather = today.weather && (today.weather.current || today.weather.suggestion);
 
-      if (!hasSuggestions || !hasNews || !hasWeather) {
+      if (!hasSuggestions || (isLocationConfigured && (!hasNews || !hasWeather))) {
         hasTriggeredInitialRefresh.current = true;
+        if (isLocationConfigured) {
+          handleRefresh("all");
+        } else if (!hasSuggestions) {
+          handleRefresh("suggestions");
+        }
+      }
+    }
+  }, [isPageLoading, pageData, today, isLocationConfigured, handleRefresh]);
+
+  // Seamlessly update page when location is saved or updated in Me tab without requiring a manual refresh
+  const prevLocationConfiguredRef = useRef<boolean | null>(null);
+  const prevLocationKeyRef = useRef<string>("");
+
+  useEffect(() => {
+    if (isUserLoading) return;
+
+    const locKey = `${userDetails?.city || ""}_${userDetails?.country || ""}_${userDetails?.latitude ?? ""}_${userDetails?.longitude ?? ""}`;
+
+    if (prevLocationConfiguredRef.current !== null) {
+      const becameConfigured = !prevLocationConfiguredRef.current && isLocationConfigured;
+      const locationChanged =
+        isLocationConfigured &&
+        prevLocationKeyRef.current !== "" &&
+        prevLocationKeyRef.current !== locKey;
+
+      if (becameConfigured || locationChanged) {
         handleRefresh("all");
       }
     }
-  }, [isPageLoading, pageData, today, handleRefresh]);
+
+    prevLocationConfiguredRef.current = isLocationConfigured;
+    prevLocationKeyRef.current = locKey;
+  }, [isUserLoading, isLocationConfigured, userDetails, handleRefresh]);
 
   return {
     userDetails,
     isUserLoading,
+    isLocationConfigured,
     today,
     previous,
     completedIndices,
