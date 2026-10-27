@@ -5,8 +5,12 @@ from pathlib import Path
 import re
 import sys
 from typing import Any, Dict, List, Optional, Tuple
-import win32gui
-import win32process
+try:
+    import win32gui
+    import win32process
+except ImportError:
+    win32gui = None
+    win32process = None
 import psutil
 _memory_dir = Path(__file__).resolve().parent.parent
 if str(_memory_dir) not in sys.path:
@@ -19,7 +23,7 @@ _DESKTOP_ATTACHED = False
 
 def attach_to_active_desktop() -> bool:
     global _DESKTOP_ATTACHED
-    if os.name != 'nt':
+    if os.name != 'nt' or not hasattr(ctypes, 'windll'):
         return False
     if _DESKTOP_ATTACHED:
         return True
@@ -39,6 +43,8 @@ def attach_to_active_desktop() -> bool:
         return False
 
 def get_application_window_title(app_name: str='') -> str:
+    if os.name != 'nt' or win32gui is None:
+        return app_name or "Unknown"
     attach_to_active_desktop()
     target = app_name.lower().replace('.exe', '').strip()
     try:
@@ -79,6 +85,8 @@ def get_application_window_title(app_name: str='') -> str:
     return res.replace('\u200b', '').replace('\ufeff', '').strip()
 
 def find_target_window(app_name: str='') -> Optional[int]:
+    if os.name != 'nt' or win32gui is None:
+        return None
     attach_to_active_desktop()
     target = app_name.lower().replace('.exe', '').strip()
     try:
@@ -218,6 +226,8 @@ def format_uia_to_markdown(app_name: str, window_title: str, elements: List[Dict
     return '\n'.join(lines).strip()
 
 def extract_native_uia(app_name: str='') -> Dict[str, Any]:
+    if os.name != 'nt' or win32gui is None:
+        return {'success': False, 'source': 'uia', 'reason': 'UIA extraction is only supported on Windows'}
     attach_to_active_desktop()
     hwnd = find_target_window(app_name)
     if not hwnd:

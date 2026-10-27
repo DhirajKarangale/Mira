@@ -53,21 +53,41 @@ fn spawn_backend(app: &tauri::App) -> Option<u32> {
         candidate_python.push(dir.join("python_runtime").join("python.exe"));
     }
 
-    candidate_python.extend([
-        std::path::PathBuf::from(r"F:\Software\Python\Python311\python.exe"),
-        std::path::PathBuf::from(r"C:\Python311\python.exe"),
-        std::path::PathBuf::from(r"C:\Python312\python.exe"),
-        std::path::PathBuf::from(r"C:\Python310\python.exe"),
-        std::path::PathBuf::from(r"C:\Program Files\Python311\python.exe"),
-        std::path::PathBuf::from(r"C:\Program Files\Python312\python.exe"),
-        std::path::PathBuf::from(r"C:\Program Files\Python310\python.exe"),
-    ]);
+    #[cfg(target_os = "windows")]
+    {
+        candidate_python.extend([
+            std::path::PathBuf::from(r"F:\Software\Python\Python311\python.exe"),
+            std::path::PathBuf::from(r"C:\Python311\python.exe"),
+            std::path::PathBuf::from(r"C:\Python312\python.exe"),
+            std::path::PathBuf::from(r"C:\Python310\python.exe"),
+            std::path::PathBuf::from(r"C:\Program Files\Python311\python.exe"),
+            std::path::PathBuf::from(r"C:\Program Files\Python312\python.exe"),
+            std::path::PathBuf::from(r"C:\Program Files\Python310\python.exe"),
+        ]);
 
-    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
-        let base = std::path::PathBuf::from(local_app_data).join("Programs").join("Python");
-        candidate_python.push(base.join("Python311").join("python.exe"));
-        candidate_python.push(base.join("Python312").join("python.exe"));
-        candidate_python.push(base.join("Python310").join("python.exe"));
+        if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+            let base = std::path::PathBuf::from(local_app_data).join("Programs").join("Python");
+            candidate_python.push(base.join("Python311").join("python.exe"));
+            candidate_python.push(base.join("Python312").join("python.exe"));
+            candidate_python.push(base.join("Python310").join("python.exe"));
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        candidate_python.extend([
+            resource_dir.join("resources").join("python_runtime").join("bin").join("python3"),
+            resource_dir.join("python_runtime").join("bin").join("python3"),
+            std::path::PathBuf::from("/opt/homebrew/bin/python3"),
+            std::path::PathBuf::from("/usr/local/bin/python3"),
+            std::path::PathBuf::from("/usr/bin/python3"),
+            std::path::PathBuf::from("/usr/bin/python"),
+        ]);
+
+        if let Some(ref dir) = exe_dir {
+            candidate_python.push(dir.join("resources").join("python_runtime").join("bin").join("python3"));
+            candidate_python.push(dir.join("python_runtime").join("bin").join("python3"));
+        }
     }
 
     let python_exe = candidate_python
@@ -75,15 +95,15 @@ fn spawn_backend(app: &tauri::App) -> Option<u32> {
         .find(|p| p.exists())
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| {
-            // Check if 'py' launcher or 'python' in PATH is valid
-            for cmd_name in &["python", "py"] {
+            // Check if 'python3', 'python', or 'py' launcher is valid
+            for cmd_name in &["python3", "python", "py"] {
                 if let Ok(output) = Command::new(cmd_name).arg("-V").output() {
                     if output.status.success() {
                         return cmd_name.to_string();
                     }
                 }
             }
-            "python".to_string()
+            if cfg!(target_os = "windows") { "python".to_string() } else { "python3".to_string() }
         });
 
     let mut cmd = Command::new(&python_exe);
@@ -140,6 +160,10 @@ fn kill_backend(pid: u32) {
     }
     #[cfg(not(target_os = "windows"))]
     {
+        // Try killing the process group (-PID) first to terminate all child processes cleanly
+        let _ = Command::new("kill")
+            .args(&["-TERM", &format!("-{}", pid)])
+            .status();
         let _ = Command::new("kill")
             .args(&["-9", &pid.to_string()])
             .status();

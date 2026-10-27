@@ -57,8 +57,42 @@ SERVER_HOST: str = _env_host or _parsed_host or '127.0.0.1'
 SERVER_PORT: Optional[int] = int(_env_port) if _env_port and _env_port.isdigit() else _parsed_port
 SERVER_RELOAD: bool = os.getenv('VAULT_RELOAD', 'false').lower() in ('true', '1', 'yes')
 VAULT_DIR: Path = Path(__file__).resolve().parent
-SYSTEM_DIR: Path = Path(os.getenv('MIRA_SYSTEM_DIR', str(VAULT_DIR / 'system')))
-LOGS_DIR: Path = Path(os.getenv('MIRA_LOGS_DIR', str(SYSTEM_DIR / 'logs')))
+
+def get_default_system_dir() -> Path:
+    env_dir = os.getenv('MIRA_SYSTEM_DIR')
+    if env_dir:
+        return Path(env_dir)
+
+    local_dev_dir = VAULT_DIR / 'system'
+    if (VAULT_DIR.parent / 'start.py').exists() and (VAULT_DIR / 'schema.sql').exists() and local_dev_dir.exists():
+        return local_dev_dir
+
+    if sys.platform == 'darwin':
+        base = Path.home() / 'Library' / 'Application Support' / 'MIRA'
+    elif sys.platform.startswith('linux'):
+        xdg_data = os.getenv('XDG_DATA_HOME', str(Path.home() / '.local' / 'share'))
+        base = Path(xdg_data) / 'mira'
+    else:
+        local_app = os.getenv('LOCALAPPDATA', str(Path.home() / 'AppData' / 'Local'))
+        base = Path(local_app) / 'MIRA'
+
+    return base / 'system'
+
+def get_default_logs_dir(system_dir: Path) -> Path:
+    env_logs = os.getenv('MIRA_LOGS_DIR')
+    if env_logs:
+        return Path(env_logs)
+
+    if sys.platform == 'darwin':
+        return Path.home() / 'Library' / 'Logs' / 'MIRA'
+    elif sys.platform.startswith('linux'):
+        xdg_state = os.getenv('XDG_STATE_HOME', str(Path.home() / '.local' / 'state'))
+        return Path(xdg_state) / 'mira' / 'logs'
+    else:
+        return system_dir / 'logs'
+
+SYSTEM_DIR: Path = get_default_system_dir()
+LOGS_DIR: Path = get_default_logs_dir(SYSTEM_DIR)
 SCHEMA_FILE_PATH: Path = Path(os.getenv('MIRA_SCHEMA_FILE', str(VAULT_DIR / 'schema.sql')))
 KEYRING_SERVICE_NAME: str = os.getenv('MIRA_KEYRING_SERVICE', 'MIRA_VAULT')
 KEYRING_KEY_NAME: str = os.getenv('MIRA_KEYRING_KEY_NAME', 'master_encryption_key')

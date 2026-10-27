@@ -401,10 +401,20 @@ class ProcessRunner:
         log_sys(f"{color('NOTICE:', YELLOW)} Redis not detected on 127.0.0.1:6379. Searching for local redis-server binary...")
         candidate_redis = [
             ROOT_DIR / "bin" / "redis-server.exe",
+            ROOT_DIR / "bin" / "redis-server",
             ROOT_DIR.parent / "bin" / "redis-server.exe",
+            ROOT_DIR.parent / "bin" / "redis-server",
             ROOT_DIR / "resources" / "bin" / "redis-server.exe",
+            ROOT_DIR / "resources" / "bin" / "redis-server",
+            Path("/opt/homebrew/bin/redis-server"),
+            Path("/usr/local/bin/redis-server"),
+            Path("/usr/bin/redis-server"),
             Path(r"F:\Software\Redis-5.0.14.1\redis-server.exe"),
         ]
+        which_redis = shutil.which("redis-server")
+        if which_redis:
+            candidate_redis.append(Path(which_redis))
+
         found_redis = None
         for cand in candidate_redis:
             if cand.exists():
@@ -414,13 +424,13 @@ class ProcessRunner:
         if found_redis:
             log_sys(f"Launching bundled Redis service -> {color(str(found_redis), CYAN)}...")
             try:
-                creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-                proc = subprocess.Popen(
-                    [str(found_redis)],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    creationflags=creationflags
-                )
+                popen_kwargs: Dict[str, Any] = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+                if os.name == "nt":
+                    popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+                else:
+                    popen_kwargs["start_new_session"] = True
+
+                proc = subprocess.Popen([str(found_redis)], **popen_kwargs)
                 self.processes["redis"] = proc
                 time.sleep(1.0)
                 if is_port_in_use("127.0.0.1", 6379):
@@ -428,7 +438,7 @@ class ProcessRunner:
             except Exception as e:
                 log_sys(f"{color('WARNING:', YELLOW)} Could not launch Redis ({e}).")
         else:
-            log_sys(f"{color('WARNING:', YELLOW)} redis-server.exe not found. Message Broker will attempt direct connection.")
+            log_sys(f"{color('WARNING:', YELLOW)} redis-server binary not found. Message Broker will attempt direct connection.")
 
     def build_command(self, module: Dict[str, Any], port: int, host: str) -> List[str]:
         mod_type = module["type"]
@@ -439,12 +449,14 @@ class ProcessRunner:
                 cmd.append("--reload")
             return cmd
         elif mod_type == "rust":
+            bin_name = "operator.exe" if os.name == "nt" else "operator"
             candidates = [
-                module["dir"] / "target" / "release" / "operator.exe",
-                ROOT_DIR / "bin" / "operator.exe",
-                ROOT_DIR.parent / "bin" / "operator.exe",
+                module["dir"] / "target" / "release" / bin_name,
+                ROOT_DIR / "bin" / bin_name,
+                ROOT_DIR.parent / "bin" / bin_name,
+                ROOT_DIR / "resources" / "bin" / bin_name,
+                module["dir"] / bin_name,
                 ROOT_DIR / "resources" / "bin" / "operator.exe",
-                module["dir"] / "operator.exe",
             ]
             for exe in candidates:
                 if exe.exists():
@@ -518,13 +530,14 @@ class ProcessRunner:
         cmd = None
 
         if mod["type"] == "rust":
+            bin_name = "operator.exe" if os.name == "nt" else "operator"
             candidates = [
-                ROOT_DIR.parent / "bin" / "operator.exe",
-                ROOT_DIR / "bin" / "operator.exe",
-                mod_dir / "target" / "release" / "operator.exe",
-                ROOT_DIR.parent / "target" / "release" / "operator.exe",
-                ROOT_DIR / "resources" / "bin" / "operator.exe",
-                mod_dir / "operator.exe",
+                ROOT_DIR.parent / "bin" / bin_name,
+                ROOT_DIR / "bin" / bin_name,
+                mod_dir / "target" / "release" / bin_name,
+                ROOT_DIR.parent / "target" / "release" / bin_name,
+                ROOT_DIR / "resources" / "bin" / bin_name,
+                mod_dir / bin_name,
             ]
             for exe in candidates:
                 if exe.exists():
@@ -549,16 +562,19 @@ class ProcessRunner:
 
         try:
             use_shell = os.name == "nt" and mod["type"] == "node"
-            proc = subprocess.Popen(
-                cmd,
-                cwd=str(working_dir),
-                env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                shell=use_shell,
-            )
+            popen_kwargs: Dict[str, Any] = {
+                "cwd": str(working_dir),
+                "env": env,
+                "stdout": subprocess.PIPE,
+                "stderr": subprocess.STDOUT,
+                "text": True,
+                "bufsize": 1,
+                "shell": use_shell,
+            }
+            if os.name != "nt":
+                popen_kwargs["start_new_session"] = True
+
+            proc = subprocess.Popen(cmd, **popen_kwargs)
             self.processes[mod_id] = proc
 
             t = threading.Thread(
@@ -610,7 +626,10 @@ class ProcessRunner:
                             check=False
                         )
                     else:
-                        proc.terminate()
+                        try:
+                            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                        except Exception:
+                            proc.terminate()
                 except Exception:
                     try:
                         proc.kill()
@@ -777,13 +796,15 @@ def main() -> None:
     active_modules = []
     for mod in target_modules:
         if mod["id"] == "operator":
+            bin_name = "operator.exe" if os.name == "nt" else "operator"
             candidates = [
-                ROOT_DIR.parent / "bin" / "operator.exe",
-                ROOT_DIR / "bin" / "operator.exe",
-                mod["dir"] / "target" / "release" / "operator.exe",
-                ROOT_DIR.parent / "target" / "release" / "operator.exe",
+                ROOT_DIR.parent / "bin" / bin_name,
+                ROOT_DIR / "bin" / bin_name,
+                mod["dir"] / "target" / "release" / bin_name,
+                ROOT_DIR.parent / "target" / "release" / bin_name,
+                ROOT_DIR / "resources" / "bin" / bin_name,
+                mod["dir"] / bin_name,
                 ROOT_DIR / "resources" / "bin" / "operator.exe",
-                mod["dir"] / "operator.exe",
             ]
             if not any(c.exists() for c in candidates) and not mod["dir"].exists() and mod.get("is_optional", False):
                 continue

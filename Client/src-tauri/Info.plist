@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>MIRA requires screen recording permissions to capture screen memory and context for AI assistance.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>MIRA requires microphone access for voice transcription and commands.</string>
+</dict>
+</plist>

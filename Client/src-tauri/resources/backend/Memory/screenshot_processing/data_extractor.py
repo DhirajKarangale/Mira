@@ -18,7 +18,16 @@ except ImportError:
     from Memory.vault_logger import log
 
 def _init_tesseract() -> None:
-    candidate_paths = [os.environ.get('TESSERACT_CMD', ''), shutil.which('tesseract'), 'C:\\Users\\dakar\\AppData\\Local\\Programs\\Tesseract-OCR\\tesseract.exe', os.path.expandvars('%LOCALAPPDATA%\\Programs\\Tesseract-OCR\\tesseract.exe'), 'C:\\Program Files\\Tesseract-OCR\\tesseract.exe', 'C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe']
+    candidate_paths = [
+        os.environ.get('TESSERACT_CMD', ''),
+        shutil.which('tesseract'),
+        '/opt/homebrew/bin/tesseract',       # macOS Apple Silicon (Homebrew)
+        '/usr/local/bin/tesseract',          # macOS Intel (Homebrew)
+        '/usr/bin/tesseract',                # Linux standard
+        'C:\\Program Files\\Tesseract-OCR\\tesseract.exe',
+        'C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe',
+        os.path.expandvars('%LOCALAPPDATA%\\Programs\\Tesseract-OCR\\tesseract.exe'),
+    ]
     for candidate in candidate_paths:
         if candidate and os.path.exists(candidate):
             pytesseract.pytesseract.tesseract_cmd = candidate

@@ -29,26 +29,72 @@ def derive_key_from_credential(credential_key: str, prefix: Optional[str]=None, 
     combined_material = f'{prefix}{credential_key}{suffix}'
     return hashlib.sha256(combined_material.encode('utf-8')).digest()
 
+def _read_file_key() -> Optional[str]:
+    key_file = config.SYSTEM_DIR / '.vault.key'
+    if key_file.exists():
+        try:
+            with open(key_file, 'r', encoding='utf-8') as f:
+                val = f.read().strip()
+                if len(val) >= 32:
+                    return val
+        except Exception as e:
+            logger.warning(f'Failed to read fallback key file: {e}')
+    return None
+
+def _write_file_key(cred: str) -> bool:
+    try:
+        config.SYSTEM_DIR.mkdir(parents=True, exist_ok=True)
+        key_file = config.SYSTEM_DIR / '.vault.key'
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        mode = 0o600
+        fd = os.open(str(key_file), flags, mode)
+        with open(fd, 'w', encoding='utf-8') as f:
+            f.write(cred)
+        return True
+    except Exception as e:
+        logger.warning(f'Could not persist fallback key file: {e}')
+        return False
+
 def init_encryption_key() -> None:
     global _CREDENTIAL_KEY, _DERIVED_KEY
+
+    # 1. Check environment variable override
+    env_key = os.getenv('MIRA_MASTER_KEY')
+    if env_key and len(env_key.strip()) >= 32:
+        logger.info('Using master encryption key from MIRA_MASTER_KEY environment variable.')
+        _CREDENTIAL_KEY = env_key.strip()
+        _DERIVED_KEY = derive_key_from_credential(_CREDENTIAL_KEY)
+        return
+
+    # 2. Check OS credential store (Keyring / Keychain / SecretService)
     service_name = config.KEYRING_SERVICE_NAME
     key_name = config.KEYRING_KEY_NAME
     logger.info(f"Checking OS credential store (service='{service_name}', key='{key_name}')...")
+    cred = None
     try:
         cred = keyring.get_password(service_name, key_name)
     except Exception as e:
-        logger.warning(f'Error querying OS credential store: {e}. Falling back to generation.')
-        cred = None
+        logger.warning(f'Error querying OS credential store: {e}. Checking local key file fallback...')
+
+    # 3. Check local key file fallback
     if not cred:
-        logger.info('No encryption key found in OS credential store. Generating a new cryptographically secure key...')
+        cred = _read_file_key()
+        if cred:
+            logger.info('Retrieved encryption key from secure local key file.')
+
+    # 4. Generate new key if not found in any store
+    if not cred:
+        logger.info('No encryption key found. Generating a new cryptographically secure key...')
         cred = secrets.token_hex(32)
         try:
             keyring.set_password(service_name, key_name, cred)
             logger.info('Successfully saved encryption key to OS credential store.')
         except Exception as e:
-            logger.error(f'Failed to persist key to OS credential store: {e}')
+            logger.warning(f'Could not persist key to OS credential store ({e}). Writing secure fallback file...')
+        _write_file_key(cred)
     else:
-        logger.info('Existing encryption key retrieved from OS credential store.')
+        logger.info('Existing encryption key successfully initialized.')
+
     _CREDENTIAL_KEY = cred
     _DERIVED_KEY = derive_key_from_credential(cred)
     logger.info(f'Derived final 256-bit encryption key successfully ({len(_DERIVED_KEY)} bytes in memory, kept strictly internal).')

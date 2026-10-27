@@ -217,12 +217,82 @@ pub fn get_active_app_id() -> String {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+pub fn get_active_app_name() -> String {
+    use std::process::Command;
+    if let Ok(output) = Command::new("osascript")
+        .args(&["-e", "tell application \"System Events\" to get name of first application process whose frontmost is true"])
+        .output()
+    {
+        if output.status.success() {
+            let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !name.is_empty() {
+                return name;
+            }
+        }
+    }
+    "Unknown".to_string()
+}
+
+#[cfg(target_os = "macos")]
+pub fn get_active_app_id() -> String {
+    use std::process::Command;
+    if let Ok(output) = Command::new("osascript")
+        .args(&["-e", "tell application \"System Events\" to get bundle identifier of first application process whose frontmost is true"])
+        .output()
+    {
+        if output.status.success() {
+            let id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !id.is_empty() {
+                return id;
+            }
+        }
+    }
+    get_active_app_name().to_lowercase()
+}
+
+#[cfg(target_os = "linux")]
+pub fn get_active_app_name() -> String {
+    use std::process::Command;
+    if let Ok(output) = Command::new("xdotool")
+        .args(&["getactivewindow", "getwindowname"])
+        .output()
+    {
+        if output.status.success() {
+            let title = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !title.is_empty() {
+                return title;
+            }
+        }
+    }
+    "Unknown".to_string()
+}
+
+#[cfg(target_os = "linux")]
+pub fn get_active_app_id() -> String {
+    use std::process::Command;
+    if let Ok(output) = Command::new("xdotool")
+        .args(&["getactivewindow", "getwindowpid"])
+        .output()
+    {
+        if output.status.success() {
+            let pid_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if let Ok(pid) = pid_str.parse::<u32>() {
+                if let Ok(comm) = std::fs::read_to_string(format!("/proc/{}/comm", pid)) {
+                    return comm.trim().to_string();
+                }
+            }
+        }
+    }
+    "unknown".to_string()
+}
+
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 pub fn get_active_app_id() -> String {
     "unknown".to_string()
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 pub fn get_active_app_name() -> String {
     "Unknown".to_string()
 }

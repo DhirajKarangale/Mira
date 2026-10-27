@@ -5,7 +5,7 @@
   "identifier": "com.mira.client",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:9004",
+    "devUrl": "http://localhost:9011",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
@@ -41,6 +41,20 @@
     "resources": [
       "resources/**/*"
     ],
+    "macOS": {
+      "frameworks": [],
+      "minimumSystemVersion": "10.15",
+      "infoPlist": "./Info.plist"
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0 | libwebkit2gtk-4.0-37",
+          "libappindicator3-1 | libayatana-appindicator3-1",
+          "librsvg2-2"
+        ]
+      }
+    },
     "windows": {
       "nsis": {
         "installerIcon": "icons/icon.ico",
