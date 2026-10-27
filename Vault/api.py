@@ -545,15 +545,80 @@ async def delete_voice_model_endpoint(provider: str):
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to delete voice model: {str(e)}'})
 
+class VoiceKeysResponse(BaseModel):
+    provider: str
+    keys: List[str] = []
+    current_key: int = 0
+    total_keys: int = 0
+
+class VoiceCurrentKeyUpdateRequest(BaseModel):
+    current_key: Optional[int] = None
+    index: Optional[int] = None
+    current_key_index: Optional[int] = None
+    provider: Optional[str] = "elevenlabs"
+
+@router.get('/voice/elevenlabs/keys', response_model=VoiceKeysResponse, status_code=status.HTTP_200_OK)
+@router.get('/voice/keys', response_model=VoiceKeysResponse, status_code=status.HTTP_200_OK)
+async def get_voice_keys_endpoint(provider: str = Query('elevenlabs')):
+    try:
+        return config_storage.get_voice_keys(provider)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to retrieve voice keys: {str(e)}'})
+
+@router.post('/voice/elevenlabs/current-key', response_model=VoiceKeysResponse, status_code=status.HTTP_200_OK)
+@router.put('/voice/elevenlabs/current-key', response_model=VoiceKeysResponse, status_code=status.HTTP_200_OK)
+@router.post('/voice/current-key', response_model=VoiceKeysResponse, status_code=status.HTTP_200_OK)
+@router.put('/voice/current-key', response_model=VoiceKeysResponse, status_code=status.HTTP_200_OK)
+@router.post('/voice/models/{provider}/current-key', response_model=VoiceKeysResponse, status_code=status.HTTP_200_OK)
+@router.put('/voice/models/{provider}/current-key', response_model=VoiceKeysResponse, status_code=status.HTTP_200_OK)
+async def update_voice_current_key_endpoint(
+    request: VoiceCurrentKeyUpdateRequest,
+    provider: Optional[str] = None
+):
+    try:
+        target_provider = provider or request.provider or 'elevenlabs'
+        target_index = None
+        if request.current_key is not None:
+            target_index = request.current_key
+        elif request.index is not None:
+            target_index = request.index
+        elif request.current_key_index is not None:
+            target_index = request.current_key_index
+
+        if target_index is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={'message': "Must provide 'current_key' or 'index' integer value."}
+            )
+
+        updated = config_storage.update_voice_current_key(target_provider, int(target_index))
+        return {
+            'provider': updated['provider'],
+            'keys': updated['keys'],
+            'current_key': updated['current_key'],
+            'total_keys': updated['total_keys'],
+        }
+    except HTTPException:
+        raise
+    except KeyError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={'message': str(e)})
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={'message': f'Failed to update current voice key: {str(e)}'}
+        )
+
 class VoiceConfigResponse(BaseModel):
     mic_auto_start: bool = False
     voice_enable_master: bool = False
     voice_enable_while_typing: bool = False
+    voice_model_id: str = ""
 
 class VoiceConfigUpdateRequest(BaseModel):
     mic_auto_start: Optional[bool] = None
     voice_enable_master: Optional[bool] = None
     voice_enable_while_typing: Optional[bool] = None
+    voice_model_id: Optional[str] = None
 
 @router.get('/voice/config', response_model=VoiceConfigResponse, status_code=status.HTTP_200_OK)
 async def get_voice_config_endpoint():

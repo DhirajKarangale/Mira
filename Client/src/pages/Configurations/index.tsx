@@ -5,6 +5,7 @@ import {
   Navigate,
   useLocation,
   useNavigate,
+  useParams,
 } from "react-router-dom";
 import { Sidebar, type SidebarItem } from "@/components/Sidebar";
 import {
@@ -25,7 +26,7 @@ import { MicrophonePage } from "./Microphone";
 
 export { AiConfigPage } from "./AiConfig";
 export { WorkersPage } from "./Workers";
-export { MicrophonePage } from "./Microphone";
+export { MicrophonePage, MicrophonePage as VoicePage } from "./Microphone";
 
 const CONFIGURATIONS_SIDEBAR_ITEMS: readonly SidebarItem[] = [
   {
@@ -34,8 +35,8 @@ const CONFIGURATIONS_SIDEBAR_ITEMS: readonly SidebarItem[] = [
     icon: MonitorPlay,
   },
   {
-    key: "microphone",
-    name: "Microphone",
+    key: "voice",
+    name: "Voice & Mic",
     icon: Mic,
   },
   {
@@ -60,6 +61,11 @@ const CONFIGURATIONS_SIDEBAR_ITEMS: readonly SidebarItem[] = [
   },
 ] as const;
 
+function MicrophoneSubpathRedirect() {
+  const { "*": rest } = useParams();
+  return <Navigate to={`/configurations/voice${rest ? `/${rest}` : ""}`} replace />;
+}
+
 export const ConfigurationsPage: FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -70,6 +76,8 @@ export const ConfigurationsPage: FC = () => {
   const activeSubTab =
     rawSubTab === "captured-data" || rawSubTab === "capture"
       ? "activity-control"
+      : rawSubTab === "microphone" || rawSubTab === "mic"
+      ? "voice"
       : rawSubTab;
 
   const activeItem = CONFIGURATIONS_SIDEBAR_ITEMS.find((it) => it.key === activeSubTab);
@@ -128,7 +136,8 @@ export const ConfigurationsPage: FC = () => {
             path="captured-data/*"
             element={<Navigate to="/configurations/activity-control/data" replace />}
           />
-          <Route path="microphone/*" element={<MicrophonePage />} />
+          <Route path="voice/*" element={<MicrophonePage />} />
+          <Route path="microphone/*" element={<MicrophoneSubpathRedirect />} />
           <Route path="ai-config/*" element={<AiConfigPage />} />
           <Route path="workers/*" element={<WorkersPage />} />
           <Route path="redis/*" element={<RedisPage />} />

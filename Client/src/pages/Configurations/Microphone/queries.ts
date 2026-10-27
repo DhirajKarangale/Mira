@@ -7,6 +7,7 @@ import {
   type VoiceModelUpdateRequest,
   type VoiceConfig,
   type VoiceConfigUpdateRequest,
+  type VoiceKeysResponse,
 } from "@/services";
 import { QUERY_KEYS } from "@/lib/queryClient";
 
@@ -203,6 +204,35 @@ export function useUpdateVoiceConfigMutation() {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.voice.config });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.operator.microphoneStatus });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.operator.config });
+    },
+  });
+}
+
+export function useVoiceKeysQuery(provider = "elevenlabs") {
+  return useQuery<VoiceKeysResponse>({
+    queryKey: [...QUERY_KEYS.voice.all, "keys", provider],
+    queryFn: () => vaultService.getVoiceKeys(provider),
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useUpdateVoiceCurrentKeyMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      currentKey,
+      provider = "elevenlabs",
+    }: {
+      currentKey: number;
+      provider?: string;
+    }): Promise<VoiceKeysResponse> => {
+      return await vaultService.updateVoiceCurrentKey(currentKey, provider);
+    },
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.voice.all });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.voice.models });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.voice.model(updated.provider.toLowerCase()) });
     },
   });
 }

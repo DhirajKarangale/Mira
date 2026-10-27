@@ -5,4 +5,5 @@ export * from "./memory.service";
 export * from "./engine.service";
 export * from "./location.service";
 export * from "./dailySuggestions.service";
+export * from "./voice.service";
 

@@ -13,6 +13,7 @@ import {
   useUpdateVoiceModelMutation,
   useVoiceConfigQuery,
   useUpdateVoiceConfigMutation,
+  useUpdateVoiceCurrentKeyMutation,
 } from "./queries";
 import { MicrophoneStatusHeader } from "./components/MicrophoneStatusHeader";
 import { VoiceControlConfigCard } from "./components/VoiceControlConfigCard";
@@ -22,6 +23,7 @@ import { ElevenLabsTabContent } from "./components/ElevenLabsTabContent";
 import type { VoiceConfigUpdateRequest } from "@/services";
 import { toast } from "@/components";
 import { cn } from "@/lib/utils";
+import { useVoiceStore } from "@/store/useVoiceStore";
 
 export const MicrophonePage: FC = () => {
   const location = useLocation();
@@ -49,6 +51,7 @@ export const MicrophonePage: FC = () => {
   const updateAutoStartMutation = useUpdateMicrophoneAutoStartMutation();
   const updateVoiceModelMutation = useUpdateVoiceModelMutation();
   const updateVoiceConfigMutation = useUpdateVoiceConfigMutation();
+  const updateVoiceCurrentKeyMutation = useUpdateVoiceCurrentKeyMutation();
 
   const pathSegments = location.pathname.split("/").filter(Boolean);
   const currentSubTab = (pathSegments[2] || "microphone").toLowerCase();
@@ -78,12 +81,7 @@ export const MicrophonePage: FC = () => {
     const nextState = isOn ? "off" : "on";
     try {
       await toggleMicMutation.mutateAsync(nextState);
-      toast.success(
-        nextState === "on"
-          ? "Microphone turned on. Wake word listening active ('Mira')."
-          : "Microphone turned off. Voice input paused.",
-        { title: "Microphone Control" }
-      );
+      useVoiceStore.setState({ isMicOn: nextState === "on" });
     } catch (err: unknown) {
       const msg = (err as Error)?.message || "Failed to toggle microphone state.";
       toast.error(msg, { title: "Microphone Error" });
@@ -98,12 +96,7 @@ export const MicrophonePage: FC = () => {
         updateAutoStartMutation.mutateAsync(nextVal),
         updateVoiceConfigMutation.mutateAsync({ mic_auto_start: nextVal }),
       ]);
-      toast.success(
-        nextVal
-          ? "Microphone Auto-Start enabled (activates on Operator boot)."
-          : "Microphone Auto-Start disabled.",
-        { title: "Auto-Start Setting" }
-      );
+      useVoiceStore.setState({ micAutoStart: nextVal });
     } catch (err: unknown) {
       const msg = (err as Error)?.message || "Failed to update microphone auto-start.";
       toast.error(msg, { title: "Configuration Error" });
@@ -113,23 +106,7 @@ export const MicrophonePage: FC = () => {
   const handleUpdateVoiceConfig = async (updates: VoiceConfigUpdateRequest) => {
     try {
       await updateVoiceConfigMutation.mutateAsync(updates);
-      if (updates.voice_enable_master !== undefined) {
-        toast.success(
-          updates.voice_enable_master
-            ? "Master Voice Control enabled across MIRA."
-            : "Master Voice Control disabled (all voice output silenced).",
-          { title: "Voice Settings" }
-        );
-      } else if (updates.voice_enable_while_typing !== undefined) {
-        toast.success(
-          updates.voice_enable_while_typing
-            ? "Voice playback while typing enabled."
-            : "Voice playback while typing disabled.",
-          { title: "Voice Settings" }
-        );
-      } else {
-        toast.success("Voice configuration updated successfully.", { title: "Voice Settings" });
-      }
+      useVoiceStore.getState().setVoiceConfig(updates).catch(() => { });
     } catch (err: unknown) {
       const msg = (err as Error)?.message || "Failed to update voice configuration.";
       toast.error(msg, { title: "Voice Configuration Error" });
@@ -165,6 +142,7 @@ export const MicrophonePage: FC = () => {
         current_key: newActiveIndex,
       },
     });
+    useVoiceStore.getState().setKeys(updatedKeys, newActiveIndex);
 
     toast.success("New ElevenLabs API key successfully encrypted and stored in Vault.", {
       title: "Voice Model Config",
@@ -176,17 +154,16 @@ export const MicrophonePage: FC = () => {
     const currentKeys = elevenLabsModel.keys || [];
     if (index < 0 || index >= currentKeys.length) return;
 
-    await updateVoiceModelMutation.mutateAsync({
-      provider: "elevenlabs",
-      updates: {
-        keys: currentKeys,
-        current_key: index,
-      },
-    });
-
-    toast.success(`Key #${index + 1} activated for ElevenLabs voice generation.`, {
-      title: "Voice Model Config",
-    });
+    try {
+      await updateVoiceCurrentKeyMutation.mutateAsync({
+        currentKey: index,
+        provider: "elevenlabs",
+      });
+      useVoiceStore.getState().setKeys(currentKeys, index);
+    } catch (err: unknown) {
+      const msg = (err as Error)?.message || "Failed to set active ElevenLabs key.";
+      toast.error(msg, { title: "Voice Model Config Error" });
+    }
   };
 
   const handleUpdateKey = async (index: number, updatedKeyValue: string) => {
@@ -227,6 +204,7 @@ export const MicrophonePage: FC = () => {
         current_key: nextActiveIndex,
       },
     });
+    useVoiceStore.getState().setKeys(currentKeys, nextActiveIndex);
 
     toast.success("ElevenLabs API key removed from Vault.", {
       title: "Voice Model Config",
@@ -248,7 +226,7 @@ export const MicrophonePage: FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-bold tracking-tight text-white">
-                  Microphone & Voice
+                  Voice & Mic
                 </h1>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
                   Vault & Operator
@@ -267,7 +245,7 @@ export const MicrophonePage: FC = () => {
               <button
                 type="button"
                 id="tab-btn-microphone"
-                onClick={() => navigate("/configurations/microphone")}
+                onClick={() => navigate("/configurations/voice")}
                 className={cn(
                   "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
                   isMicrophoneActive
@@ -276,7 +254,7 @@ export const MicrophonePage: FC = () => {
                 )}
               >
                 <Mic className="w-3.5 h-3.5" />
-                <span>Microphone</span>
+                <span>Config</span>
                 <span
                   className={cn(
                     "ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-mono",
@@ -295,7 +273,7 @@ export const MicrophonePage: FC = () => {
               <button
                 type="button"
                 id="tab-btn-elevenlabs"
-                onClick={() => navigate("/configurations/microphone/elevenlabs")}
+                onClick={() => navigate("/configurations/voice/elevenlabs")}
                 className={cn(
                   "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
                   isElevenLabsActive
@@ -331,7 +309,7 @@ export const MicrophonePage: FC = () => {
                 className={cn(
                   "w-4 h-4",
                   (statusFetching || isVoiceModelsFetching || isVoiceConfigFetching) &&
-                    "animate-spin text-cyan-400"
+                  "animate-spin text-cyan-400"
                 )}
               />
             </button>

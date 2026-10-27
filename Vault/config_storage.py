@@ -852,21 +852,52 @@ def delete_voice_model(provider: str) -> Dict[str, Any]:
     save_config_storage()
     return {'status': 'success', 'message': f"Voice model for provider '{row[1]}' deleted successfully."}
 
+def get_voice_keys(provider: str = 'elevenlabs') -> Dict[str, Any]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+    clean_provider = (provider or 'elevenlabs').strip()
+    try:
+        model = get_voice_model(clean_provider)
+    except KeyError:
+        model = update_voice_model(clean_provider, keys=[], current_key=0, create_if_missing=True)
+    return {
+        'provider': model.get('provider', clean_provider),
+        'keys': model.get('keys', []),
+        'current_key': model.get('current_key', 0),
+        'total_keys': model.get('total_keys', len(model.get('keys', []))),
+    }
+
+def update_voice_current_key(provider: str = 'elevenlabs', current_key: int = 0) -> Dict[str, Any]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+    clean_provider = (provider or 'elevenlabs').strip()
+    return update_voice_model(clean_provider, current_key=current_key, create_if_missing=True)
+
 def get_voice_config() -> Dict[str, Any]:
     global _DB_CONN
     if _DB_CONN is None:
         init_config_storage()
-    cursor = _DB_CONN.execute("SELECT mic_auto_start, voice_enable_master, voice_enable_while_typing FROM voice_config LIMIT 1")
+    cols = [col[1].lower() for col in _DB_CONN.execute("PRAGMA table_info(voice_config)").fetchall()]
+    if 'voice_model_id' not in cols:
+        try:
+            _DB_CONN.execute("ALTER TABLE voice_config ADD COLUMN voice_model_id TEXT DEFAULT ''")
+            _DB_CONN.commit()
+        except Exception:
+            pass
+    cursor = _DB_CONN.execute("SELECT mic_auto_start, voice_enable_master, voice_enable_while_typing, voice_model_id FROM voice_config LIMIT 1")
     row = cursor.fetchone()
     if not row:
         _DB_CONN.execute("INSERT INTO voice_config DEFAULT VALUES")
         _DB_CONN.commit()
-        cursor = _DB_CONN.execute("SELECT mic_auto_start, voice_enable_master, voice_enable_while_typing FROM voice_config LIMIT 1")
+        cursor = _DB_CONN.execute("SELECT mic_auto_start, voice_enable_master, voice_enable_while_typing, voice_model_id FROM voice_config LIMIT 1")
         row = cursor.fetchone()
     return {
         'mic_auto_start': bool(row[0]) if row and row[0] is not None else False,
         'voice_enable_master': bool(row[1]) if row and row[1] is not None else False,
         'voice_enable_while_typing': bool(row[2]) if row and row[2] is not None else False,
+        'voice_model_id': str(row[3]) if row and len(row) > 3 and row[3] is not None else '',
     }
 
 def update_voice_config(updates: Dict[str, Any]) -> Dict[str, Any]:
@@ -877,18 +908,20 @@ def update_voice_config(updates: Dict[str, Any]) -> Dict[str, Any]:
     mic_auto_start = updates.get('mic_auto_start', current['mic_auto_start'])
     voice_enable_master = updates.get('voice_enable_master', current['voice_enable_master'])
     voice_enable_while_typing = updates.get('voice_enable_while_typing', current['voice_enable_while_typing'])
+    raw_model_id = updates.get('voice_model_id', current.get('voice_model_id', ''))
+    voice_model_id = str(raw_model_id).strip() if raw_model_id is not None else ''
 
     # Requirement 4: If voice_enable_master is disabled, voice_enable_while_typing is automatically disabled
     if not voice_enable_master:
         voice_enable_while_typing = False
 
     _DB_CONN.execute(
-        "UPDATE voice_config SET mic_auto_start = ?, voice_enable_master = ?, voice_enable_while_typing = ? WHERE id = (SELECT id FROM voice_config LIMIT 1)",
-        (1 if mic_auto_start else 0, 1 if voice_enable_master else 0, 1 if voice_enable_while_typing else 0)
+        "UPDATE voice_config SET mic_auto_start = ?, voice_enable_master = ?, voice_enable_while_typing = ?, voice_model_id = ? WHERE id = (SELECT id FROM voice_config LIMIT 1)",
+        (1 if mic_auto_start else 0, 1 if voice_enable_master else 0, 1 if voice_enable_while_typing else 0, voice_model_id)
     )
     _DB_CONN.commit()
     save_config_storage()
-    logger.info(f"Updated voice_config: mic_auto_start={mic_auto_start}, voice_enable_master={voice_enable_master}, voice_enable_while_typing={voice_enable_while_typing}")
+    logger.info(f"Updated voice_config: mic_auto_start={mic_auto_start}, voice_enable_master={voice_enable_master}, voice_enable_while_typing={voice_enable_while_typing}, voice_model_id={voice_model_id[:25]}")
     return get_voice_config()
 
 def get_ai_priorities() -> List[str]:

@@ -47,16 +47,32 @@ export interface VoiceModelUpdateRequest {
   total_keys?: number;
 }
 
+export interface VoiceKeysResponse {
+  provider: string;
+  keys: string[];
+  current_key: number;
+  total_keys: number;
+}
+
+export interface VoiceCurrentKeyUpdateRequest {
+  current_key?: number;
+  index?: number;
+  current_key_index?: number;
+  provider?: string;
+}
+
 export interface VoiceConfig {
   mic_auto_start: boolean;
   voice_enable_master: boolean;
   voice_enable_while_typing: boolean;
+  voice_model_id?: string;
 }
 
 export interface VoiceConfigUpdateRequest {
   mic_auto_start?: boolean;
   voice_enable_master?: boolean;
   voice_enable_while_typing?: boolean;
+  voice_model_id?: string;
 }
 
 export interface GNewsConfig {
@@ -363,6 +379,25 @@ export const vaultService = {
 
   async updateVoiceConfig(updates: VoiceConfigUpdateRequest): Promise<VoiceConfig> {
     const response = await vaultApi.post<VoiceConfig>("/voice/config", updates);
+    return response.data;
+  },
+
+  async getVoiceKeys(provider = "elevenlabs"): Promise<VoiceKeysResponse> {
+    const response = await vaultApi.get<VoiceKeysResponse>(
+      `/voice/elevenlabs/keys`,
+      { params: { provider } }
+    );
+    return response.data;
+  },
+
+  async updateVoiceCurrentKey(
+    currentKey: number,
+    provider = "elevenlabs"
+  ): Promise<VoiceKeysResponse> {
+    const response = await vaultApi.post<VoiceKeysResponse>(
+      `/voice/elevenlabs/current-key`,
+      { current_key: currentKey, provider }
+    );
     return response.data;
   },
 };

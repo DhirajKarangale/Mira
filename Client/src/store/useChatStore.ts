@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { ChatMessage, ChatSession } from "@/services/engine.service";
+import { chatVoiceBridge } from "@/modules/voice";
 
 export interface SendingSessionDetails {
   jobId: string;
@@ -238,6 +239,15 @@ export const useChatStore = create<ChatStoreState>()(
             sendingSessions: nextSending,
           };
         });
+
+        // Concurrently submit AI response text to the voice submodule
+        if (aiMessage?.content) {
+          try {
+            chatVoiceBridge.handleAiResponse(aiMessage.id, aiMessage.content);
+          } catch (err) {
+            console.debug("[ChatVoiceBridge] Failed to enqueue AI speech response:", err);
+          }
+        }
       },
 
       removeSessionMessages: (sessionId) => {

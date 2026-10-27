@@ -1,4 +1,5 @@
-import { Routes, Route, Navigate, useParams } from "react-router-dom";
+import { useEffect } from "react";
+import { Routes, Route, Navigate, useParams, useLocation } from "react-router-dom";
 import { Header } from "@/components/layout/Header";
 import {
   MiraPage,
@@ -9,6 +10,8 @@ import {
   AboutPage,
 } from "@/pages";
 import { useGlobalChatSync } from "@/hooks/useGlobalChatSync";
+import { useVoiceSync } from "@/hooks/useVoiceSync";
+import { chatVoiceBridge, VoicePlaybackOverlay } from "@/modules/voice";
 
 function ActivityRedirect() {
   const { "*": rest } = useParams();
@@ -31,8 +34,19 @@ function AiConfigsRedirect() {
   return <Navigate to={`/configurations/ai-config/${rest || ""}`} replace />;
 }
 
+function VoiceRedirect() {
+  const { "*": rest } = useParams();
+  return <Navigate to={`/configurations/voice${rest ? `/${rest}` : ""}`} replace />;
+}
+
 export function App() {
+  const location = useLocation();
   useGlobalChatSync();
+  useVoiceSync();
+
+  useEffect(() => {
+    chatVoiceBridge.handleRouteChange(location.pathname);
+  }, [location.pathname]);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#080c14] text-zinc-100 select-none border border-white/[0.06]">
@@ -58,10 +72,16 @@ export function App() {
           <Route path="/capture/*" element={<ActivityRedirect />} />
           <Route path="/ai-configs" element={<Navigate to="/configurations/ai-config" replace />} />
           <Route path="/ai-configs/*" element={<AiConfigsRedirect />} />
+          <Route path="/voice" element={<Navigate to="/configurations/voice" replace />} />
+          <Route path="/voice/*" element={<VoiceRedirect />} />
+          <Route path="/microphone" element={<Navigate to="/configurations/voice" replace />} />
+          <Route path="/microphone/*" element={<VoiceRedirect />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="*" element={<Navigate to="/mira" replace />} />
         </Routes>
       </main>
+
+      <VoicePlaybackOverlay />
     </div>
   );
 }

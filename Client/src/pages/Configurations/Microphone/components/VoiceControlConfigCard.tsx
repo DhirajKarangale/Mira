@@ -1,10 +1,15 @@
-import type { FC } from "react";
+import { useState, useEffect, type FC } from "react";
 import {
   Volume2,
   VolumeX,
   Keyboard,
   Lock,
   Loader2,
+  Bot,
+  Copy,
+  Check,
+  Save,
+  RotateCcw,
 } from "lucide-react";
 import type { VoiceConfig, VoiceConfigUpdateRequest } from "@/services";
 import { cn } from "@/lib/utils";
@@ -22,6 +27,43 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
 }) => {
   const isMasterEnabled = Boolean(voiceConfig?.voice_enable_master);
   const isWhileTypingEnabled = isMasterEnabled && Boolean(voiceConfig?.voice_enable_while_typing);
+
+  const serverModelId = voiceConfig?.voice_model_id ?? "";
+  const [modelIdInput, setModelIdInput] = useState(serverModelId);
+  const [isCopied, setIsCopied] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+  const [isSavingModelId, setIsSavingModelId] = useState(false);
+
+  useEffect(() => {
+    setModelIdInput(serverModelId);
+  }, [serverModelId]);
+
+  const isDirty = modelIdInput !== serverModelId;
+
+  const handleSaveModelId = async () => {
+    if (!isDirty || isSavingModelId || isUpdating) return;
+    setIsSavingModelId(true);
+    try {
+      await onUpdateVoiceConfig({
+        voice_model_id: modelIdInput.trim(),
+      });
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 2500);
+    } finally {
+      setIsSavingModelId(false);
+    }
+  };
+
+  const handleCopy = () => {
+    if (!modelIdInput) return;
+    navigator.clipboard.writeText(modelIdInput);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
+
+  const handleReset = () => {
+    setModelIdInput(serverModelId);
+  };
 
   const handleToggleMaster = async () => {
     if (isUpdating) return;
@@ -173,8 +215,8 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
             !isMasterEnabled
               ? "border-white/[0.04] bg-zinc-950/20 opacity-60 cursor-not-allowed"
               : isWhileTypingEnabled
-              ? "border-indigo-500/30 bg-gradient-to-br from-indigo-950/25 via-zinc-950/60 to-zinc-950/40 shadow-[0_0_20px_rgba(99,102,241,0.06)]"
-              : "border-white/[0.06] bg-zinc-950/40 hover:border-white/10"
+                ? "border-indigo-500/30 bg-gradient-to-br from-indigo-950/25 via-zinc-950/60 to-zinc-950/40 shadow-[0_0_20px_rgba(99,102,241,0.06)]"
+                : "border-white/[0.06] bg-zinc-950/40 hover:border-white/10"
           )}
         >
           <div className="space-y-3">
@@ -186,15 +228,15 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
                     !isMasterEnabled
                       ? "bg-zinc-900 text-zinc-600 border border-white/5"
                       : isWhileTypingEnabled
-                      ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
-                      : "bg-zinc-800 text-zinc-400 border border-white/10"
+                        ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
+                        : "bg-zinc-800 text-zinc-400 border border-white/10"
                   )}
                 >
                   <Keyboard className="w-4 h-4" />
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-white tracking-tight">
-                    Voice Playback While Typing
+                    Voice Playback While Chating
                   </h3>
                   <span className="text-[10px] font-mono text-zinc-500 block">
                     voice_enable_while_typing
@@ -252,16 +294,16 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
                 !isMasterEnabled
                   ? "Locked: Enable Master Voice Control first"
                   : isWhileTypingEnabled
-                  ? "Disable voice while typing"
-                  : "Enable voice while typing"
+                    ? "Disable voice while typing"
+                    : "Enable voice while typing"
               }
               className={cn(
                 "relative inline-flex h-7 w-13 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:ring-offset-2 focus:ring-offset-zinc-950",
                 !isMasterEnabled
                   ? "bg-zinc-900 cursor-not-allowed opacity-50"
                   : isWhileTypingEnabled
-                  ? "bg-indigo-600 shadow-[0_0_15px_rgba(99,102,241,0.4)] cursor-pointer"
-                  : "bg-zinc-800 hover:bg-zinc-750 cursor-pointer"
+                    ? "bg-indigo-600 shadow-[0_0_15px_rgba(99,102,241,0.4)] cursor-pointer"
+                    : "bg-zinc-800 hover:bg-zinc-750 cursor-pointer"
               )}
             >
               <span
@@ -272,6 +314,165 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
                 )}
               />
             </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Voice Model ID Section */}
+      <div className="relative p-5 sm:p-6 border-t border-white/[0.06] bg-zinc-950/30">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-400 shrink-0">
+                <Bot className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-semibold text-white tracking-tight">
+                    Voice Model ID
+                  </h3>
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.06] text-zinc-400 border border-white/[0.06]">
+                    voice_config.voice_model_id
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Identifier for AI speech synthesis model or custom cloned voice token stored in Vault
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              {modelIdInput && (
+                <button
+                  type="button"
+                  id="btn-copy-voice-model-id"
+                  onClick={handleCopy}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-all cursor-pointer"
+                  title="Copy Voice Model ID"
+                >
+                  {isCopied ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="text-emerald-400 font-mono text-[11px]">Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span className="font-mono text-[11px]">Copy</span>
+                    </>
+                  )}
+                </button>
+              )}
+
+              {isDirty && (
+                <button
+                  type="button"
+                  id="btn-revert-voice-model-id"
+                  onClick={handleReset}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-all cursor-pointer"
+                  title="Revert changes"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span className="font-mono text-[11px]">Revert</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                id="btn-save-voice-model-id"
+                onClick={handleSaveModelId}
+                disabled={!isDirty || isSavingModelId || isUpdating}
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer shadow-sm",
+                  justSaved
+                    ? "bg-emerald-600/30 text-emerald-300 border border-emerald-500/40"
+                    : isDirty
+                    ? "bg-gradient-to-r from-cyan-600 to-sky-600 hover:from-cyan-500 hover:to-sky-500 text-white border border-cyan-400/30 shadow-[0_0_15px_rgba(6,182,212,0.25)]"
+                    : "bg-white/[0.04] text-zinc-500 border border-white/[0.05] cursor-not-allowed"
+                )}
+              >
+                {isSavingModelId ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Saving...</span>
+                  </>
+                ) : justSaved ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Saved in Vault</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Save Model ID</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div className="relative mt-1">
+            <textarea
+              id="input-voice-model-id"
+              value={modelIdInput}
+              onChange={(e) => setModelIdInput(e.target.value)}
+              onKeyDown={(e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                  handleSaveModelId();
+                }
+              }}
+              rows={3}
+              placeholder="Enter or paste your voice model ID (e.g. eleven_multilingual_v2, custom voice ID hash, or high-capacity model weights identifier)..."
+              className="w-full px-3.5 py-2.5 rounded-xl text-xs font-mono bg-zinc-950/80 border border-white/[0.08] text-cyan-200 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 transition-all resize-y min-h-[72px]"
+            />
+
+            <div className="flex items-center justify-between mt-1.5 px-1 text-[11px] text-zinc-500 font-mono">
+              <span>
+                Press <kbd className="px-1 py-0.5 rounded bg-white/[0.06] text-zinc-400 border border-white/[0.06]">Ctrl</kbd> + <kbd className="px-1 py-0.5 rounded bg-white/[0.06] text-zinc-400 border border-white/[0.06]">Enter</kbd> to save
+              </span>
+              <span className={cn(modelIdInput.length > 0 ? "text-cyan-400/80" : "text-zinc-600")}>
+                {modelIdInput.length} characters
+              </span>
+            </div>
+
+            {/* Quick preset buttons for verified premade voices */}
+            <div className="mt-3 pt-3 border-t border-white/[0.05] space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium text-zinc-400">
+                  Verified Premade Voices (Works with Free & Paid ElevenLabs tiers):
+                </span>
+                <span className="text-[10px] text-zinc-500 font-mono">
+                  Click to select
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { name: "Sarah (Default)", id: "EXAVITQu4vr4xnSDxMaL", desc: "Mature, Reassuring" },
+                  { name: "Alice", id: "Xb7hH8MSUJpSbSDYk0k2", desc: "Clear Educator" },
+                  { name: "George", id: "JBFqnCBsd6RMkjVDRZzb", desc: "Warm Storyteller" },
+                  { name: "Roger", id: "CwhRBWXzGAHq8TQ4Fs17", desc: "Laid-Back Casual" },
+                  { name: "Charlie", id: "IKne3meq5aSn9XLyUdCD", desc: "Deep & Confident" },
+                ].map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => setModelIdInput(preset.id)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg text-[11px] font-mono transition-all cursor-pointer border",
+                      modelIdInput.trim() === preset.id
+                        ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-[0_0_10px_rgba(6,182,212,0.15)] font-semibold"
+                        : "bg-white/[0.03] hover:bg-white/[0.08] text-zinc-300 border-white/[0.06]"
+                    )}
+                    title={`${preset.name}: ${preset.desc} (${preset.id})`}
+                  >
+                    <span>{preset.name}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-zinc-500 leading-relaxed">
+                Free ElevenLabs accounts only allow Premade voices via API. Library or cloned voices require a paid ElevenLabs plan. If an unpermitted library voice is entered, MIRA automatically falls back to Sarah so you always hear speech.
+              </p>
+            </div>
           </div>
         </div>
       </div>

@@ -134,7 +134,8 @@ CREATE TABLE IF NOT EXISTS voice_config (
     id INTEGER PRIMARY KEY,
     mic_auto_start BOOLEAN DEFAULT 0,
     voice_enable_master BOOLEAN DEFAULT 0,
-    voice_enable_while_typing BOOLEAN DEFAULT 0
+    voice_enable_while_typing BOOLEAN DEFAULT 0,
+    voice_model_id TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_voice_config_master ON voice_config(voice_enable_master);
 CREATE INDEX IF NOT EXISTS idx_voice_config_while_typing ON voice_config(voice_enable_while_typing);
