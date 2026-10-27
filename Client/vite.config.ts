@@ -14,8 +14,12 @@ let clientPort: number | undefined;
 let clientHost: string | undefined = process.env.TAURI_DEV_HOST || process.env.HOST;
 
 try {
-  const servicesPath = path.resolve(__dirname, "../services.json");
-  if (fs.existsSync(servicesPath)) {
+  const candidateServices = [
+    path.resolve(__dirname, "../scripts/services.json"),
+    path.resolve(__dirname, "../services.json"),
+  ];
+  const servicesPath = candidateServices.find((p) => fs.existsSync(p));
+  if (servicesPath) {
     const raw = fs.readFileSync(servicesPath, "utf-8");
     servicesConfig = JSON.parse(raw);
     if (servicesConfig.client) {

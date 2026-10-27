@@ -94,7 +94,7 @@ jobs:
         env:
           APPIMAGE_EXTRACT_AND_RUN: '1'
         run: |
-          python package.py
+          python scripts/build.py
 
       - name: Stage Release Artifacts
         shell: bash

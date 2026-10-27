@@ -15,7 +15,11 @@ import webbrowser
 from pathlib import Path
 from typing import Any, Dict, List, Set, Tuple
 
-ROOT_DIR = Path(__file__).resolve().parent
+SCRIPT_DIR = Path(__file__).resolve().parent
+if (SCRIPT_DIR.parent / "Vault").exists() and (SCRIPT_DIR.parent / "Client").exists():
+    ROOT_DIR = SCRIPT_DIR.parent
+else:
+    ROOT_DIR = SCRIPT_DIR
 
 # Ensure valid stdout and stderr in headless/windowless GUI environments (e.g. spawned by Tauri with CREATE_NO_WINDOW)
 if sys.stdout is None or not hasattr(sys.stdout, "write"):
@@ -42,7 +46,7 @@ if hasattr(sys.stderr, "reconfigure"):
     except Exception:
         pass
 
-SERVICES_JSON_PATH = ROOT_DIR / "services.json"
+SERVICES_JSON_PATH = SCRIPT_DIR / "services.json"
 
 USE_COLOR = (
     os.name != "nt"

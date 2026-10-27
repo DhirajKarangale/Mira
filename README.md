@@ -872,19 +872,15 @@ Client\src-tauri\target\release\bundle\nsis\MIRA_0.1.0_x64-setup.exe
 - **Smart Lifecycle:** Automatically boots child microservices on launch and gracefully shuts them down when closing the application.
 - **Clean Uninstaller:** Fully uninstalls cleanly from Windows Settings > Installed Apps.
 
-### Option B: Build the Windows Installer from Source
-Run the automated multi-service packaging pipeline:
+### Option B: Build the Installer from Source
+Run the automated cross-platform packaging pipeline:
 ```powershell
-python package_windows.py
-```
-Or simply double-click:
-```cmd
-package_windows.bat
+python scripts/build.py
 ```
 
 ### Option C: Run in Web / Development Mode
 Start all services simultaneously in development mode:
 ```powershell
-python start.py
+python scripts/start.py
 ```
 Then open `http://localhost:9004` in your browser.

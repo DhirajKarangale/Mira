@@ -6,7 +6,13 @@ from typing import Any, Dict, Optional
 import requests
 
 def load_services_json() -> Dict[str, str]:
-    candidate_paths = [Path(os.getenv('SERVICES_JSON_PATH', '')), Path(__file__).resolve().parent.parent / 'services.json', Path.cwd() / 'services.json']
+    candidate_paths = [
+        Path(os.getenv('SERVICES_JSON_PATH', '')),
+        Path(__file__).resolve().parent.parent / 'scripts' / 'services.json',
+        Path(__file__).resolve().parent.parent / 'services.json',
+        Path.cwd() / 'scripts' / 'services.json',
+        Path.cwd() / 'services.json',
+    ]
     for p in candidate_paths:
         if p and p.exists() and p.is_file():
             try:

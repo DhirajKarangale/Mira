@@ -38,6 +38,8 @@ fn spawn_backend(app: &tauri::App) -> Option<u32> {
         candidate_start_py.push(dir.join("start.py"));
     }
 
+    candidate_start_py.push(std::path::PathBuf::from("../../scripts/start.py"));
+    candidate_start_py.push(std::path::PathBuf::from("../scripts/start.py"));
     candidate_start_py.push(std::path::PathBuf::from("../../start.py"));
     candidate_start_py.push(std::path::PathBuf::from("../start.py"));
 

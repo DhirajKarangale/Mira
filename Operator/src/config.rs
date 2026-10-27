@@ -33,6 +33,9 @@ fn get_service_map() -> &'static RwLock<HashMap<String, String>> {
         let mut map = HashMap::new();
         let candidate_paths = [
             std::env::var("SERVICES_JSON_PATH").ok().map(PathBuf::from),
+            Some(PathBuf::from("scripts/services.json")),
+            Some(PathBuf::from("../scripts/services.json")),
+            Some(PathBuf::from("../../scripts/services.json")),
             Some(PathBuf::from("services.json")),
             Some(PathBuf::from("../services.json")),
             Some(PathBuf::from("../../services.json")),

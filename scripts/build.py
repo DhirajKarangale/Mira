@@ -8,11 +8,13 @@ Single master builder that compiles, stages, and bundles MIRA for:
   • Linux (.deb package & .AppImage)
 
 Usage:
-    python package.py                 # Auto-detects OS and builds full package
-    python package.py --skip-operator # Reuse existing Operator binary
-    python package.py --skip-client   # Reuse existing Client/dist frontend
-    python package.py --stage-only    # Prepare bundle resources without Tauri build
-    python package.py --bundle nsis   # Force specific bundle target
+    python scripts/build.py                 # Auto-detects OS and builds full package
+    python scripts/build.py --skip-operator # Reuse existing Operator binary
+    python scripts/build.py --skip-client   # Reuse existing Client/dist frontend
+    python scripts/build.py --stage-only    # Prepare bundle resources without Tauri build
+    python scripts/build.py --bundle nsis   # Force specific bundle target
+    python scripts/build.py --get-version   # Read current synchronized project version
+    python scripts/build.py --set-version 0.2.0 # Update version across all components
 """
 
 from __future__ import annotations
@@ -34,7 +36,8 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-ROOT_DIR = Path(__file__).resolve().parent
+SCRIPT_DIR = Path(__file__).resolve().parent
+ROOT_DIR = SCRIPT_DIR.parent if (SCRIPT_DIR.parent / "Client").exists() else SCRIPT_DIR
 CLIENT_DIR = ROOT_DIR / "Client"
 OPERATOR_DIR = ROOT_DIR / "Operator"
 TAURI_DIR = CLIENT_DIR / "src-tauri"
@@ -182,7 +185,7 @@ class UnifiedPackager:
         if redis_path:
             log_ok(f"Found Redis server: {redis_path}")
         else:
-            log_warn(f"redis-server not found. Target machine will need redis installed and running.")
+            log_warn("redis-server not found. Target machine will need redis installed and running.")
 
     def build_operator(self) -> None:
         log_step(2, self.total_steps, f"Compiling Rust Operator Service ({self.op_bin_name})")
@@ -265,8 +268,10 @@ class UnifiedPackager:
                 log_info(f"Staged {mod_name} service module")
 
         # 4. Copy start.py & services.json
-        shutil.copy2(ROOT_DIR / "start.py", RESOURCES_BACKEND_DIR / "start.py")
-        services_src = ROOT_DIR / "services.json"
+        start_src = SCRIPT_DIR / "start.py"
+        shutil.copy2(start_src, RESOURCES_BACKEND_DIR / "start.py")
+
+        services_src = SCRIPT_DIR / "services.json"
         services_dst = RESOURCES_BACKEND_DIR / "services.json"
         if services_src.exists():
             shutil.copy2(services_src, services_dst)
@@ -578,7 +583,7 @@ def check_project_versions() -> None:
     if all_same and val_set:
         print(f"\n  {GREEN}✔ All components are synchronized on version {next(iter(val_set))}{WHITE}\n")
     else:
-        print(f"\n  {YELLOW}▲ Versions are out of sync! Run: python package.py --set-version <VERSION>{WHITE}\n")
+        print(f"\n  {YELLOW}▲ Versions are out of sync! Run: python scripts/build.py --set-version <VERSION>{WHITE}\n")
 
 def set_project_version(new_version: str) -> None:
     new_version = new_version.lstrip("v").strip()
@@ -636,13 +641,13 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python package.py                     # Full build for current OS
-  python package.py --get-version       # Print current version (e.g. 0.1.1)
-  python package.py --set-version 0.2.0 # Bump version across all configs
-  python package.py --check-versions    # Verify sync across all component files
-  python package.py --stage-only        # Stage resources without packaging
-  python package.py --skip-operator     # Reuse existing operator binary
-  python package.py --bundle dmg        # Target specific bundle on macOS
+  python scripts/build.py                     # Full build for current OS
+  python scripts/build.py --get-version       # Print current version (e.g. 0.1.2)
+  python scripts/build.py --set-version 0.2.0 # Bump version across all configs
+  python scripts/build.py --check-versions    # Verify sync across all component files
+  python scripts/build.py --stage-only        # Stage resources without packaging
+  python scripts/build.py --skip-operator     # Reuse existing operator binary
+  python scripts/build.py --bundle dmg        # Target specific bundle on macOS
 """
     )
     parser.add_argument(
