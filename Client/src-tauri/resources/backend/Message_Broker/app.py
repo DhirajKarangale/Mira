@@ -1,0 +1,73 @@
+from __future__ import annotations
+import sys
+if sys.platform == 'win32':
+    from asyncio.proactor_events import _ProactorBasePipeTransport
+    _orig_call_connection_lost = _ProactorBasePipeTransport._call_connection_lost
+
+    def _silenced_call_connection_lost(self, exc):
+        try:
+            _orig_call_connection_lost(self, exc)
+        except ConnectionResetError:
+            pass
+        except OSError as e:
+            if getattr(e, 'winerror', None) == 10054:
+                pass
+            else:
+                raise
+    _ProactorBasePipeTransport._call_connection_lost = _silenced_call_connection_lost
+import asyncio
+from contextlib import asynccontextmanager
+import os
+import uvicorn
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import config
+from api import router as broker_router
+from redis_client import init_redis_connection, close_redis_connection
+from vault_logger import log
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        config.fetch_and_store_config()
+        log('Fetched and updated Message Broker configuration from Vault.')
+    except Exception as e:
+        log(f'Using local Message Broker configuration fallback: {e}')
+    log('Initializing Redis connection on startup...')
+    await init_redis_connection()
+    log('Redis connection established.')
+    try:
+        import consumer_group_manager as cgm
+        import redis_service as rs
+        for key, group in cgm._load_consumer_groups().items():
+            stream_name = f'mira:stream:{key}'
+            await rs.ensure_consumer_group(stream_name, group)
+        log('Ensured all configured consumer groups on Redis.')
+    except Exception as e:
+        log(f'Error ensuring configured consumer groups on startup: {e}')
+    yield
+    log('Closing Redis connection on shutdown...')
+    await close_redis_connection()
+    log('Redis connection closed.')
+
+def create_app() -> FastAPI:
+    app = FastAPI(title='Message Broker', lifespan=lifespan)
+    app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_credentials=True, allow_methods=['*'], allow_headers=['*'])
+    app.include_router(broker_router)
+    return app
+app = create_app()
+
+def start_app() -> None:
+    try:
+        config.fetch_and_store_config()
+    except Exception:
+        pass
+    host = config.SERVER_HOST
+    port = config.SERVER_PORT
+    if not port:
+        raise RuntimeError('Message Broker port not specified! Set via PORT env var, --port, or services.json')
+    reload = config.SERVER_RELOAD
+    log(f'Starting Message Broker server on http://{host}:{port}')
+    uvicorn.run('app:app', host=host, port=port, reload=reload)
+if __name__ == '__main__':
+    start_app()

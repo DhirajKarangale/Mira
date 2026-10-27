@@ -1,0 +1,155 @@
+from __future__ import annotations
+import asyncio
+from contextlib import asynccontextmanager
+from typing import Any, Dict, List, Optional, Union
+from fastapi import FastAPI, HTTPException, Query, status
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+import config
+from screenshot_processing import worker_manager, process_screenshot_job, IMAGE_DIFF_THRESHOLD, extract_pixels_and_grayscale, extract_text_from_image
+from knowledge_base import kb_worker_manager, QdrantVectorStore, kb_storage
+from vault_logger import log
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    log('Memory service starting up...')
+    asyncio.create_task(worker_manager.start())
+    asyncio.create_task(kb_worker_manager.start())
+    yield
+    log('Memory service shutting down...')
+    await asyncio.gather(worker_manager.stop(), kb_worker_manager.stop(), return_exceptions=True)
+app = FastAPI(title='MIRA Memory Service', description='Screenshot extraction, OCR text processing, Knowledge Base vector store, and worker orchestration', version='1.0.0', lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_credentials=True, allow_methods=['*'], allow_headers=['*'], expose_headers=['*'])
+
+class ExtractRequest(BaseModel):
+    image_path: str = Field(..., min_length=1)
+
+class JobProcessRequest(BaseModel):
+    job_id: str = Field(..., min_length=1)
+    app_name: str = Field('Unknown')
+    os: str = Field('Unknown')
+    image_path: str = Field(..., min_length=1)
+
+class KBSearchRequest(BaseModel):
+    query_vector: list[float] = Field(..., min_length=1)
+    limit: int = Field(5, ge=1, le=100)
+    app_name: Optional[Union[str, list[str]]] = None
+    os: Optional[str] = None
+    start_timestamp: Optional[int] = None
+    end_timestamp: Optional[int] = None
+    timestamp_gt: Optional[int] = None
+    timestamp_gte: Optional[int] = None
+    timestamp_lt: Optional[int] = None
+    timestamp_lte: Optional[int] = None
+    text_query: Optional[str] = None
+
+class KBJobIngestItem(BaseModel):
+    app_name: Optional[str] = 'Unknown'
+    os: Optional[str] = 'Unknown'
+    timestamp: Optional[int] = None
+    summarized_text: str = ''
+    embedding: list[float]
+
+class KBIngestBatchRequest(BaseModel):
+    jobs: list[KBJobIngestItem]
+
+@app.get('/health', status_code=status.HTTP_200_OK)
+async def health():
+    return {'service': 'Memory', 'status': 'online'}
+
+@app.get('/status', status_code=status.HTTP_200_OK)
+async def get_status():
+    return {'service': 'Memory', 'status': 'online', 'workers': worker_manager.get_status(), 'knowledge_base': kb_worker_manager.get_status(), 'image_diff_threshold': IMAGE_DIFF_THRESHOLD}
+
+@app.post('/workers/start', status_code=status.HTTP_200_OK)
+async def start_workers():
+    await worker_manager.start()
+    await kb_worker_manager.start()
+    return {'status': 'started', 'workers': worker_manager.get_status(), 'knowledge_base': kb_worker_manager.get_status()}
+
+@app.post('/workers/stop', status_code=status.HTTP_200_OK)
+async def stop_workers():
+    await worker_manager.stop()
+    await kb_worker_manager.stop()
+    return {'status': 'stopped', 'workers': worker_manager.get_status(), 'knowledge_base': kb_worker_manager.get_status()}
+
+@app.get('/knowledge-base/status', status_code=status.HTTP_200_OK)
+async def get_kb_status():
+    return {'status': 'online', 'workers': kb_worker_manager.get_status(), 'daily_knowledge_bases': kb_storage.list_knowledge_bases()}
+
+@app.get('/knowledge-base', status_code=status.HTTP_200_OK)
+async def list_knowledge_bases_endpoint(start_date: Optional[str]=Query(None, description='Filter KBs covering start date onwards'), end_date: Optional[str]=Query(None, description='Filter KBs covering up to end date'), search: Optional[str]=Query(None, description='Search term for KB name or date'), page: int=Query(1, ge=1, description='Page number (1-based)'), limit: int=Query(10, ge=1, le=100, description='Items per page')):
+    try:
+        data = await asyncio.to_thread(kb_worker_manager.list_knowledge_bases, start_date=start_date, end_date=end_date, search=search, page=page, limit=limit)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to list Knowledge Bases: {str(e)}'})
+
+@app.delete('/knowledge-base/{name}', status_code=status.HTTP_200_OK)
+async def delete_knowledge_base_endpoint(name: str):
+    if not name or not name.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={'message': 'Knowledge Base name parameter is required.'})
+    target_name = name.strip()
+    try:
+        await asyncio.to_thread(kb_worker_manager.delete_knowledge_base, target_name)
+        return {'status': 'success', 'message': f"Knowledge Base '{target_name}' deleted successfully.", 'name': target_name}
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={'message': str(e)})
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={'message': str(e)})
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f"Failed to delete Knowledge Base '{target_name}': {str(e)}"})
+
+@app.post('/knowledge-base/cleanup', status_code=status.HTTP_200_OK)
+async def cleanup_knowledge_bases_endpoint():
+    try:
+        deleted = await asyncio.to_thread(kb_worker_manager.cleanup_expired_knowledge_bases)
+        return {'status': 'success', 'deleted_count': len(deleted), 'deleted': deleted}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to cleanup expired Knowledge Bases: {str(e)}'})
+
+@app.get('/knowledge-base/retention', status_code=status.HTTP_200_OK)
+async def get_retention_endpoint():
+    try:
+        from knowledge_base import get_kb_retention_period
+        period = await asyncio.to_thread(get_kb_retention_period)
+        return {'status': 'success', 'retention_period': period}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to fetch retention period: {str(e)}'})
+
+@app.post('/knowledge-base/search', status_code=status.HTTP_200_OK)
+async def search_kb(req: KBSearchRequest):
+    try:
+        results = await asyncio.to_thread(kb_worker_manager.vector_store.search, query_vector=req.query_vector, limit=req.limit, app_name=req.app_name, os_name=req.os, start_timestamp=req.start_timestamp, end_timestamp=req.end_timestamp, timestamp_gt=req.timestamp_gt, timestamp_gte=req.timestamp_gte, timestamp_lt=req.timestamp_lt, timestamp_lte=req.timestamp_lte, text_query=req.text_query)
+        return {'status': 'success', 'count': len(results), 'results': results}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Search failed: {str(e)}'})
+
+@app.post('/knowledge-base/batch-ingest', status_code=status.HTTP_200_OK)
+async def batch_ingest_kb(req: KBIngestBatchRequest):
+    try:
+        raw_jobs = [j.model_dump() for j in req.jobs]
+        success = await asyncio.to_thread(kb_worker_manager.vector_store.ingest_batch, raw_jobs)
+        return {'status': 'success', 'ingested': len(raw_jobs)}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Batch ingestion failed: {str(e)}'})
+
+@app.post('/extract', status_code=status.HTTP_200_OK)
+async def extract_data(req: ExtractRequest):
+    try:
+        pixels, gray = extract_pixels_and_grayscale(req.image_path)
+        text = extract_text_from_image(req.image_path)
+        return {'status': 'success', 'image_path': req.image_path, 'shape': list(pixels.shape), 'grayscale_shape': list(gray.shape), 'extracted_text': text}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={'message': f'Extraction failed: {str(e)}'})
+
+@app.post('/process-job', status_code=status.HTTP_200_OK)
+async def process_job_endpoint(job: JobProcessRequest):
+    try:
+        success = await asyncio.to_thread(process_screenshot_job, job.model_dump())
+        return {'status': 'processed', 'success': success}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Job processing failed: {str(e)}'})
+if __name__ == '__main__':
+    import uvicorn
+    uvicorn.run('app:app', host=config.SERVER_HOST, port=config.SERVER_PORT, reload=False)

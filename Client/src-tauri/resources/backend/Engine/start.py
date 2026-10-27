@@ -1,0 +1,85 @@
+from __future__ import annotations
+import argparse
+import asyncio
+import os
+import signal
+import sys
+from pathlib import Path
+import uvicorn
+_engine_dir = Path(__file__).resolve().parent
+if str(_engine_dir) not in sys.path:
+    sys.path.insert(0, str(_engine_dir))
+import config
+from vault_logger import log, log_error
+from ocr_summarization import start_ocr_summarization, stop_ocr_summarization, get_summarization_status
+from embedding import initialize_embedding_model, get_embedding_status
+from chat import start_chat_workers, stop_chat_workers, get_chat_status
+from daily_suggestions import start_daily_suggestions, stop_daily_suggestions, get_daily_suggestions_status
+
+async def run_standalone_workers():
+    log('Initializing Engine configuration from Vault...')
+    try:
+        config.CONFIG.fetch_from_vault()
+    except Exception as e:
+        log_error(f'Failed to fetch initial configuration from Vault: {e}')
+    log('Initializing embedding model manager...')
+    try:
+        await asyncio.to_thread(initialize_embedding_model)
+    except Exception as e:
+        log_error(f'Failed to initialize embedding model manager: {e}')
+    log('Starting OCR Summarization module...')
+    await start_ocr_summarization()
+    log(f'OCR Summarization module initialized. Status: {get_summarization_status()}')
+    log('Starting Chat module workers...')
+    await start_chat_workers()
+    log(f'Chat module workers initialized. Status: {get_chat_status()}')
+    log('Starting Daily Suggestions scheduler...')
+    await start_daily_suggestions()
+    log(f'Daily Suggestions scheduler initialized. Status: {get_daily_suggestions_status()}')
+    stop_event = asyncio.Event()
+
+    def _signal_handler():
+        log('Shutdown signal received.')
+        stop_event.set()
+    loop = asyncio.get_running_loop()
+    if os.name != 'nt':
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, _signal_handler)
+    try:
+        await stop_event.wait()
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    finally:
+        log('Shutting down Daily Suggestions scheduler...')
+        try:
+            await stop_daily_suggestions()
+        except Exception as e:
+            log_error(f'Error stopping daily suggestions scheduler: {e}')
+        log('Shutting down Chat module workers...')
+        try:
+            await stop_chat_workers()
+        except Exception as e:
+            log_error(f'Error stopping chat workers: {e}')
+        log('Shutting down OCR Summarization module...')
+        try:
+            await stop_ocr_summarization()
+        except Exception as e:
+            log_error(f'Error stopping summarization workers: {e}')
+        log('Engine shutdown complete.')
+
+def main():
+    parser = argparse.ArgumentParser(description='MIRA Engine Startup Script')
+    parser.add_argument('--workers-only', action='store_true', help='Run only background workers without web server')
+    parser.add_argument('--host', type=str, default=config.SERVER_HOST, help=f'Host (default: {config.SERVER_HOST})')
+    parser.add_argument('--port', type=int, default=config.SERVER_PORT, help=f'Port (default: {config.SERVER_PORT})')
+    args = parser.parse_args()
+    if args.workers_only:
+        try:
+            asyncio.run(run_standalone_workers())
+        except (KeyboardInterrupt, SystemExit):
+            print('\nExiting Engine workers.', flush=True)
+    else:
+        print(f'[ENGINE] Starting Engine Service on http://{args.host}:{args.port}...', flush=True)
+        uvicorn.run('app:app', host=args.host, port=args.port, reload=False)
+if __name__ == '__main__':
+    main()

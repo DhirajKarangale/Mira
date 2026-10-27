@@ -360,18 +360,70 @@ class LogFilterManager:
             pass
 
 class ProcessRunner:
-    def __init__(self, vault_url: str = ""):
+    def __init__(self, vault_url: str = "", is_prod: bool = False):
         self.processes: Dict[str, subprocess.Popen] = {}
         self.threads: List[threading.Thread] = []
         self._shutdown_event = threading.Event()
         self.log_filter = LogFilterManager(vault_url) if vault_url else None
+        self.is_prod = is_prod
+
+    def ensure_redis(self) -> None:
+        if is_port_in_use("127.0.0.1", 6379):
+            log_sys(f"{color('Redis service detected online', GREEN)} on 127.0.0.1:6379.")
+            return
+
+        log_sys(f"{color('NOTICE:', YELLOW)} Redis not detected on 127.0.0.1:6379. Searching for local redis-server binary...")
+        candidate_redis = [
+            ROOT_DIR / "bin" / "redis-server.exe",
+            ROOT_DIR.parent / "bin" / "redis-server.exe",
+            ROOT_DIR / "resources" / "bin" / "redis-server.exe",
+            Path(r"F:\Software\Redis-5.0.14.1\redis-server.exe"),
+        ]
+        found_redis = None
+        for cand in candidate_redis:
+            if cand.exists():
+                found_redis = cand
+                break
+
+        if found_redis:
+            log_sys(f"Launching bundled Redis service -> {color(str(found_redis), CYAN)}...")
+            try:
+                creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+                proc = subprocess.Popen(
+                    [str(found_redis)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=creationflags
+                )
+                self.processes["redis"] = proc
+                time.sleep(1.0)
+                if is_port_in_use("127.0.0.1", 6379):
+                    log_sys(f"{color('Local Redis server started successfully', GREEN)} on port 6379.")
+            except Exception as e:
+                log_sys(f"{color('WARNING:', YELLOW)} Could not launch Redis ({e}).")
+        else:
+            log_sys(f"{color('WARNING:', YELLOW)} redis-server.exe not found. Message Broker will attempt direct connection.")
 
     def build_command(self, module: Dict[str, Any], port: int, host: str) -> List[str]:
         mod_type = module["type"]
 
         if mod_type == "fastapi":
-            return [sys.executable, "-m", "uvicorn", "app:app", "--host", host, "--port", str(port), "--reload"]
+            cmd = [sys.executable, "-m", "uvicorn", "app:app", "--host", host, "--port", str(port)]
+            if not self.is_prod:
+                cmd.append("--reload")
+            return cmd
         elif mod_type == "rust":
+            candidates = [
+                module["dir"] / "target" / "release" / "operator.exe",
+                ROOT_DIR / "bin" / "operator.exe",
+                ROOT_DIR.parent / "bin" / "operator.exe",
+                ROOT_DIR / "resources" / "bin" / "operator.exe",
+                module["dir"] / "operator.exe",
+            ]
+            for exe in candidates:
+                if exe.exists():
+                    log_sys(f"Using precompiled Operator binary: {color(str(exe), CYAN)}")
+                    return [str(exe.resolve()), "--host", host, "--port", str(port)]
             return ["cargo", "run", "--", "--host", host, "--port", str(port)]
         elif mod_type == "node":
             npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
@@ -635,9 +687,14 @@ def main() -> None:
         help="Check health and connectivity status of currently running modules"
     )
     parser.add_argument(
-        "--kill-ports",
+        "--prod",
         action="store_true",
-        help="Forcefully terminate any existing processes holding the default ports"
+        help="Run services in production mode (no reload, precompiled binaries)"
+    )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="Run in headless non-interactive mode without opening browser"
     )
 
     args = parser.parse_args()
@@ -652,7 +709,8 @@ def main() -> None:
         kill_processes_on_ports(default_ports)
         return
 
-    print_banner()
+    if not args.headless:
+        print_banner()
 
     target_modules = list(MODULE_REGISTRY)
     if args.modules:
@@ -682,23 +740,24 @@ def main() -> None:
         if mod["id"] not in url_map:
             url_map[mod["id"]] = f"http://{mod['default_host']}:{mod['default_port']}"
 
-    print("\n" + "=" * 82)
-    print(f"{'Module':<18} {'Default Port':<14} {'Assigned Port':<15} {'Assigned Base URL':<28} {'Status':<10}")
-    print("=" * 82)
+    if not args.headless:
+        print("\n" + "=" * 82)
+        print(f"{'Module':<18} {'Default Port':<14} {'Assigned Port':<15} {'Assigned Base URL':<28} {'Status':<10}")
+        print("=" * 82)
 
-    for mod_id, alloc in allocations.items():
-        name = alloc["module"]["name"]
-        def_port = str(alloc["default_port"])
-        asgn_port = str(alloc["port"])
-        url = alloc["url"]
-        if alloc["incremented"]:
-            status_desc = color("INCREMENTED", YELLOW)
-        else:
-            status_desc = color("OK (DEFAULT)", GREEN)
+        for mod_id, alloc in allocations.items():
+            name = alloc["module"]["name"]
+            def_port = str(alloc["default_port"])
+            asgn_port = str(alloc["port"])
+            url = alloc["url"]
+            if alloc["incremented"]:
+                status_desc = color("INCREMENTED", YELLOW)
+            else:
+                status_desc = color("OK (DEFAULT)", GREEN)
 
-        print(f"{name:<18} {def_port:<14} {asgn_port:<15} {url:<28} {status_desc:<10}")
+            print(f"{name:<18} {def_port:<14} {asgn_port:<15} {url:<28} {status_desc:<10}")
 
-    print("=" * 82 + "\n")
+        print("=" * 82 + "\n")
 
     if args.check:
         log_sys(f"{color('Port availability inspection complete.', GREEN)} Exiting (--check mode).")
@@ -711,7 +770,8 @@ def main() -> None:
     update_client_configs(url_map, client_port)
 
     vault_url = url_map.get("vault", "")
-    runner = ProcessRunner(vault_url)
+    runner = ProcessRunner(vault_url, is_prod=args.prod)
+    runner.ensure_redis()
 
     def signal_handler(signum, frame):
         print()
@@ -741,7 +801,7 @@ def main() -> None:
     print("=" * 82 + "\n")
 
     client_url = url_map.get("client")
-    if client_url and not args.no_client and not args.no_open:
+    if client_url and not args.no_client and not args.no_open and not args.headless:
         log_sys(f"Auto-launching Client UI in default browser -> {color(client_url, CYAN)}")
         try:
             webbrowser.open(client_url)
