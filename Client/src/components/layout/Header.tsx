@@ -1,15 +1,24 @@
-import type { FC } from "react";
+import { useState, useEffect, type FC } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { NavTabs } from "./NavTabs";
 import { WindowControls } from "./WindowControls";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
-import { Bot } from "lucide-react";
+import { Bot, Mic } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Header: FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { isMicOn, toggleListening } = useSpeechRecognition(true);
+  const [audioSignalLevel, setAudioSignalLevel] = useState<number>(0);
+
+  useEffect(() => {
+    const handleSignal = (e: any) => {
+      setAudioSignalLevel(e.detail?.level ?? 0);
+    };
+    window.addEventListener("mira-audio-signal", handleSignal);
+    return () => window.removeEventListener("mira-audio-signal", handleSignal);
+  }, []);
 
   const isMiraActive =
     location.pathname === "/" || location.pathname === "/mira";
@@ -35,22 +44,6 @@ export const Header: FC = () => {
             : "hover:bg-white/5 border border-transparent"
         )}
       >
-        {/* Only one small green blinking dot at MIRA top corner when mic is on */}
-        {isMicOn && (
-          <span
-            id="mira-top-corner-mic-indicator"
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleListening();
-            }}
-            title="Microphone is ON (Listening). Click to mute."
-            className="absolute -top-1 -right-1 flex h-2.5 w-2.5 z-20 cursor-pointer pointer-events-auto"
-          >
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-80" />
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 shadow-[0_0_8px_#10b981]" />
-          </span>
-        )}
-
         <div
           className={cn(
             "flex items-center justify-center h-5 w-5 rounded transition-all duration-150",
@@ -83,6 +76,63 @@ export const Header: FC = () => {
           >
             Client
           </span>
+
+          {/* Animated Microphone with Live Signal Waves when mic is on */}
+          {isMicOn && (
+            <span
+              id="mira-mic-signals-indicator"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleListening();
+              }}
+              title="Microphone active: receiving audio signals. Click to mute."
+              className="flex items-center gap-1.5 ml-1 px-2 py-0.5 rounded-full bg-emerald-950/90 border border-emerald-500/50 shadow-[0_0_12px_rgba(16,185,129,0.35)] cursor-pointer select-none transition-all duration-200 hover:bg-emerald-900/90"
+            >
+              <Mic
+                className={cn(
+                  "w-3 h-3 text-emerald-400 transition-all duration-150",
+                  audioSignalLevel > 0.08
+                    ? "scale-110 text-emerald-300 drop-shadow-[0_0_6px_rgba(52,211,153,0.8)]"
+                    : "animate-pulse"
+                )}
+              />
+              <span className="flex items-center gap-0.5 h-3">
+                <span
+                  className={cn(
+                    "w-0.5 bg-emerald-400 rounded-full transition-all duration-100",
+                    audioSignalLevel > 0.05 ? "" : "animate-bounce"
+                  )}
+                  style={
+                    audioSignalLevel > 0.05
+                      ? { height: `${Math.max(4, Math.min(12, 4 + audioSignalLevel * 10))}px` }
+                      : { height: "6px", animationDuration: "600ms", animationDelay: "0ms" }
+                  }
+                />
+                <span
+                  className={cn(
+                    "w-0.5 bg-emerald-300 rounded-full transition-all duration-100",
+                    audioSignalLevel > 0.05 ? "" : "animate-bounce"
+                  )}
+                  style={
+                    audioSignalLevel > 0.05
+                      ? { height: `${Math.max(6, Math.min(14, 6 + audioSignalLevel * 14))}px` }
+                      : { height: "10px", animationDuration: "600ms", animationDelay: "150ms" }
+                  }
+                />
+                <span
+                  className={cn(
+                    "w-0.5 bg-emerald-400 rounded-full transition-all duration-100",
+                    audioSignalLevel > 0.05 ? "" : "animate-bounce"
+                  )}
+                  style={
+                    audioSignalLevel > 0.05
+                      ? { height: `${Math.max(4, Math.min(12, 4 + audioSignalLevel * 10))}px` }
+                      : { height: "6px", animationDuration: "600ms", animationDelay: "300ms" }
+                  }
+                />
+              </span>
+            </span>
+          )}
         </div>
 
         {isMiraActive && (

@@ -123,6 +123,20 @@ class TTSService {
         this.notifyListeners();
         break;
 
+      case "USAGE_RECORDED":
+        if (data.key && data.charsUsed) {
+          ttsKeyManager.recordUsage(data.key, data.charsUsed);
+          this.notifyListeners();
+        }
+        break;
+
+      case "KEY_STATUS_CHANGED":
+        if (data.key && data.status) {
+          ttsKeyManager.markKeyStatus(data.key, data.status);
+          this.notifyListeners();
+        }
+        break;
+
       case "VOICE_FALLBACK":
         console.warn(`[TTSService] Voice fallback triggered: ${data.reason}`);
         if (typeof window !== "undefined") {
@@ -165,6 +179,7 @@ class TTSService {
 
     const keys = ttsKeyManager.getAllKeys();
     const activeKeyIndex = ttsKeyManager.getState().currentIndex;
+    const keysUsage = ttsKeyManager.getAllKeyUsage();
     const voiceId = options.voiceId || this.selectedVoiceId;
 
     if (this.worker) {
@@ -175,6 +190,7 @@ class TTSService {
         modelId: options.modelId,
         keys,
         activeKeyIndex,
+        keysUsage,
       });
     } else {
       // Direct async fallback pipeline (if Web Worker restricted in WebView)
@@ -207,12 +223,20 @@ class TTSService {
         if (signal.aborted) break;
 
         const chunk = chunks[i];
+        const chunkCost = chunk.charCount || chunk.text.length || 100;
         let attempts = 0;
         let audioBuffer: ArrayBuffer | null = null;
 
         while (attempts < keys.length) {
           if (signal.aborted) break;
-          const key = ttsKeyManager.getCurrentKey();
+
+          // Proactive Pre-Exhaustion Check
+          let key = ttsKeyManager.getCurrentKey();
+          if (ttsKeyManager.isAboutToExhaust(key, chunkCost) && keys.length > 1) {
+            ttsKeyManager.rotateKey("Proactive pre-exhaustion rotation (~8,800 chars threshold)");
+            key = ttsKeyManager.getCurrentKey();
+          }
+
           const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?optimize_streaming_latency=3`;
 
           try {
@@ -233,12 +257,21 @@ class TTSService {
 
             if (res.ok) {
               audioBuffer = await res.arrayBuffer();
+              ttsKeyManager.recordUsage(key, chunkCost);
               ttsKeyManager.markSuccess();
               break;
             }
 
-            if (res.status === 401 || res.status === 402 || res.status === 429) {
-              ttsKeyManager.rotateKey(`HTTP ${res.status}`);
+            if (res.status === 401) {
+              ttsKeyManager.markKeyStatus(key, "invalid");
+              ttsKeyManager.rotateKey("HTTP 401: Unauthorized API key");
+              attempts++;
+              continue;
+            }
+
+            if (res.status === 402 || res.status === 429) {
+              ttsKeyManager.markKeyStatus(key, "exhausted");
+              ttsKeyManager.rotateKey(`HTTP ${res.status}: Quota/limit reached`);
               attempts++;
               continue;
             }

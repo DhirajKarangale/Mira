@@ -13,6 +13,12 @@ import { DEFAULT_VOICE_ID, FALLBACK_PREMADE_VOICE_ID } from "./ttsVoices";
 
 const DEFAULT_MODEL_ID = "eleven_turbo_v2_5"; // Ultra-low latency streaming model
 
+export interface KeyUsageMeta {
+  charsUsed: number;
+  isExhausted: boolean;
+  isInvalid: boolean;
+}
+
 interface StartMessage {
   type: "START_SYNTHESIS";
   text: string;
@@ -20,6 +26,7 @@ interface StartMessage {
   modelId?: string;
   keys: string[];
   activeKeyIndex?: number;
+  keysUsage?: Record<string, KeyUsageMeta>;
 }
 
 interface CancelMessage {
@@ -30,6 +37,7 @@ type WorkerIncomingMessage = StartMessage | CancelMessage;
 
 let activeAbortController: AbortController | null = null;
 let currentKeyIndex = 0;
+let localKeysUsage: Record<string, KeyUsageMeta> = {};
 
 self.onmessage = async (event: MessageEvent<WorkerIncomingMessage>) => {
   const data = event.data;
@@ -54,6 +62,7 @@ self.onmessage = async (event: MessageEvent<WorkerIncomingMessage>) => {
     const voiceId = data.voiceId || DEFAULT_VOICE_ID;
     const modelId = data.modelId || DEFAULT_MODEL_ID;
     currentKeyIndex = data.activeKeyIndex || 0;
+    localKeysUsage = { ...(data.keysUsage || {}) };
 
     if (!text || !text.trim()) {
       self.postMessage({ type: "SYNTHESIS_COMPLETE" });
@@ -130,7 +139,7 @@ self.onmessage = async (event: MessageEvent<WorkerIncomingMessage>) => {
 };
 
 /**
- * Fetch audio stream for a chunk, rotating keys automatically if token/quota limits hit
+ * Fetch audio stream for a chunk, rotating keys proactively before quota exhaustion
  */
 async function fetchChunkWithKeyRotation(
   chunk: TTSChunk,
@@ -141,11 +150,38 @@ async function fetchChunkWithKeyRotation(
 ): Promise<ArrayBuffer | null> {
   const maxAttempts = keys.length;
   let attempts = 0;
+  const chunkCost = chunk.charCount || chunk.text.length || 100;
 
   while (attempts < maxAttempts) {
     if (signal.aborted) return null;
 
-    const key = keys[currentKeyIndex];
+    let key = keys[currentKeyIndex];
+    let usage = localKeysUsage[key] || { charsUsed: 0, isExhausted: false, isInvalid: false };
+
+    // Proactive Pre-Exhaustion Check:
+    // If the current key is marked invalid/exhausted OR charsUsed + chunkCost >= 8,800 chars (~88% of 10k quota),
+    // and alternative keys are present in the pool, rotate BEFORE making the network request!
+    let proactiveSkips = 0;
+    while (
+      proactiveSkips < keys.length &&
+      (usage.isExhausted ||
+        usage.isInvalid ||
+        (keys.length > 1 && usage.charsUsed + chunkCost >= 8800))
+    ) {
+      const prevIndex = currentKeyIndex;
+      currentKeyIndex = (currentKeyIndex + 1) % keys.length;
+      proactiveSkips++;
+      key = keys[currentKeyIndex];
+      usage = localKeysUsage[key] || { charsUsed: 0, isExhausted: false, isInvalid: false };
+
+      self.postMessage({
+        type: "KEY_ROTATED",
+        previousIndex: prevIndex,
+        newIndex: currentKeyIndex,
+        reason: "Proactive rotation: key is near exhaustion (~8,800 chars) or flagged invalid.",
+      });
+    }
+
     const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?optimize_streaming_latency=3`;
 
     try {
@@ -168,6 +204,17 @@ async function fetchChunkWithKeyRotation(
       });
 
       if (response.ok) {
+        // Record character usage
+        usage.charsUsed += chunkCost;
+        localKeysUsage[key] = usage;
+
+        self.postMessage({
+          type: "USAGE_RECORDED",
+          key,
+          keyIndex: currentKeyIndex,
+          charsUsed: chunkCost,
+        });
+
         const arrayBuffer = await response.arrayBuffer();
         return arrayBuffer;
       }
@@ -194,9 +241,46 @@ async function fetchChunkWithKeyRotation(
             signal
           );
         }
+
+        // Quota / subscription exhausted
+        usage.isExhausted = true;
+        localKeysUsage[key] = usage;
+        self.postMessage({
+          type: "KEY_STATUS_CHANGED",
+          key,
+          keyIndex: currentKeyIndex,
+          status: "exhausted",
+          reason: "HTTP 402: Quota or subscription limit reached",
+        });
       }
 
-      // If Quota exceeded, 401 Unauthorized, or 429 Rate Limited: rotate!
+      if (response.status === 401) {
+        // Unauthorized key (e.g. invalid key format or revoked)
+        usage.isInvalid = true;
+        localKeysUsage[key] = usage;
+        self.postMessage({
+          type: "KEY_STATUS_CHANGED",
+          key,
+          keyIndex: currentKeyIndex,
+          status: "invalid",
+          reason: "HTTP 401: Unauthorized API key",
+        });
+      }
+
+      if (response.status === 429) {
+        // Rate limited or quota exceeded
+        usage.isExhausted = true;
+        localKeysUsage[key] = usage;
+        self.postMessage({
+          type: "KEY_STATUS_CHANGED",
+          key,
+          keyIndex: currentKeyIndex,
+          status: "exhausted",
+          reason: "HTTP 429: Rate limited or quota exhausted",
+        });
+      }
+
+      // Rotate key on 401, 402, 429
       if (
         response.status === 401 ||
         response.status === 402 ||
@@ -210,7 +294,7 @@ async function fetchChunkWithKeyRotation(
           type: "KEY_ROTATED",
           previousIndex: prevIndex,
           newIndex: currentKeyIndex,
-          reason: `HTTP ${response.status}: Quota/token exhausted or rate-limited`,
+          reason: `HTTP ${response.status}: Key exhausted, unauthorized, or rate-limited`,
         });
 
         console.warn(

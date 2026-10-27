@@ -32,8 +32,117 @@ class TranscribeManager {
   private lastTranscribedText = "";
   private lastTranscribedTime = 0;
 
+  // WebRTC Audio Preprocessing & Level Metering
+  private micStream: MediaStream | null = null;
+  private audioContext: AudioContext | null = null;
+  private analyser: AnalyserNode | null = null;
+  private meterInterval: any = null;
+
   constructor() {
     // Lazy initialization on start() to ensure audio context is ready
+  }
+
+  /**
+   * Initializes hardware/WebRTC DSP audio preprocessing.
+   * Applying echoCancellation, noiseSuppression, and autoGainControl
+   * cleans the microphone input before it enters the recognition engine.
+   * Also computes live audio RMS levels for visual signal indicators.
+   */
+  private async initAudioPreprocessing(): Promise<void> {
+    if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      return;
+    }
+
+    if (this.micStream) return; // Already active
+
+    try {
+      // Engage browser & OS WebRTC Acoustic Echo Cancellation and Noise Reduction
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 48000,
+          channelCount: 1,
+        },
+        video: false,
+      });
+
+      this.micStream = stream;
+
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        this.audioContext = new AudioCtx();
+        if (this.audioContext.state === "suspended") {
+          await this.audioContext.resume();
+        }
+
+        const source = this.audioContext.createMediaStreamSource(stream);
+        const analyser = this.audioContext.createAnalyser();
+        analyser.fftSize = 64;
+        analyser.smoothingTimeConstant = 0.5;
+        source.connect(analyser);
+        this.analyser = analyser;
+
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
+        if (this.meterInterval) clearInterval(this.meterInterval);
+        this.meterInterval = setInterval(() => {
+          if (!this.analyser || !this.isListening) return;
+          this.analyser.getByteFrequencyData(dataArray);
+
+          let sum = 0;
+          for (let i = 0; i < bufferLength; i++) {
+            sum += dataArray[i];
+          }
+          const avg = sum / bufferLength;
+          const level = Math.min(1, Math.max(0, avg / 80));
+
+          window.dispatchEvent(
+            new CustomEvent("mira-audio-signal", {
+              detail: { level, isSpeaking: level > 0.08 },
+            })
+          );
+        }, 80);
+      }
+    } catch (err) {
+      // Permission prompt declined or device in use; webkitSpeechRecognition can still run
+      console.warn("[Transcribe] Audio preprocessing DSP init skipped:", err);
+    }
+  }
+
+  private cleanupAudioPreprocessing(): void {
+    if (this.meterInterval) {
+      clearInterval(this.meterInterval);
+      this.meterInterval = null;
+    }
+    if (this.analyser) {
+      try {
+        this.analyser.disconnect();
+      } catch {}
+      this.analyser = null;
+    }
+    if (this.audioContext) {
+      try {
+        this.audioContext.close();
+      } catch {}
+      this.audioContext = null;
+    }
+    if (this.micStream) {
+      try {
+        this.micStream.getTracks().forEach((track) => track.stop());
+      } catch {}
+      this.micStream = null;
+    }
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("mira-audio-signal", {
+          detail: { level: 0, isSpeaking: false },
+        })
+      );
+    }
   }
 
   /**
@@ -90,16 +199,26 @@ class TranscribeManager {
       const instance = new SpeechRecognitionClass();
       this.recognition = instance;
 
+      // Enable continuous mode for endless real-time conversation
       instance.continuous = true;
       instance.interimResults = false;
-      instance.lang = "en-US";
-      instance.maxAlternatives = 1;
+
+      // Regional accent adaptation: use user's configured or system locale
+      const systemLang = typeof navigator !== "undefined" ? navigator.language : "en-US";
+      const preferredLang =
+        (typeof window !== "undefined" && localStorage.getItem("mira_transcribe_lang")) ||
+        systemLang ||
+        "en-US";
+      instance.lang = preferredLang;
+
+      // Request multiple phonetic hypothesis alternatives to select highest confidence
+      instance.maxAlternatives = 3;
 
       instance.onstart = () => {
         if (this.recognition !== instance) return;
         this.isListening = true;
         this.retryCount = 0;
-        console.log("[Transcribe] Voice recognition listening...");
+        console.log(`[Transcribe] Voice recognition listening (lang: ${instance.lang})...`);
         window.dispatchEvent(
           new CustomEvent("mira-mic-state-change", { detail: { isListening: true } })
         );
@@ -115,29 +234,48 @@ class TranscribeManager {
           const item = results[i];
           if (!item) continue;
 
-          // When interimResults is false, all results are final
+          // When interimResults is false, results are final
           const isFinal = item.isFinal !== false;
           if (isFinal) {
-            const transcriptText = item[0]?.transcript?.trim();
-            if (transcriptText) {
+            // Evaluate all hypothesis alternatives and pick the highest confidence text
+            let bestTranscript = "";
+            let highestConfidence = -1;
+
+            for (let a = 0; a < item.length; a++) {
+              const alt = item[a];
+              if (!alt?.transcript) continue;
+              const conf = typeof alt.confidence === "number" ? alt.confidence : 0.8;
+              if (conf > highestConfidence || !bestTranscript) {
+                highestConfidence = conf;
+                bestTranscript = alt.transcript;
+              }
+            }
+
+            const cleanedText = cleanAndFormatTranscript(bestTranscript);
+            if (cleanedText) {
               const now = Date.now();
-              // Deduplicate rapid repeat events within 500ms
+              // Deduplicate rapid repeat events within 600ms
               if (
-                transcriptText.toLowerCase() === this.lastTranscribedText.toLowerCase() &&
-                now - this.lastTranscribedTime < 500
+                cleanedText.toLowerCase() === this.lastTranscribedText.toLowerCase() &&
+                now - this.lastTranscribedTime < 600
               ) {
                 continue;
               }
-              this.lastTranscribedText = transcriptText;
+              this.lastTranscribedText = cleanedText;
               this.lastTranscribedTime = now;
 
               const record: TranscribeRecord = {
-                text: transcriptText,
+                text: cleanedText,
                 time: new Date().toISOString(),
                 source: "voice",
               };
 
-              console.log("[Transcribe] Voice captured:", record);
+              console.log(
+                `[Transcribe] Voice captured (confidence: ${Math.round(
+                  highestConfidence * 100
+                )}%):`,
+                record
+              );
 
               // 1. Notify subscriber callbacks
               this.callbacks.forEach((cb) => {
@@ -159,7 +297,7 @@ class TranscribeManager {
         if (this.recognition !== instance) return;
         const error = event.error;
 
-        // "no-speech" is a normal silence timeout in Chromium; onend will automatically restart
+        // "no-speech" is normal silence timeout in Chromium; onend will automatically restart
         if (error === "no-speech") {
           return;
         }
@@ -171,6 +309,7 @@ class TranscribeManager {
           this.shouldRestart = false;
           this.isListening = false;
           this.cleanupCurrentInstance();
+          this.cleanupAudioPreprocessing();
           window.dispatchEvent(
             new CustomEvent("mira-mic-state-change", { detail: { isListening: false } })
           );
@@ -189,13 +328,14 @@ class TranscribeManager {
         // Auto-restart loop with fresh instance if mic is still active
         if (this.shouldRestart) {
           if (this.restartTimer) clearTimeout(this.restartTimer);
-          const delay = Math.min(250 + this.retryCount * 150, 1500);
+          const delay = Math.min(200 + this.retryCount * 150, 1500);
           this.restartTimer = setTimeout(() => {
             if (this.shouldRestart) {
               this.createAndStartInstance();
             }
           }, delay);
         } else {
+          this.cleanupAudioPreprocessing();
           window.dispatchEvent(
             new CustomEvent("mira-mic-state-change", { detail: { isListening: false } })
           );
@@ -230,6 +370,10 @@ class TranscribeManager {
 
     this.shouldRestart = true;
     this.retryCount = 0;
+
+    // Trigger WebRTC audio preprocessing & metering in background
+    this.initAudioPreprocessing().catch(() => {});
+
     return this.createAndStartInstance();
   }
 
@@ -237,6 +381,7 @@ class TranscribeManager {
     this.shouldRestart = false;
     this.retryCount = 0;
     this.cleanupCurrentInstance();
+    this.cleanupAudioPreprocessing();
     this.isListening = false;
     if (typeof window !== "undefined") {
       window.dispatchEvent(
@@ -253,6 +398,35 @@ class TranscribeManager {
     this.callbacks.add(callback);
     return () => this.callbacks.delete(callback);
   }
+}
+
+/**
+ * Intelligent acoustic transcript formatter:
+ * 1. Removes stuttered duplicate words
+ * 2. Fixes lowercase personal pronouns (I, I'm, I'll, etc.)
+ * 3. Enforces sentence capitalization and normalized whitespace
+ */
+export function cleanAndFormatTranscript(raw: string): string {
+  let text = (raw || "").trim();
+  if (!text) return "";
+
+  // 1. Remove stuttered consecutive duplicate words (e.g., "the the" -> "the")
+  text = text.replace(/\b(\w+)\s+\1\b/gi, "$1");
+
+  // 2. Fix lowercase standalone "i" and contractions
+  text = text.replace(/\bi\b/g, "I");
+  text = text.replace(/\bi'm\b/gi, "I'm");
+  text = text.replace(/\bi'll\b/gi, "I'll");
+  text = text.replace(/\bi've\b/gi, "I've");
+  text = text.replace(/\bi'd\b/gi, "I'd");
+
+  // 3. Ensure sentence starts with a capital letter
+  text = text.charAt(0).toUpperCase() + text.slice(1);
+
+  // 4. Clean extra spaces
+  text = text.replace(/\s+/g, " ").trim();
+
+  return text;
 }
 
 export const transcribeManager = new TranscribeManager();

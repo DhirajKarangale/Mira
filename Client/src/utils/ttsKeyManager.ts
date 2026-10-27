@@ -1,27 +1,61 @@
 /**
- * ElevenLabs API Key Rotation Manager
+ * ElevenLabs API Key Rotation & Proactive Quota Manager
  *
  * Manages an array of ElevenLabs API keys loaded from `elevenlabs_keys.json`
- * and localStorage. Automatically rotates to the next key when quota, 401,
- * 402, or 429 rate-limiting is encountered during audio synthesis.
+ * and localStorage. Tracks character quota usage per key, rotating proactively
+ * before a key exhausts (e.g. at ~88% of quota limit) so mid-conversion synthesis
+ * never hits a quota wall or audio stutter/glitch.
  */
 
 import defaultKeys from "./elevenlabs_keys.json";
+
+export interface KeyQuotaInfo {
+  charsUsed: number;
+  isExhausted: boolean;
+  isInvalid: boolean;
+  lastUsedAt: string;
+}
 
 export interface KeyRotationState {
   currentKey: string;
   currentIndex: number;
   totalKeys: number;
   exhausted: boolean;
+  charsUsed: number;
+  isNearExhaustion: boolean;
 }
+
+// ElevenLabs free tier provides 10,000 characters per key.
+// Proactively switch at 8,800 characters to prevent 429 quota exceptions.
+export const FREE_TIER_KEY_LIMIT = 10000;
+export const PROACTIVE_ROTATION_THRESHOLD = 8800;
 
 class TTSKeyManager {
   private keys: string[] = [];
   private currentIndex: number = 0;
   private failedAttemptsInCycle: number = 0;
+  private keyUsage: Record<string, KeyQuotaInfo> = {};
 
   constructor() {
     this.initKeys();
+    this.loadKeyUsage();
+  }
+
+  private loadKeyUsage() {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = localStorage.getItem("mira_elevenlabs_key_usage");
+      if (stored) {
+        this.keyUsage = JSON.parse(stored) || {};
+      }
+    } catch {}
+  }
+
+  private persistKeyUsage() {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem("mira_elevenlabs_key_usage", JSON.stringify(this.keyUsage));
+    } catch {}
   }
 
   private initKeys() {
@@ -48,6 +82,9 @@ class TTSKeyManager {
       }
     }
 
+    // Filter empty keys and trim
+    loadedKeys = loadedKeys.map((k) => k.trim()).filter(Boolean);
+
     // Fallback: Ensure at least the initial user key is present
     if (loadedKeys.length === 0) {
       loadedKeys = ["sk_f385fbc83886c7c21109b062c1c226e4d8985180d23c5800"];
@@ -59,13 +96,79 @@ class TTSKeyManager {
   }
 
   /**
-   * Get the current active ElevenLabs API key
+   * Check if a key is near exhaustion or marked exhausted/invalid
+   */
+  public isAboutToExhaust(key: string, estimatedChars: number = 100): boolean {
+    const usage = this.keyUsage[key];
+    if (!usage) return false;
+    if (usage.isExhausted || usage.isInvalid) return true;
+    return usage.charsUsed + estimatedChars >= PROACTIVE_ROTATION_THRESHOLD;
+  }
+
+  /**
+   * Get the current active ElevenLabs API key, rotating proactively if near exhaustion
    */
   public getCurrentKey(): string {
     if (this.keys.length === 0) {
       this.initKeys();
     }
+
+    // If current key is near exhaustion and multiple keys are available, proactively rotate
+    const current = this.keys[this.currentIndex] || "";
+    if (this.keys.length > 1 && this.isAboutToExhaust(current)) {
+      this.rotateKey("Proactive pre-exhaustion threshold reached (~8,800 chars)");
+    }
+
     return this.keys[this.currentIndex] || "";
+  }
+
+  /**
+   * Record character usage after successful synthesis chunk
+   */
+  public recordUsage(key: string, chars: number) {
+    if (!key) return;
+    const existing = this.keyUsage[key] || {
+      charsUsed: 0,
+      isExhausted: false,
+      isInvalid: false,
+      lastUsedAt: new Date().toISOString(),
+    };
+
+    existing.charsUsed += chars;
+    existing.lastUsedAt = new Date().toISOString();
+
+    // Check if key has crossed safe proactive threshold
+    if (existing.charsUsed >= PROACTIVE_ROTATION_THRESHOLD) {
+      console.warn(
+        `[TTSKeyManager] Key ${key.substring(0, 10)}... has reached ${existing.charsUsed}/${FREE_TIER_KEY_LIMIT} chars. Marking near exhaustion.`
+      );
+      if (this.keys.length > 1) {
+        this.rotateKey("Proactive rotation: key near 10k quota ceiling");
+      }
+    }
+
+    this.keyUsage[key] = existing;
+    this.persistKeyUsage();
+    this.markSuccess();
+  }
+
+  /**
+   * Mark a key as exhausted or invalid
+   */
+  public markKeyStatus(key: string, status: "exhausted" | "invalid") {
+    if (!key) return;
+    const existing = this.keyUsage[key] || {
+      charsUsed: 0,
+      isExhausted: false,
+      isInvalid: false,
+      lastUsedAt: new Date().toISOString(),
+    };
+
+    if (status === "exhausted") existing.isExhausted = true;
+    if (status === "invalid") existing.isInvalid = true;
+
+    this.keyUsage[key] = existing;
+    this.persistKeyUsage();
   }
 
   /**
@@ -81,9 +184,11 @@ class TTSKeyManager {
     this.failedAttemptsInCycle++;
 
     const isExhausted = this.failedAttemptsInCycle >= this.keys.length;
+    const nextKey = this.keys[this.currentIndex] || "";
+    const nextUsage = this.keyUsage[nextKey];
 
     console.warn(
-      `[TTSKeyManager] ${reason}. Rotated key: index [${previousIndex} -> ${this.currentIndex}] of ${this.keys.length} total keys.`
+      `[TTSKeyManager] ${reason}. Rotated key: [${previousIndex} -> ${this.currentIndex}] (${this.keys.length} keys total).`
     );
 
     if (typeof window !== "undefined") {
@@ -95,16 +200,19 @@ class TTSKeyManager {
             totalKeys: this.keys.length,
             isExhausted,
             reason,
+            charsUsed: nextUsage?.charsUsed || 0,
           },
         })
       );
     }
 
     return {
-      currentKey: this.getCurrentKey(),
+      currentKey: nextKey,
       currentIndex: this.currentIndex,
       totalKeys: this.keys.length,
       exhausted: isExhausted,
+      charsUsed: nextUsage?.charsUsed || 0,
+      isNearExhaustion: this.isAboutToExhaust(nextKey),
     };
   }
 
@@ -126,7 +234,17 @@ class TTSKeyManager {
    * Get all loaded keys (masked for privacy)
    */
   public getAllKeys(): string[] {
+    // Refresh list in case elevenlabs_keys.json was updated
+    this.initKeys();
     return [...this.keys];
+  }
+
+  /**
+   * Return character usage mapping for all keys
+   */
+  public getAllKeyUsage(): Record<string, KeyQuotaInfo> {
+    this.loadKeyUsage();
+    return { ...this.keyUsage };
   }
 
   /**
@@ -144,11 +262,15 @@ class TTSKeyManager {
   }
 
   public getState(): KeyRotationState {
+    const key = this.getCurrentKey();
+    const usage = this.keyUsage[key];
     return {
-      currentKey: this.getCurrentKey(),
+      currentKey: key,
       currentIndex: this.currentIndex,
       totalKeys: this.keys.length,
       exhausted: this.isExhausted(),
+      charsUsed: usage?.charsUsed || 0,
+      isNearExhaustion: this.isAboutToExhaust(key),
     };
   }
 }
