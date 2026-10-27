@@ -1726,12 +1726,8 @@ export const ChatsPage: FC = () => {
             // Empty / No Session Selected
             <div className="flex flex-col items-center justify-center h-full text-center max-w-md mx-auto space-y-6 py-12">
               <div className="relative">
-                <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-zinc-900/80 border border-cyan-500/30 p-2.5 shadow-[0_0_35px_rgba(6,182,212,0.25)]">
-                  <img
-                    src="/icons/Square71x71Logo.png"
-                    alt="MIRA Assistant"
-                    className="w-full h-full object-contain rounded-xl"
-                  />
+                <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600/20 to-cyan-500/20 border border-cyan-500/30 text-cyan-400 shadow-[0_0_35px_rgba(6,182,212,0.2)]">
+                  <Bot className="w-8 h-8" />
                 </div>
                 <div className="absolute -bottom-1 -right-1 flex items-center justify-center w-6 h-6 rounded-lg bg-cyan-500 text-zinc-950 shadow-md">
                   <Sparkles className="w-3.5 h-3.5" />
@@ -1808,22 +1804,13 @@ export const ChatsPage: FC = () => {
                     {/* Avatar */}
                     <div
                       className={cn(
-                        "w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-xs font-semibold shadow-md overflow-hidden",
+                        "w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-xs font-semibold shadow-md",
                         isUser
                           ? "bg-gradient-to-tr from-blue-600 to-cyan-600 text-white"
-                          : "bg-zinc-900 border border-cyan-500/30 p-1.5 shadow-[0_0_12px_rgba(6,182,212,0.15)]"
+                          : "bg-zinc-900 border border-cyan-500/30 text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]"
                       )}
                     >
-                      {isUser ? (
-                        <User className="w-4 h-4" />
-                      ) : (
-                        <img
-                          src="/icons/Square30x30Logo.png"
-                          srcSet="/icons/64x64.png 2x"
-                          alt="Mira"
-                          className="w-full h-full object-contain rounded-sm"
-                        />
-                      )}
+                      {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
                     </div>
 
                     {/* Content */}
@@ -1894,13 +1881,8 @@ export const ChatsPage: FC = () => {
               {/* Sending / Thinking Indicator with 15 Rotating Messages */}
               {isCurrentSessionSending && (
                 <div className="flex items-start gap-3 w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-900 border border-cyan-500/30 p-1.5 shrink-0 shadow-[0_0_15px_rgba(6,182,212,0.15)] overflow-hidden">
-                    <img
-                      src="/icons/Square30x30Logo.png"
-                      srcSet="/icons/64x64.png 2x"
-                      alt="Thinking"
-                      className="w-full h-full object-contain rounded-sm animate-pulse"
-                    />
+                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shrink-0 shadow-[0_0_15px_rgba(6,182,212,0.15)]">
+                    <Bot className="w-4 h-4 animate-pulse" />
                   </div>
                   <div className="flex flex-col space-y-1.5 max-w-[88%] sm:max-w-[80%]">
                     <div className="flex items-center gap-2 px-1 text-[11px] text-zinc-500 font-mono">
