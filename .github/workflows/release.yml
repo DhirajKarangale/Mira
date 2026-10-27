@@ -187,7 +187,11 @@ jobs:
             #### macOS
             1. Download `MIRA_..._x64.dmg` (or Apple Silicon `.dmg`).
             2. Open the disk image and drag **MIRA.app** into `/Applications`.
-            3. On first launch, permit Screen Recording and Microphone when prompted in macOS System Settings.
+            3. *Note for unsigned open-source apps:* If macOS displays *"MIRA is damaged and can't be opened"*, run this one-time command in Terminal to clear the download quarantine flag:
+               ```bash
+               xattr -cr /Applications/MIRA.app
+               ```
+            4. On first launch, permit Screen Recording and Microphone when prompted in macOS System Settings.
 
             #### Linux
             * **Debian / Ubuntu:**
