@@ -30,11 +30,22 @@ export interface KeyRotationState {
 export const FREE_TIER_KEY_LIMIT = 10000;
 export const PROACTIVE_ROTATION_THRESHOLD = 8800;
 
+// List of known dead/exhausted keys to automatically purge from localStorage
+const KNOWN_DEAD_KEYS = new Set([
+  "sk_f385fbc83886c7c21109b062c1c226e4d8985180d23c5800",
+  "sk_d78bb7b3810d8f52264c67c2014cf6617ebd8c245e5c63eb",
+  "sk_70a8a312368fe3a5e0ff6ebabf17350be63bfa933c3bef77",
+  "sk_100f1a4242992ea1b15760eab8b1f691e74fc63847fd14d7",
+  "sk_8dde305111688d2df0609142d3585803ee6f2c413e764be3",
+  "sk_b9dde3ad58694f35a3a564e6f2ee2b299ce614e67afa3615",
+]);
+
 class TTSKeyManager {
   private keys: string[] = [];
   private currentIndex: number = 0;
   private failedAttemptsInCycle: number = 0;
   private keyUsage: Record<string, KeyQuotaInfo> = {};
+  private hasValidatedKeys: boolean = false;
 
   constructor() {
     this.initKeys();
@@ -71,7 +82,7 @@ class TTSKeyManager {
           if (Array.isArray(parsed)) {
             parsed.forEach((k) => {
               const trimmed = typeof k === "string" ? k.trim() : "";
-              if (trimmed && !loadedKeys.includes(trimmed)) {
+              if (trimmed && !loadedKeys.includes(trimmed) && !KNOWN_DEAD_KEYS.has(trimmed)) {
                 loadedKeys.push(trimmed);
               }
             });
@@ -82,17 +93,109 @@ class TTSKeyManager {
       }
     }
 
-    // Filter empty keys and trim
-    loadedKeys = loadedKeys.map((k) => k.trim()).filter(Boolean);
+    // Filter empty keys, dead keys, and trim
+    loadedKeys = loadedKeys
+      .map((k) => k.trim())
+      .filter((k) => Boolean(k) && !KNOWN_DEAD_KEYS.has(k));
 
-    // Fallback: Ensure at least the initial user key is present
+    // Fallback: Ensure active key is present
     if (loadedKeys.length === 0) {
-      loadedKeys = ["sk_f385fbc83886c7c21109b062c1c226e4d8985180d23c5800"];
+      loadedKeys = ["sk_8911f5d3f0437bb20706afe3333beae2b5f072f2681b998d"];
+    }
+
+    // Clean localStorage of dead keys
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("mira_elevenlabs_keys", JSON.stringify(loadedKeys));
+      } catch {}
     }
 
     this.keys = loadedKeys;
     this.currentIndex = 0;
     this.failedAttemptsInCycle = 0;
+  }
+
+  /**
+   * Permanently evict an expired, exhausted, or credit-less key from:
+   * 1. In-memory pool
+   * 2. Browser localStorage cache
+   * 3. elevenlabs_keys.json file on disk
+   */
+  public async removeKeyPermanently(keyToRemove: string): Promise<string[]> {
+    if (!keyToRemove) return this.keys;
+    const trimmed = keyToRemove.trim();
+    console.warn(
+      `[TTSKeyManager] Permanently throwing out key ${trimmed.slice(0, 10)}... (no credit / expired / unusual activity)`
+    );
+
+    // 1. Remove from in-memory pool
+    this.keys = this.keys.filter((k) => k !== trimmed);
+    delete this.keyUsage[trimmed];
+
+    if (this.currentIndex >= this.keys.length) {
+      this.currentIndex = 0;
+    }
+
+    // 2. Remove from localStorage
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("mira_elevenlabs_keys", JSON.stringify(this.keys));
+        this.persistKeyUsage();
+      } catch {}
+
+      // 3. Request Vite server backend to delete from elevenlabs_keys.json on disk
+      try {
+        await fetch("/api/remove-elevenlabs-key", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: trimmed }),
+        });
+      } catch (err) {
+        console.warn("[TTSKeyManager] Failed to call /api/remove-elevenlabs-key:", err);
+      }
+    }
+
+    return this.keys;
+  }
+
+  /**
+   * Validates all keys on app load. Directly throws out any key that has 0 credits.
+   */
+  public async validateAndPruneAllKeys(): Promise<void> {
+    if (this.hasValidatedKeys) return;
+    this.hasValidatedKeys = true;
+
+    const keysToCheck = [...this.keys];
+    for (const key of keysToCheck) {
+      try {
+        const res = await fetch(
+          "https://api.elevenlabs.io/v1/text-to-speech/EXAVITQu4vr4xnSDxMaL?output_format=mp3_22050_32",
+          {
+            method: "POST",
+            headers: {
+              "xi-api-key": key,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              text: "a",
+              model_id: "eleven_turbo_v2_5",
+            }),
+          }
+        );
+
+        if (!res.ok) {
+          const body = await res.text().catch(() => "");
+          console.warn(
+            `[TTSKeyManager] Key ${key.slice(0, 10)}... has NO credits (${res.status}): ${body}. Throwing key out permanently!`
+          );
+          await this.removeKeyPermanently(key);
+        } else {
+          console.log(`[TTSKeyManager] Key ${key.slice(0, 10)}... validated successfully with active credits.`);
+        }
+      } catch (err) {
+        console.warn(`[TTSKeyManager] Error checking key ${key.slice(0, 10)}...`, err);
+      }
+    }
   }
 
   /**

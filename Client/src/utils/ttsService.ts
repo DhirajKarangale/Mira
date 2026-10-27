@@ -133,6 +133,7 @@ class TTSService {
       case "KEY_STATUS_CHANGED":
         if (data.key && data.status) {
           ttsKeyManager.markKeyStatus(data.key, data.status);
+          ttsKeyManager.removeKeyPermanently(data.key).catch(() => {});
           this.notifyListeners();
         }
         break;
@@ -264,6 +265,7 @@ class TTSService {
 
             if (res.status === 401) {
               ttsKeyManager.markKeyStatus(key, "invalid");
+              ttsKeyManager.removeKeyPermanently(key).catch(() => {});
               ttsKeyManager.rotateKey("HTTP 401: Unauthorized API key");
               attempts++;
               continue;
@@ -271,6 +273,7 @@ class TTSService {
 
             if (res.status === 402 || res.status === 429) {
               ttsKeyManager.markKeyStatus(key, "exhausted");
+              ttsKeyManager.removeKeyPermanently(key).catch(() => {});
               ttsKeyManager.rotateKey(`HTTP ${res.status}: Quota/limit reached`);
               attempts++;
               continue;

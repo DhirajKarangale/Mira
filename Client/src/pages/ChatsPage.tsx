@@ -92,6 +92,7 @@ export const ChatsPage: FC = () => {
   const unreadSessionIds = useChatStore((s) => s.unreadSessionIds);
   const markSessionRead = useChatStore((s) => s.markSessionRead);
   const setInputDraft = useChatStore((s) => s.setInputDraft);
+  const isVoiceAwake = useChatStore((s) => s.isVoiceAwake);
 
   // Active session sending status derived from persistent Zustand store
   const isCurrentSessionSending = isSessionSending(selectedSessionId);
@@ -154,30 +155,10 @@ export const ChatsPage: FC = () => {
     stop: stopTTS,
     togglePlay: toggleTTS,
     isPlaying: isTTSPlaying,
-    currentChunk: ttsCurrentChunk,
-    totalChunks: ttsTotalChunks,
     activeText: ttsActiveText,
   } = useTTS();
 
-  // Automatically append transcribed voice text into chat input
-  useEffect(() => {
-    const handleTranscription = (e: any) => {
-      const record = e.detail;
-      // Only append genuine voice dictation to inputText (exclude typed chat submissions)
-      if (record && record.text && record.source !== "chat") {
-        setInputText((prev) => {
-          const updated = prev ? `${prev} ${record.text}` : record.text;
-          inputTextRef.current = updated;
-          return updated;
-        });
-      }
-    };
-
-    window.addEventListener("mira-transcription", handleTranscription);
-    return () => {
-      window.removeEventListener("mira-transcription", handleTranscription);
-    };
-  }, []);
+  // Voice speech is automatically captured by useMiraWakeWord and routed directly to chat sessions
 
   // Session & Input refs for fresh access inside async effects / callbacks
   const selectedSessionIdRef = useRef<string | null>(selectedSessionId);
@@ -276,18 +257,7 @@ export const ChatsPage: FC = () => {
     }, 1500);
   }, []);
 
-  // Issue 9: Auto-resize input textarea height-wise up to 180px
-  const adjustTextareaHeight = useCallback(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    const newHeight = Math.min(el.scrollHeight, 180);
-    el.style.height = `${newHeight}px`;
-  }, []);
 
-  useEffect(() => {
-    adjustTextareaHeight();
-  }, [inputText, adjustTextareaHeight]);
 
   // Switch chat session deterministically preserving and restoring isolated drafts
   const switchSession = useCallback(
@@ -337,6 +307,19 @@ export const ChatsPage: FC = () => {
         .setInputDraft(currentKey, inputTextRef.current);
     };
   }, []);
+
+  // Auto-resize input textarea height-wise up to 180px
+  const adjustTextareaHeight = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const newHeight = Math.min(el.scrollHeight, 180);
+    el.style.height = `${newHeight}px`;
+  }, []);
+
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [inputText, adjustTextareaHeight]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
@@ -647,17 +630,23 @@ export const ChatsPage: FC = () => {
             }
           }
 
-          // If this session is currently sending, retain any optimistic temporary message in-flight
-          const currentSendingJob = isSessionSending(sessionId);
+          // If this session is currently sending or has voice/optimistic messages, retain them
           const cached = useChatStore.getState().sessionMessagesCache[sessionId] || [];
-          const optimisticTemps = cached.filter((m) => m.id.startsWith("temp-"));
+          const optimisticTemps = cached.filter(
+            (m) => m.id.startsWith("temp-") || m.id.startsWith("v-")
+          );
           for (const opt of optimisticTemps) {
             const alreadyInDeduped = deduped.some(
-              (m) => m.role === "user" && m.content === opt.content
+              (m) => m.id === opt.id || (m.role === opt.role && m.content === opt.content)
             );
-            if (!alreadyInDeduped && currentSendingJob) {
+            if (!alreadyInDeduped) {
               deduped.push(opt);
             }
+          }
+
+          // If server returned 0 messages but cache has messages (e.g. freshly created voice chat), preserve cache!
+          if (deduped.length === 0 && cached.length > 0) {
+            deduped.push(...cached);
           }
 
           // Heuristic check: if the last message in deduped is from user and no AI reply yet,
@@ -713,18 +702,6 @@ export const ChatsPage: FC = () => {
   useEffect(() => {
     selectedSessionIdRef.current = selectedSessionId;
     if (selectedSessionId) {
-      // If this session was just created by handleSendMessage, do not fetch immediately
-      // because that would wipe out the optimistic user message!
-      if (skipInitialFetchSessionId === selectedSessionId) {
-        setSkipInitialFetchSessionId(null);
-        return;
-      }
-      isInitialSessionLoadRef.current = true;
-      isNearBottomRef.current = true;
-      isAutoScrollingRef.current = false;
-      setIsAutoScrolling(false);
-      setShowScrollBottom(false);
-
       // Instant display from cache if available
       const cached = useChatStore.getState().sessionMessagesCache[selectedSessionId];
       if (cached && cached.length > 0) {
@@ -732,6 +709,22 @@ export const ChatsPage: FC = () => {
       } else {
         setMessages([]);
       }
+
+      // If this session was just created by voice/send message, do not fetch immediately
+      // because that would wipe out the optimistic user message!
+      if (skipInitialFetchSessionId === selectedSessionId) {
+        setSkipInitialFetchSessionId(null);
+        isInitialSessionLoadRef.current = true;
+        isNearBottomRef.current = true;
+        return;
+      }
+
+      isInitialSessionLoadRef.current = true;
+      isNearBottomRef.current = true;
+      isAutoScrollingRef.current = false;
+      setIsAutoScrolling(false);
+      setShowScrollBottom(false);
+
       fetchMessages(selectedSessionId, 1, null, false);
     } else {
       setMessages([]);
@@ -985,8 +978,8 @@ export const ChatsPage: FC = () => {
   // ============================================================================
   // Sending Message
   // ============================================================================
-  const handleSendMessage = async () => {
-    const trimmed = inputText.trim();
+  const handleSendMessage = async (customPrompt?: string) => {
+    const trimmed = (customPrompt || inputText).trim();
     if (!trimmed) return;
 
     // Store chat data into utils/transcribe.json (both Vite disk plugin & Operator)
@@ -1140,6 +1133,8 @@ export const ChatsPage: FC = () => {
       }
     }
   };
+
+
 
   const handleStartNewChat = useCallback(() => {
     switchSession(null);
@@ -1778,7 +1773,7 @@ export const ChatsPage: FC = () => {
                   MIRA Chat Assistant
                 </h2>
                 <p className="text-xs text-zinc-400 leading-relaxed">
-                  Select a previous session from the sidebar to review dialogue history, or start a new conversation below.
+                  Select a previous session from the sidebar to review dialogue history, or simply speak to Mira hands-free.
                 </p>
               </div>
 
@@ -1802,15 +1797,12 @@ export const ChatsPage: FC = () => {
                     key={idx}
                     type="button"
                     onClick={() => {
-                      setInputText(prompt);
-                      inputTextRef.current = prompt;
-                      const currentKey = selectedSessionIdRef.current || "new";
-                      setInputDraft(currentKey, prompt);
+                      handleSendMessage(prompt);
                     }}
                     className="p-3 rounded-xl bg-zinc-900/60 hover:bg-zinc-800/80 border border-white/[0.06] hover:border-cyan-500/30 text-xs text-zinc-300 hover:text-white transition-all text-left space-y-1 group cursor-pointer"
                   >
                     <p className="font-medium group-hover:text-cyan-300 transition-colors">{prompt}</p>
-                    <span className="text-[10px] text-zinc-500">Click to fill prompt →</span>
+                    <span className="text-[10px] text-zinc-500">Ask Mira →</span>
                   </button>
                 ))}
               </div>
@@ -1823,7 +1815,7 @@ export const ChatsPage: FC = () => {
               <div className="space-y-1">
                 <h3 className="text-sm font-semibold text-zinc-300">No messages in this session</h3>
                 <p className="text-xs text-zinc-500">
-                  Send your first question or command below to begin chatting.
+                  Speak with Mira at any time to continue this session hands-free.
                 </p>
               </div>
             </div>
@@ -1905,31 +1897,27 @@ export const ChatsPage: FC = () => {
                               onClick={() => toggleTTS(msg.content)}
                               title={
                                 isTTSPlaying && ttsActiveText === msg.content.trim()
-                                  ? `Speaking (Chunk ${ttsCurrentChunk}/${ttsTotalChunks}). Click to stop.`
-                                  : `Read aloud`
+                                  ? "Speaking. Click to stop."
+                                  : "Read aloud"
                               }
                               aria-label={
                                 isTTSPlaying && ttsActiveText === msg.content.trim()
-                                  ? `Stop speech`
-                                  : `Read aloud`
+                                  ? "Stop speech"
+                                  : "Read aloud"
                               }
                               className={cn(
-                                "p-1 rounded transition-all duration-150 cursor-pointer flex items-center gap-1",
+                                "p-1 rounded transition-all duration-150 cursor-pointer flex items-center justify-center",
                                 isTTSPlaying && ttsActiveText === msg.content.trim()
                                   ? "text-cyan-400 bg-cyan-500/20 shadow-[0_0_8px_rgba(6,182,212,0.4)] animate-pulse"
                                   : "text-zinc-400 hover:text-cyan-300 hover:bg-white/10"
                               )}
                             >
-                              {isTTSPlaying && ttsActiveText === msg.content.trim() ? (
-                                <>
-                                  <Volume2 className="w-3 h-3 text-cyan-400 animate-bounce" />
-                                  <span className="text-[10px] font-mono text-cyan-300">
-                                    {ttsCurrentChunk}/{ttsTotalChunks}
-                                  </span>
-                                </>
-                              ) : (
-                                <Volume2 className="w-3 h-3" />
-                              )}
+                              <Volume2
+                                className={cn(
+                                  "w-3 h-3",
+                                  isTTSPlaying && ttsActiveText === msg.content.trim() && "text-cyan-400 animate-bounce"
+                                )}
+                              />
                             </button>
                           </>
                         )}
@@ -2020,13 +2008,7 @@ export const ChatsPage: FC = () => {
                   </span>
                   <div className="flex items-center gap-2 truncate">
                     <span className="font-medium text-cyan-200 shrink-0">
-                      Speaking:
-                    </span>
-                    <span className="px-2 py-0.5 text-[11px] font-mono rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shrink-0">
-                      Chunk {ttsCurrentChunk || 1} / {ttsTotalChunks || 1}
-                    </span>
-                    <span className="text-zinc-400 truncate text-[11px] hidden md:inline">
-                      {ttsActiveText}
+                      Speaking response...
                     </span>
                   </div>
                 </div>
@@ -2042,6 +2024,34 @@ export const ChatsPage: FC = () => {
                 </button>
               </div>
             )}
+
+            {/* Active Voice Listening / Follow-Up Awake Indicator */}
+            {isVoiceAwake && !isTTSPlaying && (
+              <div
+                id="mira-voice-awake-indicator"
+                className="flex items-center justify-between gap-3 px-3.5 py-2 rounded-xl bg-emerald-950/70 border border-emerald-500/40 shadow-[0_4px_20px_rgba(16,185,129,0.15)] backdrop-blur-md text-xs animate-in fade-in duration-200"
+              >
+                <div className="flex items-center gap-2.5 overflow-hidden">
+                  <span className="relative flex h-2.5 w-2.5 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-80" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 shadow-[0_0_8px_#10b981]" />
+                  </span>
+                  <div className="flex items-center gap-2 truncate">
+                    <span className="font-medium text-emerald-200 shrink-0">
+                      🎙️ Mira is listening...
+                    </span>
+                    <span className="text-emerald-400/80 text-[11px] font-mono truncate">
+                      Reply within 8s without saying "Mira" to continue this chat
+                    </span>
+                  </div>
+                </div>
+                <span className="text-[10px] text-emerald-300/80 font-mono shrink-0 px-2 py-0.5 rounded bg-emerald-900/50 border border-emerald-500/30">
+                  Awake (8s)
+                </span>
+              </div>
+            )}
+
+            {/* Manual Chat Input Box */}
             <div className="relative flex items-end gap-2 bg-zinc-900/90 border border-white/[0.1] focus-within:border-cyan-500/50 focus-within:ring-1 focus-within:ring-cyan-500/30 rounded-2xl p-2 transition-all">
               <textarea
                 ref={textareaRef}
@@ -2061,7 +2071,7 @@ export const ChatsPage: FC = () => {
               <button
                 type="button"
                 id="btn-send-message"
-                onClick={handleSendMessage}
+                onClick={() => handleSendMessage()}
                 disabled={!inputText.trim() || isCurrentSessionSending}
                 title={isCurrentSessionSending ? "Waiting for AI response..." : "Send message (Enter)"}
                 aria-label="Send message"

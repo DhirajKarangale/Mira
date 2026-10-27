@@ -33,6 +33,9 @@ interface ChatStoreState {
   clearSendingSession: (sessionId: string) => void;
   clearAllSendingSessions: () => void;
   isSessionSending: (sessionId: string | null) => boolean;
+  // Voice conversation awake state (listening for follow-up turns without wake-word)
+  isVoiceAwake: boolean;
+  setIsVoiceAwake: (isAwake: boolean) => void;
 
   setSelectedSessionId: (sessionId: string | null) => void;
   setSkipInitialFetchSessionId: (sessionId: string | null) => void;
@@ -81,6 +84,8 @@ export const useChatStore = create<ChatStoreState>()(
       inputDrafts: {},
       skipInitialFetchSessionId: null,
       unreadSessionIds: {},
+      isVoiceAwake: false,
+      setIsVoiceAwake: (isVoiceAwake) => set({ isVoiceAwake }),
 
       markSessionUnread: (sessionId) => {
         if (!sessionId) return;

@@ -127,11 +127,11 @@ class TranscribeManager {
           }
         }
 
-        // Handle quota exhaustion or invalid key -> smoothly advance to next key in pool
+        // Handle quota exhaustion or invalid key -> permanently throw out of JSON and advance
         console.warn(
-          `[ElevenLabs Scribe] Key ${apiKey.slice(0, 8)}... returned status ${response.status}. Smoothly switching to next pool key.`
+          `[ElevenLabs Scribe] Key ${apiKey.slice(0, 8)}... returned status ${response.status}. Permanently throwing key out of JSON!`
         );
-        ttsKeyManager.markKeyStatus(apiKey, "exhausted");
+        await ttsKeyManager.removeKeyPermanently(apiKey);
         ttsKeyManager.rotateKey(`Scribe token HTTP ${response.status}`);
       } catch (err) {
         console.warn("[ElevenLabs Scribe] Token fetch network error:", err);
@@ -400,7 +400,7 @@ class TranscribeManager {
     try {
       const wsUrl = `wss://api.elevenlabs.io/v1/speech-to-text/realtime?model_id=scribe_v2_realtime&token=${encodeURIComponent(
         tokenRes.token
-      )}&audio_format=pcm_16000&commit_strategy=vad&vad_silence_threshold_secs=2.5&vad_threshold=0.4`;
+      )}&audio_format=pcm_16000&commit_strategy=vad&vad_silence_threshold_secs=1.8&vad_threshold=0.5&language_code=en`;
 
       const ws = new WebSocket(wsUrl);
       this.websocket = ws;
@@ -444,6 +444,21 @@ class TranscribeManager {
         try {
           const msg = JSON.parse(event.data);
           const type = msg.type || msg.message_type;
+
+          // Check if ElevenLabs reported quota exhaustion or account error on this key
+          if (
+            type === "quota_exceeded" ||
+            type === "error" ||
+            (msg.error && String(msg.error).toLowerCase().includes("quota")) ||
+            (msg.error && String(msg.error).toLowerCase().includes("unusual"))
+          ) {
+            console.warn(
+              `[ElevenLabs Scribe] Key ${tokenRes.key.slice(0, 8)}... quota/status error: ${msg.error || type}. Permanently throwing key out from JSON!`
+            );
+            await ttsKeyManager.removeKeyPermanently(tokenRes.key);
+            this.smoothSwitchKeyAndReconnect("Scribe quota exceeded error");
+            return;
+          }
 
           // Partial interim transcript (live words as spoken)
           if (type === "partial_transcript" && msg.text) {
@@ -501,7 +516,7 @@ class TranscribeManager {
               }
 
               // 2. Only persist to transcribe.json if user explicitly speaks the wake-word "mira" / "meera"
-              const hasWakeWord = /\b(mira|meera|mera|myra)\b/i.test(record.text);
+              const hasWakeWord = /(?:^|\b)(mira|meera|mera|myra|mirah|mirror|amira|meira|vera|मेरा|मीरा|미라)(?:\b|$)/i.test(record.text);
               if (hasWakeWord) {
                 await recordTranscription(record.text, record.time, "voice");
               }
@@ -521,16 +536,15 @@ class TranscribeManager {
           `[ElevenLabs Scribe] WebSocket closed (code: ${event.code}, reason: ${event.reason || "none"})`
         );
         if (this.shouldRestart) {
-          // If closed due to quota error, timeout, or abnormal termination, smoothly switch key
+          // If closed due to quota error, timeout, or abnormal termination, permanently remove dead key
           const isQuotaOrAbnormal =
             event.code === 1008 ||
             event.code === 4001 ||
-            event.code === 1006 ||
             event.code === 1002 ||
             (event.reason && (event.reason.includes("quota") || event.reason.includes("unusual")));
 
           if (isQuotaOrAbnormal) {
-            ttsKeyManager.markKeyStatus(tokenRes.key, "exhausted");
+            ttsKeyManager.removeKeyPermanently(tokenRes.key).catch(() => {});
           }
 
           // Smoothly switch key with zero audio loss

@@ -72,15 +72,78 @@ function localTranscribePlugin() {
     }
   }
 
+  const clientKeysPath = path.resolve(__dirname, "src/utils/elevenlabs_keys.json");
+  const rootKeysPath = path.resolve(rootDir, "utils/elevenlabs_keys.json");
+
+  function removeKeyFromDisk(keyToRemove: string) {
+    if (!keyToRemove || !keyToRemove.trim()) return [];
+    const trimmed = keyToRemove.trim();
+    const targetPaths = [clientKeysPath, rootKeysPath];
+    let remaining: string[] = [];
+
+    for (const targetPath of targetPaths) {
+      try {
+        if (fs.existsSync(targetPath)) {
+          const parsed = JSON.parse(fs.readFileSync(targetPath, "utf-8"));
+          if (Array.isArray(parsed)) {
+            const filtered = parsed.filter((k: string) => typeof k === "string" && k.trim() !== trimmed);
+            fs.writeFileSync(targetPath, JSON.stringify(filtered, null, 2), "utf-8");
+            remaining = filtered;
+          }
+        }
+      } catch (e) {
+        console.error(`[Vite Key Plugin] Error removing key from ${targetPath}:`, e);
+      }
+    }
+    return remaining;
+  }
+
   return {
     name: "local-transcribe-plugin",
     handleHotUpdate({ file }: { file: string }) {
-      if (file.includes("transcribe.json")) {
-        // Suppress HMR and browser reloads when transcribe.json is written
+      if (file.includes("transcribe.json") || file.includes("elevenlabs_keys.json")) {
+        // Suppress HMR and browser reloads when transcribe.json or keys are written
         return [];
       }
     },
     configureServer(server: any) {
+      server.middlewares.use("/api/remove-elevenlabs-key", (req: any, res: any) => {
+        if (req.method === "POST") {
+          let body = "";
+          req.on("data", (chunk: any) => {
+            body += chunk;
+          });
+          req.on("end", () => {
+            try {
+              const data = JSON.parse(body);
+              const key = data.key;
+              const remaining = removeKeyFromDisk(key);
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({ status: "success", removed: key, remainingCount: remaining.length, remaining }));
+            } catch (err: any) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ status: "error", message: err.message }));
+            }
+          });
+        } else {
+          res.statusCode = 405;
+          res.end();
+        }
+      });
+
+      server.middlewares.use("/api/get-elevenlabs-keys", (_req: any, res: any) => {
+        res.setHeader("Content-Type", "application/json");
+        try {
+          if (fs.existsSync(clientKeysPath)) {
+            const parsed = JSON.parse(fs.readFileSync(clientKeysPath, "utf-8"));
+            if (Array.isArray(parsed)) {
+              return res.end(JSON.stringify(parsed));
+            }
+          }
+        } catch {}
+        res.end("[]");
+      });
+
       server.middlewares.use("/api/save-transcribe", (req: any, res: any) => {
         if (req.method === "POST") {
           let body = "";

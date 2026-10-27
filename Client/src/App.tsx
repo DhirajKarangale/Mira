@@ -7,8 +7,10 @@ import {
   ConfigurationsPage,
   AboutPage,
 } from "@/pages";
+import { useEffect } from "react";
 import { useGlobalChatSync } from "@/hooks/useGlobalChatSync";
 import { useMiraWakeWord } from "@/hooks/useMiraWakeWord";
+import { ttsKeyManager } from "@/utils/ttsKeyManager";
 
 function ActivityRedirect() {
   const { "*": rest } = useParams();
@@ -34,6 +36,13 @@ function AiConfigsRedirect() {
 export function App() {
   useGlobalChatSync();
   useMiraWakeWord();
+
+  useEffect(() => {
+    // Validate all keys on startup and permanently evict any expired/0-credit keys from JSON
+    ttsKeyManager.validateAndPruneAllKeys().catch((err) => {
+      console.warn("[App] Key validation error:", err);
+    });
+  }, []);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#080c14] text-zinc-100 select-none border border-white/[0.06]">

@@ -19,7 +19,7 @@
  */
 
 import { useEffect, useRef } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { transcribeManager, type TranscribeRecord, recordTranscription } from "@/utils/transcribe";
 import { ttsService } from "@/utils/ttsService";
 import { DEFAULT_VOICE_ID } from "@/utils/ttsVoices";
@@ -27,32 +27,30 @@ import { engineService } from "@/services/engine.service";
 import { useChatStore } from "@/store/useChatStore";
 import { toast } from "@/components";
 
-// Wake-word matcher regex: matches "mira", "meera", "mera", "myra"
-const WAKE_WORD_REGEX = /\b(mira|meera|mera|myra)\b/i;
+// Wake-word matcher regex: matches "mira", "meera", "mera", "myra", "mirah", "mirror", "amira", "meira", "vera", and transliterations
+const WAKE_WORD_REGEX = /(?:^|\b)(mira|meera|mera|myra|mirah|mirror|amira|meira|vera|मेरा|मीरा|미라)(?:\b|$)/i;
 
-// Idle timeout for an ongoing voice conversation (60 seconds)
-const CONVERSATION_IDLE_TIMEOUT_MS = 60000;
-
-// Speech gap before sending accumulated thought to backend (2.5 seconds)
-const SPEECH_GAP_DELAY_MS = 2500;
+// Conversational awake window (8 seconds): user can reply within 3-8s without repeating the wake-word
+const CONVERSATION_AWAKE_TIMEOUT_MS = 8000;
+// Natural speech pause (1.5 seconds) before concluding user thought
+const SPEECH_GAP_DELAY_MS = 1500;
 
 // Strips wake-word prefixes: "hey mira", "hello meera", "mira," etc.
 function extractWakeWordQuery(rawText: string): string {
   const cleaned = rawText
-    .replace(/^(?:(?:hey|hi|hello|ok|okay)\s+)?(?:mira|meera|mera|myra)[,:!?-]?\s*/i, "")
-    .replace(/\b(?:mira|meera|mera|myra)\b/gi, "")
+    .replace(/^(?:(?:hey|hi|hello|ok|okay)\s+)?(?:mira|meera|mera|myra|mirah|mirror|amira|meira|vera|मेरा|मीरा|미라)[,:!?-]?\s*/i, "")
+    .replace(/(?:^|\b)(?:mira|meera|mera|myra|mirah|mirror|amira|meira|vera|मेरा|मीरा|미라)(?:\b|$)/gi, "")
     .trim();
 
   return cleaned || "Hello Mira";
 }
 
 function generateVoiceId(): string {
-  return "v-" + Date.now().toString(36) + "-" + Math.random().toString(36).substring(2, 7);
+  return "temp-v-" + Date.now().toString(36) + "-" + Math.random().toString(36).substring(2, 7);
 }
 
 export function useMiraWakeWord() {
   const location = useLocation();
-  const navigate = useNavigate();
 
   const locationRef = useRef(location);
   locationRef.current = location;
@@ -60,13 +58,18 @@ export function useMiraWakeWord() {
   const isSpeakingRef = useRef<boolean>(false);
   const isProcessingRef = useRef<boolean>(false);
 
-  // Active voice chat session ID
+  // Active voice chat session ID & conversational awake state
   const activeVoiceSessionIdRef = useRef<string | null>(null);
-  const lastVoiceActivityTimeRef = useRef<number>(0);
+  const isAwakeSessionRef = useRef<boolean>(false);
+  const awakeTimerRef = useRef<any>(null);
 
-  // Speech gap buffer: accumulates speech segments until the user pauses for 2-3s
+  // Speech gap buffer: accumulates speech segments until the user pauses for 1.5s
   const pendingBufferRef = useRef<string[]>([]);
   const silenceTimerRef = useRef<any>(null);
+  const partialFallbackTimerRef = useRef<any>(null);
+  const latestPartialRef = useRef<string>("");
+  const lastProcessedTextRef = useRef<string>("");
+  const lastProcessedTimeRef = useRef<number>(0);
 
   useEffect(() => {
     const processFinalSpeech = async (speechText: string) => {
@@ -80,26 +83,32 @@ export function useMiraWakeWord() {
 
       const now = Date.now();
       const hasWakeWord = WAKE_WORD_REGEX.test(fullText);
-
-      // Check whether user is currently on the active chat screen
-      const currentPath = locationRef.current.pathname;
-      const selectedSessionId = useChatStore.getState().selectedSessionId;
-      const isChatRoute = currentPath.startsWith("/chats");
-      const isOnActiveChat = isChatRoute && Boolean(selectedSessionId);
-
-      const isWithinActiveConversation =
-        Boolean(activeVoiceSessionIdRef.current) &&
-        now - lastVoiceActivityTimeRef.current < CONVERSATION_IDLE_TIMEOUT_MS;
+      const isAwake = isAwakeSessionRef.current && Boolean(activeVoiceSessionIdRef.current);
 
       // Rule:
-      // - If NOT on active chat: MUST have trigger word "Mira" to start a new chat
-      // - If ON active chat: triggers if "Mira" is spoken OR continuing active conversation
-      if (!isOnActiveChat && !hasWakeWord) {
+      // - If session is currently awake: process speech continuously as follow-up in same chat
+      // - If session is NOT awake: ONLY process if user mentions "Mira" (starts new chat)
+      if (!isAwake && !hasWakeWord) {
         return;
       }
-      if (isOnActiveChat && !hasWakeWord && !isWithinActiveConversation) {
+
+      // Deduplicate rapid duplicate triggers of the SAME processed text within 2.5s
+      if (
+        fullText.toLowerCase() === lastProcessedTextRef.current.toLowerCase() &&
+        now - lastProcessedTimeRef.current < 2500
+      ) {
         return;
       }
+      lastProcessedTextRef.current = fullText;
+      lastProcessedTimeRef.current = now;
+
+      // Clear the awake countdown timer immediately while processing this turn
+      if (awakeTimerRef.current) {
+        clearTimeout(awakeTimerRef.current);
+        awakeTimerRef.current = null;
+      }
+      isAwakeSessionRef.current = false;
+      useChatStore.getState().setIsVoiceAwake(false);
 
       // Determine query: strip wake-word prefix if present
       const userQuery = hasWakeWord
@@ -112,18 +121,16 @@ export function useMiraWakeWord() {
       recordTranscription(fullText, new Date().toISOString(), "voice").catch(() => {});
 
       // Session Management:
-      // Requirement 3: If on active chat, continue in the same session!
-      // Requirement 4: If NOT on active chat screen and trigger word is heard, create a new chat!
       let targetSessionId: string;
       let isNewChat = false;
 
-      if (isOnActiveChat && selectedSessionId) {
-        // Continue on the active session
-        targetSessionId = selectedSessionId;
-        activeVoiceSessionIdRef.current = targetSessionId;
-        console.log(`[Mira Voice] User is on active chat screen. Continuing in same session: ${targetSessionId}`);
+      if (isAwake && activeVoiceSessionIdRef.current) {
+        // Continuous conversational follow-up in the same active session
+        targetSessionId = activeVoiceSessionIdRef.current;
+        isNewChat = false;
+        console.log(`[Mira Voice] Continuing active conversation in same chat: ${targetSessionId}`);
       } else {
-        // Not on active chat screen: create a brand new special chat!
+        // Brand new voice chat session triggered by "Mira"
         isNewChat = true;
         targetSessionId = `voice-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
         activeVoiceSessionIdRef.current = targetSessionId;
@@ -139,7 +146,17 @@ export function useMiraWakeWord() {
           message_count: 1,
         };
 
-        // Register new session in global chat store
+        // 1. Optimistically append user's speech message FIRST
+        const userMsgId = generateVoiceId();
+        useChatStore.getState().addOptimisticMessage(targetSessionId, {
+          id: userMsgId,
+          session_id: targetSessionId,
+          role: "user",
+          content: userQuery,
+          created_at: new Date().toISOString(),
+        });
+
+        // 2. Register new session in global chat store
         useChatStore.getState().setCachedSessions((prev) => [
           newSession,
           ...prev.filter((s) => s.session_id !== targetSessionId),
@@ -147,30 +164,29 @@ export function useMiraWakeWord() {
         useChatStore.getState().setSelectedSessionId(targetSessionId);
         useChatStore.getState().setSkipInitialFetchSessionId(targetSessionId);
 
-        // Bring the user to the chats screen so they see the conversation
-        navigate("/chats");
-        console.log(`[Mira Voice] Triggered NEW CHAT from inactive screen: ${targetSessionId} ("${chatTitle}")`);
+        console.log(`[Mira Voice] Mentioned Mira -> Created NEW CHAT session: ${targetSessionId} ("${chatTitle}")`);
       }
 
       const finalSessionId: string = targetSessionId;
-      lastVoiceActivityTimeRef.current = Date.now();
 
       // Mute microphone capture during LLM call & TTS playback to prevent echo loopback
       isProcessingRef.current = true;
       transcribeManager.setMutedDuringTTS(true);
 
-      // Optimistically append user's speech
-      const userMsgId = generateVoiceId();
-      useChatStore.getState().addOptimisticMessage(finalSessionId, {
-        id: userMsgId,
-        session_id: finalSessionId,
-        role: "user",
-        content: userQuery,
-        created_at: new Date().toISOString(),
-      });
+      // If this was continuing an existing chat, append the optimistic message now
+      if (!isNewChat) {
+        const userMsgId = generateVoiceId();
+        useChatStore.getState().addOptimisticMessage(finalSessionId, {
+          id: userMsgId,
+          session_id: finalSessionId,
+          role: "user",
+          content: userQuery,
+          created_at: new Date().toISOString(),
+        });
+      }
 
       toast.info(`"${userQuery}"`, {
-        title: isNewChat ? "🎙️ Mira (New Chat)" : "🎙️ Mira Voice",
+        title: isNewChat ? "🎙️ Mira (New Chat)" : "🎙️ Mira (Continuing)",
       });
 
       // Persist user message to Vault in background
@@ -182,10 +198,38 @@ export function useMiraWakeWord() {
         generate_ai_reply: false,
       }).catch((err) => console.warn("[Voice] sendChatMessage save error:", err));
 
-      // Query LLM
+      // Contextual multi-turn history: Retrieve previous turns from session cache so Mira replies based on the last message
+      const sessionCache = useChatStore.getState().sessionMessagesCache[finalSessionId] || [];
+      const priorTurns = sessionCache
+        .filter((m) => m && m.content && m.content.trim())
+        .slice(0, -1) // Exclude current user query just appended
+        .slice(-8);   // Take up to 8 prior turns for conversational context
+
+      let promptWithContext: string;
+      if (priorTurns.length > 0) {
+        const historyText = priorTurns
+          .map((m) => `${m.role === "user" ? "User" : "Mira"}: ${m.content.trim()}`)
+          .join("\n");
+
+        promptWithContext = `You are Mira, a personal AI voice assistant. Respond conversationally, concisely, and naturally for spoken conversation (1-3 sentences maximum).
+Pay close attention to the conversation history and the user's latest follow-up question below, replying directly based on the context of the last message.
+
+Conversation History:
+${historyText}
+
+User: ${userQuery}
+Mira:`;
+      } else {
+        promptWithContext = `You are Mira, a personal AI voice assistant. Respond conversationally, concisely, and naturally for spoken conversation (1-3 sentences maximum).
+
+User: ${userQuery}
+Mira:`;
+      }
+
+      // Query LLM with full conversational context
       let replyText = "";
       try {
-        const llmRes = await engineService.callLLM(userQuery, "chat");
+        const llmRes = await engineService.callLLM(promptWithContext, "chat");
         if (llmRes?.response && !llmRes.response.includes("AI request could not be completed")) {
           replyText = llmRes.response;
         } else {
@@ -223,28 +267,78 @@ export function useMiraWakeWord() {
         { title: "🎙️ Mira Responding" }
       );
 
-      const unfreezeMic = () => {
+      const unfreezeMicAndAwaken = () => {
         isSpeakingRef.current = false;
-        lastVoiceActivityTimeRef.current = Date.now();
-        // Unmute microphone: WebSocket and audio capture stayed active
+        isProcessingRef.current = false;
+        // Unmute microphone: WebSocket and audio capture stay alive in background
         transcribeManager.setMutedDuringTTS(false);
+
+        // Keep session awake for 8 seconds to allow follow-up responses without saying "Mira"
+        isAwakeSessionRef.current = true;
+        useChatStore.getState().setIsVoiceAwake(true);
+        console.log(`[Mira Voice] Session ${finalSessionId} is AWAKE for 8s. Listening for follow-up without wake-word...`);
+
+        if (awakeTimerRef.current) {
+          clearTimeout(awakeTimerRef.current);
+        }
+
+        awakeTimerRef.current = setTimeout(() => {
+          console.log(`[Mira Voice] Awake window expired (8s silence). Closing active voice session ${finalSessionId}. Next "Mira" trigger will create a new chat.`);
+          isAwakeSessionRef.current = false;
+          activeVoiceSessionIdRef.current = null;
+          useChatStore.getState().setIsVoiceAwake(false);
+        }, CONVERSATION_AWAKE_TIMEOUT_MS);
       };
 
       // Safety timer: maximum 25s TTS timeout
-      const safetyTimer = setTimeout(unfreezeMic, 25000);
+      const safetyTimer = setTimeout(unfreezeMicAndAwaken, 25000);
 
       // Single verified voice model (Sarah / EXAVITQu4vr4xnSDxMaL)
       ttsService.speak(replyText, {
         voiceId: DEFAULT_VOICE_ID,
         onFinish: () => {
           clearTimeout(safetyTimer);
-          unfreezeMic();
+          unfreezeMicAndAwaken();
         },
         onError: () => {
           clearTimeout(safetyTimer);
-          unfreezeMic();
+          unfreezeMicAndAwaken();
         },
       });
+    };
+
+    const handlePartial = (e: any) => {
+      const text = e.detail?.text;
+      if (text && !isSpeakingRef.current && !isProcessingRef.current && !transcribeManager.getIsMutedDuringTTS()) {
+        window.dispatchEvent(
+          new CustomEvent("mira-audio-signal", { detail: { level: 0.9, isSpeaking: true } })
+        );
+
+        // If user is currently awake and talking, suspend awake timeout so it doesn't expire while speaking
+        if (isAwakeSessionRef.current && awakeTimerRef.current) {
+          clearTimeout(awakeTimerRef.current);
+          awakeTimerRef.current = null;
+        }
+
+        // If partial contains wake word OR session is currently awake, track partial
+        const isRelevant = WAKE_WORD_REGEX.test(text) || isAwakeSessionRef.current;
+        if (isRelevant) {
+          latestPartialRef.current = text;
+
+          // If user pauses for 2 seconds and VAD doesn't emit commit due to room noise, trigger anyway!
+          if (partialFallbackTimerRef.current) {
+            clearTimeout(partialFallbackTimerRef.current);
+          }
+          partialFallbackTimerRef.current = setTimeout(() => {
+            const fallbackText = latestPartialRef.current.trim();
+            latestPartialRef.current = "";
+            if (fallbackText) {
+              console.log("[useMiraWakeWord] Triggering via partial fallback timer:", fallbackText);
+              processFinalSpeech(fallbackText);
+            }
+          }, 2000);
+        }
+      }
     };
 
     const handleVoiceHeard = (e: any) => {
@@ -256,10 +350,22 @@ export function useMiraWakeWord() {
         return;
       }
 
-      // Accumulate speech into buffer
+      // If user is currently awake, clear timeout while speech is arriving
+      if (isAwakeSessionRef.current && awakeTimerRef.current) {
+        clearTimeout(awakeTimerRef.current);
+        awakeTimerRef.current = null;
+      }
+
+      // Committed transcript arrived -> clear partial fallback timer
+      if (partialFallbackTimerRef.current) {
+        clearTimeout(partialFallbackTimerRef.current);
+        partialFallbackTimerRef.current = null;
+      }
+      latestPartialRef.current = "";
+
+      // Accumulate speech chunks with a 1.5s speech gap window to merge thoughts smoothly
       pendingBufferRef.current.push(record.text);
 
-      // Reset 2.5s silence gap timer (Requirement 2: gap of 2-3 sec before sending to backend)
       if (silenceTimerRef.current) {
         clearTimeout(silenceTimerRef.current);
       }
@@ -269,17 +375,33 @@ export function useMiraWakeWord() {
         pendingBufferRef.current = [];
         if (fullSpeech) {
           processFinalSpeech(fullSpeech);
+        } else if (isAwakeSessionRef.current) {
+          // Re-arm awake timer if buffer was empty
+          awakeTimerRef.current = setTimeout(() => {
+            console.log("[useMiraWakeWord] Awake window expired on silence.");
+            isAwakeSessionRef.current = false;
+            activeVoiceSessionIdRef.current = null;
+            useChatStore.getState().setIsVoiceAwake(false);
+          }, CONVERSATION_AWAKE_TIMEOUT_MS);
         }
       }, SPEECH_GAP_DELAY_MS);
     };
 
+    window.addEventListener("mira-partial-transcription", handlePartial);
     window.addEventListener("mira-voice-heard", handleVoiceHeard);
 
     return () => {
+      window.removeEventListener("mira-partial-transcription", handlePartial);
       window.removeEventListener("mira-voice-heard", handleVoiceHeard);
       if (silenceTimerRef.current) {
         clearTimeout(silenceTimerRef.current);
       }
+      if (partialFallbackTimerRef.current) {
+        clearTimeout(partialFallbackTimerRef.current);
+      }
+      if (awakeTimerRef.current) {
+        clearTimeout(awakeTimerRef.current);
+      }
     };
-  }, [navigate]);
+  }, []);
 }

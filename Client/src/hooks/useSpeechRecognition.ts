@@ -8,7 +8,7 @@ let globalMicOn: boolean = (() => {
     const stored = localStorage.getItem("mira_mic_enabled");
     if (stored !== null) return stored === "true";
   }
-  return false;
+  return true; // Default active on launch
 })();
 
 export function useSpeechRecognition(autoSyncWithOperator: boolean = true) {
@@ -52,16 +52,10 @@ export function useSpeechRecognition(autoSyncWithOperator: boolean = true) {
         const storedMicEnabled = localStorage.getItem("mira_mic_enabled");
         const storedAutoStart = localStorage.getItem("mira_mic_auto_start");
         
-        let shouldBeOn = storedMicEnabled === "true";
-        if (storedMicEnabled === null && storedAutoStart === "true") {
-          shouldBeOn = true;
-        }
-
-        if (storedAutoStart === null && !shouldBeOn) {
-          const res = await operatorService.getMicrophoneAutoStart();
-          if (Boolean(res?.auto_start || res?.mic_auto_start)) {
-            shouldBeOn = true;
-          }
+        // Default to ON unless explicitly set to false by user
+        let shouldBeOn = storedMicEnabled !== "false";
+        if (storedAutoStart === "false" && storedMicEnabled === null) {
+          shouldBeOn = false;
         }
 
         if (shouldBeOn) {
