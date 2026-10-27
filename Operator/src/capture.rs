@@ -1,5 +1,6 @@
 use chrono::{Local, Utc};
 use std::path::PathBuf;
+#[allow(unused_imports)]
 use tracing::{debug, warn};
 use uuid::Uuid;
 
@@ -92,6 +93,7 @@ pub fn enable_dpi_awareness() {
 }
 
 #[cfg(not(windows))]
+#[allow(dead_code)]
 pub fn enable_dpi_awareness() {}
 
 #[cfg(windows)]

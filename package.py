@@ -232,7 +232,8 @@ class UnifiedPackager:
             if redis_src and redis_src.exists():
                 redis_dst = RESOURCES_BIN_DIR / "redis-server.exe"
                 try:
-                    shutil.copy2(redis_src, redis_dst)
+                    if redis_src.resolve() != redis_dst.resolve():
+                        shutil.copy2(redis_src, redis_dst)
                     log_ok(f"Staged Redis server -> {redis_dst.name} ({get_file_size_mb(redis_dst):.1f} MB)")
                 except Exception as e:
                     log_warn(f"Could not copy Redis binary: {e}")
@@ -264,7 +265,21 @@ class UnifiedPackager:
 
         # 4. Copy start.py & services.json
         shutil.copy2(ROOT_DIR / "start.py", RESOURCES_BACKEND_DIR / "start.py")
-        shutil.copy2(ROOT_DIR / "services.json", RESOURCES_BACKEND_DIR / "services.json")
+        services_src = ROOT_DIR / "services.json"
+        services_dst = RESOURCES_BACKEND_DIR / "services.json"
+        if services_src.exists():
+            shutil.copy2(services_src, services_dst)
+        else:
+            default_services = {
+                "vault": "http://127.0.0.1:9001",
+                "message_broker": "http://127.0.0.1:9002",
+                "operator": "http://127.0.0.1:9003",
+                "client": "http://127.0.0.1:9004",
+                "memory": "http://127.0.0.1:9006",
+                "engine": "http://127.0.0.1:9007"
+            }
+            with open(services_dst, "w", encoding="utf-8") as f:
+                json.dump(default_services, f, indent=2)
         log_ok("Staged start.py orchestrator & services.json")
 
         # 5. Windows: Stage WebView2Loader.dll for NSIS bundle
