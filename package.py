@@ -21,6 +21,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -485,8 +486,9 @@ class UnifiedPackager:
         print("=" * 80 + "\n")
 
     def run(self) -> None:
+        current_ver = get_project_version()
         print(f"\n{BOLD}{GREEN}======================================================{WHITE}")
-        print(f"{BOLD}{GREEN} MIRA Master Packaging Pipeline ({self.os_name}) {WHITE}")
+        print(f"{BOLD}{GREEN} MIRA Master Packaging Pipeline ({self.os_name}) - v{current_ver} {WHITE}")
         print(f"{BOLD}{GREEN}======================================================{WHITE}")
 
         self.check_prerequisites()
@@ -496,24 +498,180 @@ class UnifiedPackager:
         self.verify_tauri_config()
         self.build_installer()
 
+def get_project_version() -> str:
+    """Retrieve the current project version from configuration files."""
+    tauri_conf_path = TAURI_DIR / "tauri.conf.json"
+    if tauri_conf_path.exists():
+        try:
+            with open(tauri_conf_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if "version" in data and data["version"]:
+                    return str(data["version"]).strip()
+        except Exception:
+            pass
+
+    client_pkg_path = CLIENT_DIR / "package.json"
+    if client_pkg_path.exists():
+        try:
+            with open(client_pkg_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if "version" in data and data["version"]:
+                    return str(data["version"]).strip()
+        except Exception:
+            pass
+
+    tauri_cargo_path = TAURI_DIR / "Cargo.toml"
+    if tauri_cargo_path.exists():
+        try:
+            content = tauri_cargo_path.read_text(encoding="utf-8")
+            match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', content)
+            if match:
+                return match.group(1).strip()
+        except Exception:
+            pass
+
+    return "0.0.0"
+
+def check_project_versions() -> None:
+    """Check and display version consistency across all project config files."""
+    tauri_conf_path = TAURI_DIR / "tauri.conf.json"
+    client_pkg_path = CLIENT_DIR / "package.json"
+    tauri_cargo_path = TAURI_DIR / "Cargo.toml"
+    op_cargo_path = OPERATOR_DIR / "Cargo.toml"
+
+    versions = {}
+    if tauri_conf_path.exists():
+        try:
+            with open(tauri_conf_path, "r", encoding="utf-8") as f:
+                versions["Client/src-tauri/tauri.conf.json"] = json.load(f).get("version", "N/A")
+        except Exception as e:
+            versions["Client/src-tauri/tauri.conf.json"] = f"Error: {e}"
+
+    if client_pkg_path.exists():
+        try:
+            with open(client_pkg_path, "r", encoding="utf-8") as f:
+                versions["Client/package.json"] = json.load(f).get("version", "N/A")
+        except Exception as e:
+            versions["Client/package.json"] = f"Error: {e}"
+
+    if tauri_cargo_path.exists():
+        try:
+            m = re.search(r'(?m)^version\s*=\s*"([^"]+)"', tauri_cargo_path.read_text(encoding="utf-8"))
+            versions["Client/src-tauri/Cargo.toml"] = m.group(1) if m else "N/A"
+        except Exception as e:
+            versions["Client/src-tauri/Cargo.toml"] = f"Error: {e}"
+
+    if op_cargo_path.exists():
+        try:
+            m = re.search(r'(?m)^version\s*=\s*"([^"]+)"', op_cargo_path.read_text(encoding="utf-8"))
+            versions["Operator/Cargo.toml"] = m.group(1) if m else "N/A"
+        except Exception as e:
+            versions["Operator/Cargo.toml"] = f"Error: {e}"
+
+    print(f"\n{BOLD}{CYAN}MIRA Component Versions:{WHITE}")
+    val_set = set(v for v in versions.values() if not str(v).startswith("Error"))
+    all_same = len(val_set) <= 1
+    for path_name, ver in versions.items():
+        status = color("✔", GREEN) if all_same else color("▲", YELLOW)
+        print(f"  {status} {path_name:<36} : {BOLD}{ver}{WHITE}")
+
+    if all_same and val_set:
+        print(f"\n  {GREEN}✔ All components are synchronized on version {next(iter(val_set))}{WHITE}\n")
+    else:
+        print(f"\n  {YELLOW}▲ Versions are out of sync! Run: python package.py --set-version <VERSION>{WHITE}\n")
+
+def set_project_version(new_version: str) -> None:
+    new_version = new_version.lstrip("v").strip()
+    print(f"\n{BOLD}{CYAN}Updating MIRA project version to:{WHITE} {new_version}\n")
+
+    # 1. Client/src-tauri/tauri.conf.json
+    tauri_conf_path = TAURI_DIR / "tauri.conf.json"
+    if tauri_conf_path.exists():
+        with open(tauri_conf_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        data["version"] = new_version
+        with open(tauri_conf_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        log_ok(f"Updated {tauri_conf_path.relative_to(ROOT_DIR)} -> \"{new_version}\"")
+
+    # 2. Client/package.json
+    client_pkg_path = CLIENT_DIR / "package.json"
+    if client_pkg_path.exists():
+        with open(client_pkg_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        data["version"] = new_version
+        with open(client_pkg_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        log_ok(f"Updated {client_pkg_path.relative_to(ROOT_DIR)} -> \"{new_version}\"")
+
+    # 3. Client/src-tauri/Cargo.toml
+    tauri_cargo_path = TAURI_DIR / "Cargo.toml"
+    if tauri_cargo_path.exists():
+        content = tauri_cargo_path.read_text(encoding="utf-8")
+        updated = re.sub(r'(?m)^version\s*=\s*"[^"]+"', f'version = "{new_version}"', content, count=1)
+        tauri_cargo_path.write_text(updated, encoding="utf-8")
+        log_ok(f"Updated {tauri_cargo_path.relative_to(ROOT_DIR)} -> \"{new_version}\"")
+
+    # 4. Operator/Cargo.toml
+    op_cargo_path = OPERATOR_DIR / "Cargo.toml"
+    if op_cargo_path.exists():
+        content = op_cargo_path.read_text(encoding="utf-8")
+        updated = re.sub(r'(?m)^version\s*=\s*"[^"]+"', f'version = "{new_version}"', content, count=1)
+        op_cargo_path.write_text(updated, encoding="utf-8")
+        log_ok(f"Updated {op_cargo_path.relative_to(ROOT_DIR)} -> \"{new_version}\"")
+
+    print(f"\n{BOLD}{GREEN}★ Version updated to {new_version} across all build configurations! ★{WHITE}\n")
+
 def main() -> None:
+    # Direct short-circuit commands for fast scripting and shell evaluation
+    if len(sys.argv) == 2 and sys.argv[1].lower() in ("get-version", "version", "check-versions", "check-version"):
+        if "check" in sys.argv[1].lower():
+            check_project_versions()
+        else:
+            print(get_project_version())
+        return
+
     parser = argparse.ArgumentParser(
         description="MIRA Unified Cross-Platform Builder (Windows, macOS, Linux)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   python package.py                     # Full build for current OS
+  python package.py --get-version       # Print current version (e.g. 0.1.1)
+  python package.py --set-version 0.2.0 # Bump version across all configs
+  python package.py --check-versions    # Verify sync across all component files
   python package.py --stage-only        # Stage resources without packaging
   python package.py --skip-operator     # Reuse existing operator binary
   python package.py --bundle dmg        # Target specific bundle on macOS
 """
     )
+    parser.add_argument(
+        "--get-version", "--version", "-V",
+        action="store_true",
+        dest="get_version",
+        help="Print current project version and exit",
+    )
+    parser.add_argument("--set-version", type=str, default="", help="Bump version across tauri.conf.json, package.json, and Cargo.toml")
+    parser.add_argument("--check-versions", action="store_true", help="Check and display versions across all component config files")
     parser.add_argument("--skip-operator", action="store_true", help="Skip Operator cargo compilation")
     parser.add_argument("--skip-client", action="store_true", help="Skip Frontend Vite build")
     parser.add_argument("--stage-only", action="store_true", help="Stage all resources without running tauri build")
     parser.add_argument("--bundle", type=str, default="", help="Specific Tauri bundle target (e.g. nsis, dmg, app, deb, appimage, all)")
 
     args = parser.parse_args()
+
+    if args.get_version:
+        print(get_project_version())
+        return
+
+    if args.check_versions:
+        check_project_versions()
+        return
+
+    if args.set_version:
+        set_project_version(args.set_version)
+        return
+
     packager = UnifiedPackager(args)
     packager.run()
 
