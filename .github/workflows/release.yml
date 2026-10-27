@@ -1,0 +1,191 @@
+name: Build & Release MIRA (Windows, macOS, Linux)
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform.name }})
+    runs-on: ${{ matrix.platform.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - name: Windows
+            os: windows-latest
+          - name: macOS
+            os: macos-latest
+          - name: Linux
+            os: ubuntu-22.04
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python Packaging Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pillow
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            Operator
+            Client/src-tauri
+
+      - name: Install Linux Build Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            libx11-dev \
+            libxtst-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxi-dev
+
+      - name: Install Client NPM Dependencies
+        run: |
+          cd Client
+          npm install
+
+      - name: Run Master Packaging Pipeline
+        run: |
+          python package.py
+
+      - name: Stage Release Artifacts
+        shell: bash
+        run: |
+          mkdir -p dist-artifacts
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp Client/src-tauri/target/release/bundle/nsis/*.exe dist-artifacts/
+          elif [ "${{ runner.os }}" = "macOS" ]; then
+            cp Client/src-tauri/target/release/bundle/dmg/*.dmg dist-artifacts/ 2>/dev/null || true
+            if [ -d Client/src-tauri/target/release/bundle/macos/MIRA.app ]; then
+              cd Client/src-tauri/target/release/bundle/macos
+              zip -r ../../../../../dist-artifacts/MIRA_macOS.app.zip MIRA.app
+              cd -
+            fi
+          elif [ "${{ runner.os }}" = "Linux" ]; then
+            cp Client/src-tauri/target/release/bundle/deb/*.deb dist-artifacts/ 2>/dev/null || true
+            cp Client/src-tauri/target/release/bundle/appimage/*.AppImage dist-artifacts/ 2>/dev/null || true
+          fi
+          echo "Collected artifacts:"
+          ls -la dist-artifacts/
+
+      - name: Upload Platform Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mira-${{ matrix.platform.name }}
+          path: dist-artifacts/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download All Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: List Release Files
+        run: |
+          echo "Downloaded release assets for GitHub Release:"
+          ls -lh release-assets/
+
+      - name: Compute Release Tag & Name
+        id: release_info
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            echo "tag=$TAG" >> $GITHUB_OUTPUT
+            echo "title=MIRA Release $TAG" >> $GITHUB_OUTPUT
+          else
+            VERSION=$(node -p "require('./Client/package.json').version")
+            echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
+            echo "title=MIRA v${VERSION} (Latest)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_info.outputs.tag }}
+          name: ${{ steps.release_info.outputs.title }}
+          files: release-assets/*
+          draft: false
+          prerelease: false
+          make_latest: true
+          body: |
+            ## MIRA Desktop Application Release
+
+            Official multi-platform installation packages for **MIRA** (Memory · Intelligence · Recall · Assistant).
+
+            ### 📦 Download Packages
+            * **Windows 10 / 11:** Download the `.exe` setup installer.
+            * **macOS (Intel & Apple Silicon):** Download the `.dmg` installer or `.app.zip`.
+            * **Ubuntu / Debian / Linux Mint:** Download the `.deb` package.
+            * **Universal Linux:** Download the `.AppImage` portable bundle.
+
+            ---
+
+            ### ⚙️ Quick Installation Instructions
+
+            #### Windows
+            1. Download `MIRA_..._x64-setup.exe`.
+            2. Run the installer wizard. MIRA will install to `%LOCALAPPDATA%\Programs\MIRA` and create a Desktop/Start Menu shortcut.
+
+            #### macOS
+            1. Download `MIRA_..._x64.dmg` (or Apple Silicon `.dmg`).
+            2. Open the disk image and drag **MIRA.app** into `/Applications`.
+            3. On first launch, permit Screen Recording and Microphone when prompted in macOS System Settings.
+
+            #### Linux
+            * **Debian / Ubuntu:**
+              ```bash
+              sudo dpkg -i mira_*_amd64.deb
+              sudo apt-get install -f # resolve any missing system dependencies
+              ```
+            * **AppImage:**
+              ```bash
+              chmod +x mira_*_amd64.AppImage
+              ./mira_*_amd64.AppImage
+              ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
