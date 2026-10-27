@@ -68,7 +68,7 @@ def init_config_storage(schema_path: Optional[Path]=None, enc_db_path: Optional[
         if not exists:
             logger.info(f"Creating missing configuration table: '{table_name}'")
             _DB_CONN.execute(table_spec['create_sql'])
-            if table_name not in ('app_permissions', 'ai_configs', 'chats', 'gnews_config'):
+            if table_name not in ('app_permissions', 'ai_configs', 'chats', 'gnews_config', 'voice_models'):
                 _DB_CONN.execute(f'INSERT INTO {table_name} DEFAULT VALUES')
             _DB_CONN.commit()
         else:
@@ -93,6 +93,16 @@ def init_config_storage(schema_path: Optional[Path]=None, enc_db_path: Optional[
                         _DB_CONN.commit()
                     except Exception:
                         pass
+            if table_name == 'operator' and 'mic_auto_start' in existing_cols:
+                try:
+                    op_row = _DB_CONN.execute("SELECT mic_auto_start FROM operator LIMIT 1").fetchone()
+                    if op_row and op_row[0] is not None:
+                        vc_exists = _DB_CONN.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='voice_config'").fetchone()[0]
+                        if vc_exists:
+                            _DB_CONN.execute("UPDATE voice_config SET mic_auto_start = ? WHERE id = (SELECT id FROM voice_config LIMIT 1)", (op_row[0],))
+                            _DB_CONN.commit()
+                except Exception as ex_mig:
+                    logger.debug(f"Migrating mic_auto_start error: {ex_mig}")
             for col_key, col_name in existing_cols.items():
                 if col_key not in target_cols and col_key != 'id':
                     logger.info(f"Dropping obsolete column '{col_name}' from table '{table_name}'")
@@ -101,7 +111,7 @@ def init_config_storage(schema_path: Optional[Path]=None, enc_db_path: Optional[
                         _DB_CONN.commit()
                     except Exception as e:
                         logger.error(f"Failed to drop column '{col_name}' from '{table_name}': {e}")
-            if table_name not in ('app_permissions', 'ai_configs', 'chats', 'gnews_config'):
+            if table_name not in ('app_permissions', 'ai_configs', 'chats', 'gnews_config', 'voice_models'):
                 count = _DB_CONN.execute(f'SELECT count(*) FROM {table_name}').fetchone()[0]
                 if count == 0:
                     _DB_CONN.execute(f'INSERT INTO {table_name} DEFAULT VALUES')
@@ -130,6 +140,7 @@ def init_config_storage(schema_path: Optional[Path]=None, enc_db_path: Optional[
                 _DB_CONN.commit()
     _seed_default_ai_configs()
     _seed_default_gnews_config()
+    _seed_default_voice_models()
     try:
         schema_file = schema_path if schema_path is not None else get_schema_file_path()
         if schema_file.exists():
@@ -153,7 +164,12 @@ def init_config_storage(schema_path: Optional[Path]=None, enc_db_path: Optional[
         _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_chats_session_role_created ON chats(session_id, role, created_at DESC, id DESC)")
         _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_app_permissions_name ON app_permissions(app_name COLLATE NOCASE ASC)")
         _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_app_permissions_lower_app_id ON app_permissions(LOWER(app_id))")
-        _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_ai_configs_lower_provider ON ai_configs(LOWER(llm_provider))")
+        _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_voice_models_provider ON voice_models(provider)")
+        _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_voice_models_lower_provider ON voice_models(LOWER(provider))")
+        _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_voice_models_total_keys ON voice_models(total_keys)")
+        _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_voice_config_master ON voice_config(voice_enable_master)")
+        _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_voice_config_while_typing ON voice_config(voice_enable_while_typing)")
+        _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_voice_config_mic_auto ON voice_config(mic_auto_start)")
         _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_daily_suggestions_date ON daily_suggestions(date_suggestions DESC)")
         _DB_CONN.commit()
     except Exception as e:
@@ -215,6 +231,10 @@ def get_configuration(key: str) -> Dict[str, Any]:
         normalized_key = 'user_details'
     elif normalized_key in ('ai', 'ai_config', 'ai_configs', 'llm'):
         return {'providers': get_all_ai_providers(), 'priorities': get_ai_priorities(), 'configs': get_all_ai_configs()}
+    elif normalized_key in ('voice_models', 'voice_model', 'voice_key', 'voice_keys'):
+        return {'providers': get_all_voice_providers(), 'configs': get_all_voice_models()}
+    elif normalized_key in ('voice', 'voice_config', 'voice_settings'):
+        return get_voice_config()
     elif normalized_key in ('gnews', 'gnews_config', 'gnews_configs', 'news', 'news_config'):
         return get_gnews_config()
     elif normalized_key in ('priorities', 'ai_priorities', 'llm_priorities'):
@@ -252,6 +272,8 @@ def get_configuration(key: str) -> Dict[str, Any]:
                 result[col_name] = float(val) if val is not None else None
             else:
                 result[col_name] = val
+        if table_name == 'operator':
+            result['mic_auto_start'] = get_voice_config().get('mic_auto_start', False)
         return result
     for table_name, table_spec in _PARSED_SCHEMA.items():
         if normalized_key in table_spec['columns']:
@@ -280,6 +302,17 @@ def update_configuration(table_name: str, updates: Dict[str, Any]) -> Dict[str, 
         normalized_table = 'user_details'
     elif normalized_table in ('engine', 'engine_workers'):
         return update_engine_workers(updates)
+    elif normalized_table in ('voice_models', 'voice_model'):
+        provider = updates.get('provider')
+        if provider:
+            return update_voice_model(provider, **{k: v for k, v in updates.items() if k != 'provider'})
+        raise ValueError("Provider name must be specified when updating voice model configuration.")
+    elif normalized_table in ('voice', 'voice_config', 'voice_settings'):
+        return update_voice_config(updates)
+    elif normalized_table == 'operator':
+        if 'mic_auto_start' in updates:
+            mic_val = updates.pop('mic_auto_start')
+            update_voice_config({'mic_auto_start': mic_val})
     elif normalized_table in ('gnews', 'gnews_config', 'gnews_configs', 'news', 'news_config'):
         return update_gnews_config(**updates)
     if normalized_table not in _PARSED_SCHEMA:
@@ -415,6 +448,21 @@ def _seed_default_gnews_config() -> None:
         logger.info(f"Seeding default GNews config with ID: '{new_id}'")
         _DB_CONN.execute("INSERT INTO gnews_config (id, current_key, keys) VALUES (?, 0, '[]')", (new_id,))
         _DB_CONN.commit()
+
+def _seed_default_voice_models() -> None:
+    global _DB_CONN
+    if _DB_CONN is None:
+        return
+    exists = _DB_CONN.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='voice_models'").fetchone()[0]
+    if not exists:
+        return
+    default_providers = ['elevenlabs']
+    for provider in default_providers:
+        cursor = _DB_CONN.execute('SELECT count(*) FROM voice_models WHERE LOWER(provider) = LOWER(?)', (provider,))
+        if cursor.fetchone()[0] == 0:
+            logger.info(f"Seeding default voice model provider: '{provider}'")
+            _DB_CONN.execute("INSERT INTO voice_models (provider, total_keys, current_key, keys) VALUES (?, 0, 0, '[]')", (provider,))
+    _DB_CONN.commit()
 
 def get_gnews_config() -> Dict[str, Any]:
     global _DB_CONN
@@ -662,6 +710,186 @@ def delete_ai_config(provider: str) -> Dict[str, Any]:
     _DB_CONN.commit()
     save_config_storage()
     return {'status': 'success', 'message': f"AI config for provider '{row[1]}' deleted successfully."}
+
+def get_all_voice_providers() -> List[str]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+    cursor = _DB_CONN.execute('SELECT provider FROM voice_models ORDER BY id ASC')
+    rows = cursor.fetchall()
+    return [row[0] for row in rows]
+
+def get_all_voice_models() -> List[Dict[str, Any]]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+    cursor = _DB_CONN.execute('SELECT id, provider, total_keys, current_key, keys FROM voice_models ORDER BY id ASC')
+    rows = cursor.fetchall()
+    results: List[Dict[str, Any]] = []
+    for row in rows:
+        raw_keys = row[4]
+        try:
+            keys_list = json.loads(raw_keys) if raw_keys else []
+            if not isinstance(keys_list, list):
+                keys_list = []
+        except Exception:
+            keys_list = []
+        results.append({
+            'id': row[0],
+            'provider': row[1],
+            'total_keys': int(row[2]) if row[2] is not None else 0,
+            'current_key': int(row[3]) if row[3] is not None else 0,
+            'keys': [str(k) for k in keys_list]
+        })
+    return results
+
+def get_voice_model(provider: str) -> Dict[str, Any]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+    clean_provider = provider.strip()
+    if not clean_provider:
+        raise ValueError('Provider name cannot be empty')
+    cursor = _DB_CONN.execute('SELECT id, provider, total_keys, current_key, keys FROM voice_models WHERE LOWER(provider) = LOWER(?)', (clean_provider,))
+    row = cursor.fetchone()
+    if not row:
+        raise KeyError(f"Voice model for provider '{provider}' not found in Vault.")
+    raw_keys = row[4]
+    try:
+        keys_list = json.loads(raw_keys) if raw_keys else []
+        if not isinstance(keys_list, list):
+            keys_list = []
+    except Exception:
+        keys_list = []
+    return {
+        'id': row[0],
+        'provider': row[1],
+        'total_keys': int(row[2]) if row[2] is not None else 0,
+        'current_key': int(row[3]) if row[3] is not None else 0,
+        'keys': [str(k) for k in keys_list]
+    }
+
+def update_voice_model(
+    provider: str,
+    *,
+    keys: Optional[List[str]] = None,
+    add_keys: Optional[List[str]] = None,
+    remove_keys: Optional[List[str]] = None,
+    current_key: Optional[int] = None,
+    total_keys: Optional[int] = None,
+    create_if_missing: bool = True
+) -> Dict[str, Any]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+    clean_provider = provider.strip()
+    if not clean_provider:
+        raise ValueError('Provider name cannot be empty')
+    cursor = _DB_CONN.execute('SELECT id, provider, total_keys, current_key, keys FROM voice_models WHERE LOWER(provider) = LOWER(?)', (clean_provider,))
+    row = cursor.fetchone()
+    if not row:
+        if not create_if_missing:
+            raise KeyError(f"Voice model for provider '{provider}' not found in Vault.")
+        _DB_CONN.execute("INSERT INTO voice_models (provider, total_keys, current_key, keys) VALUES (?, 0, 0, '[]')", (clean_provider,))
+        _DB_CONN.commit()
+        cursor = _DB_CONN.execute('SELECT id, provider, total_keys, current_key, keys FROM voice_models WHERE LOWER(provider) = LOWER(?)', (clean_provider,))
+        row = cursor.fetchone()
+    row_id, orig_provider, current_total_keys, current_key_idx, raw_keys = row
+    try:
+        keys_list = json.loads(raw_keys) if raw_keys else []
+        if not isinstance(keys_list, list):
+            keys_list = []
+    except Exception:
+        keys_list = []
+    if keys is not None:
+        keys_list = [str(k).strip() for k in keys if str(k).strip()]
+    if add_keys:
+        for k in add_keys:
+            cleaned_k = str(k).strip()
+            if cleaned_k and cleaned_k not in keys_list:
+                keys_list.append(cleaned_k)
+    if remove_keys:
+        remove_set = {str(k).strip() for k in remove_keys if str(k).strip()}
+        keys_list = [k for k in keys_list if k not in remove_set]
+    computed_total = len(keys_list) if total_keys is None else max(0, total_keys)
+    if current_key is not None:
+        if computed_total == 0:
+            current_key_idx = 0
+        else:
+            current_key_idx = max(0, min(current_key, computed_total - 1))
+    elif computed_total == 0:
+        current_key_idx = 0
+    elif current_key_idx >= computed_total:
+        current_key_idx = max(0, computed_total - 1)
+    elif current_key_idx < 0:
+        current_key_idx = 0
+    json_keys = json.dumps(keys_list)
+    _DB_CONN.execute('UPDATE voice_models SET total_keys = ?, current_key = ?, keys = ? WHERE id = ?', (computed_total, current_key_idx, json_keys, row_id))
+    _DB_CONN.commit()
+    save_config_storage()
+    logger.info(f"Updated voice model for '{orig_provider}': total_keys={computed_total}, current_key={current_key_idx}, keys={len(keys_list)}")
+    return {
+        'id': row_id,
+        'provider': orig_provider,
+        'total_keys': computed_total,
+        'current_key': current_key_idx,
+        'keys': keys_list
+    }
+
+def delete_voice_model(provider: str) -> Dict[str, Any]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+    clean_provider = provider.strip()
+    if not clean_provider:
+        raise ValueError('Provider name cannot be empty')
+    cursor = _DB_CONN.execute('SELECT id, provider FROM voice_models WHERE LOWER(provider) = LOWER(?)', (clean_provider,))
+    row = cursor.fetchone()
+    if not row:
+        raise KeyError(f"Voice model for provider '{provider}' not found in Vault.")
+    _DB_CONN.execute('DELETE FROM voice_models WHERE id = ?', (row[0],))
+    _DB_CONN.commit()
+    save_config_storage()
+    return {'status': 'success', 'message': f"Voice model for provider '{row[1]}' deleted successfully."}
+
+def get_voice_config() -> Dict[str, Any]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+    cursor = _DB_CONN.execute("SELECT mic_auto_start, voice_enable_master, voice_enable_while_typing FROM voice_config LIMIT 1")
+    row = cursor.fetchone()
+    if not row:
+        _DB_CONN.execute("INSERT INTO voice_config DEFAULT VALUES")
+        _DB_CONN.commit()
+        cursor = _DB_CONN.execute("SELECT mic_auto_start, voice_enable_master, voice_enable_while_typing FROM voice_config LIMIT 1")
+        row = cursor.fetchone()
+    return {
+        'mic_auto_start': bool(row[0]) if row and row[0] is not None else False,
+        'voice_enable_master': bool(row[1]) if row and row[1] is not None else False,
+        'voice_enable_while_typing': bool(row[2]) if row and row[2] is not None else False,
+    }
+
+def update_voice_config(updates: Dict[str, Any]) -> Dict[str, Any]:
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+    current = get_voice_config()
+    mic_auto_start = updates.get('mic_auto_start', current['mic_auto_start'])
+    voice_enable_master = updates.get('voice_enable_master', current['voice_enable_master'])
+    voice_enable_while_typing = updates.get('voice_enable_while_typing', current['voice_enable_while_typing'])
+
+    # Requirement 4: If voice_enable_master is disabled, voice_enable_while_typing is automatically disabled
+    if not voice_enable_master:
+        voice_enable_while_typing = False
+
+    _DB_CONN.execute(
+        "UPDATE voice_config SET mic_auto_start = ?, voice_enable_master = ?, voice_enable_while_typing = ? WHERE id = (SELECT id FROM voice_config LIMIT 1)",
+        (1 if mic_auto_start else 0, 1 if voice_enable_master else 0, 1 if voice_enable_while_typing else 0)
+    )
+    _DB_CONN.commit()
+    save_config_storage()
+    logger.info(f"Updated voice_config: mic_auto_start={mic_auto_start}, voice_enable_master={voice_enable_master}, voice_enable_while_typing={voice_enable_while_typing}")
+    return get_voice_config()
 
 def get_ai_priorities() -> List[str]:
     global _DB_CONN

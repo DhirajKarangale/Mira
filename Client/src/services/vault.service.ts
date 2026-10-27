@@ -28,6 +28,37 @@ export interface AIConfigUpdateRequest {
   total_keys?: number;
 }
 
+export interface VoiceModel {
+  id?: number;
+  provider: string;
+  total_keys: number;
+  current_key: number;
+  keys: string[];
+}
+
+export interface VoiceModelUpdateRequest {
+  provider?: string;
+  keys?: string[];
+  add_keys?: string[];
+  remove_keys?: string[];
+  add_key?: string;
+  remove_key?: string;
+  current_key?: number;
+  total_keys?: number;
+}
+
+export interface VoiceConfig {
+  mic_auto_start: boolean;
+  voice_enable_master: boolean;
+  voice_enable_while_typing: boolean;
+}
+
+export interface VoiceConfigUpdateRequest {
+  mic_auto_start?: boolean;
+  voice_enable_master?: boolean;
+  voice_enable_while_typing?: boolean;
+}
+
 export interface GNewsConfig {
   id: string;
   current_key: number;
@@ -289,6 +320,49 @@ export const vaultService = {
 
   async deleteGNewsConfig(): Promise<{ status: string; message: string }> {
     const response = await vaultApi.delete<{ status: string; message: string }>("/news/config");
+    return response.data;
+  },
+
+  async getVoiceProviders(): Promise<string[]> {
+    const response = await vaultApi.get<string[]>("/voice/providers");
+    return response.data;
+  },
+
+  async getAllVoiceModels(): Promise<VoiceModel[]> {
+    const response = await vaultApi.get<VoiceModel[]>("/voice/models");
+    return response.data;
+  },
+
+  async getVoiceModel(provider: string): Promise<VoiceModel> {
+    const response = await vaultApi.get<VoiceModel>(`/voice/models/${encodeURIComponent(provider)}`);
+    return response.data;
+  },
+
+  async updateVoiceModel(
+    provider: string,
+    updates: VoiceModelUpdateRequest
+  ): Promise<VoiceModel> {
+    const response = await vaultApi.post<VoiceModel>(
+      `/voice/models/${encodeURIComponent(provider)}`,
+      updates
+    );
+    return response.data;
+  },
+
+  async deleteVoiceModel(provider: string): Promise<{ status: string; message: string }> {
+    const response = await vaultApi.delete<{ status: string; message: string }>(
+      `/voice/models/${encodeURIComponent(provider)}`
+    );
+    return response.data;
+  },
+
+  async getVoiceConfig(): Promise<VoiceConfig> {
+    const response = await vaultApi.get<VoiceConfig>("/voice/config");
+    return response.data;
+  },
+
+  async updateVoiceConfig(updates: VoiceConfigUpdateRequest): Promise<VoiceConfig> {
+    const response = await vaultApi.post<VoiceConfig>("/voice/config", updates);
     return response.data;
   },
 };

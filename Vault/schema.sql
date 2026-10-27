@@ -31,7 +31,6 @@ CREATE TABLE IF NOT EXISTS operator (
     id INTEGER PRIMARY KEY,
     CAPTURE_INTERVAL_SECS INTEGER DEFAULT 10,
     AUTO_START BOOLEAN DEFAULT 0,
-    mic_auto_start BOOLEAN DEFAULT 0,
     KNOWLEDGE_BASE_RETENTION_PERIOD TEXT DEFAULT 'Never auto delete'
 );
 
@@ -120,6 +119,24 @@ CREATE TABLE IF NOT EXISTS gnews_config (
     keys TEXT DEFAULT '[]'
 );
 
+CREATE TABLE IF NOT EXISTS voice_models (
+    id INTEGER PRIMARY KEY,
+    provider TEXT UNIQUE NOT NULL,
+    total_keys INTEGER DEFAULT 0,
+    current_key INTEGER DEFAULT 0,
+    keys TEXT DEFAULT '[]'
+);
+CREATE INDEX IF NOT EXISTS idx_voice_models_provider ON voice_models(provider);
+CREATE INDEX IF NOT EXISTS idx_voice_models_lower_provider ON voice_models(LOWER(provider));
+CREATE INDEX IF NOT EXISTS idx_voice_models_total_keys ON voice_models(total_keys);
 
-
+CREATE TABLE IF NOT EXISTS voice_config (
+    id INTEGER PRIMARY KEY,
+    mic_auto_start BOOLEAN DEFAULT 0,
+    voice_enable_master BOOLEAN DEFAULT 0,
+    voice_enable_while_typing BOOLEAN DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_voice_config_master ON voice_config(voice_enable_master);
+CREATE INDEX IF NOT EXISTS idx_voice_config_while_typing ON voice_config(voice_enable_while_typing);
+CREATE INDEX IF NOT EXISTS idx_voice_config_mic_auto ON voice_config(mic_auto_start);
 

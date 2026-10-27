@@ -75,5 +75,12 @@ export const QUERY_KEYS = {
     all: ["daily_suggestions"] as const,
     pageData: ["daily_suggestions", "page_data"] as const,
   },
+  voice: {
+    all: ["vault", "voice"] as const,
+    config: ["vault", "voice", "config"] as const,
+    providers: ["vault", "voice", "providers"] as const,
+    models: ["vault", "voice", "models"] as const,
+    model: (provider: string) => ["vault", "voice", "model", provider.toLowerCase()] as const,
+  },
 } as const;
 

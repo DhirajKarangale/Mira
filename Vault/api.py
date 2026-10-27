@@ -130,9 +130,15 @@ async def update_operator_config(request: OperatorConfigUpdateRequest):
                     break
             if not matched:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={'message': f"Invalid Knowledge Base retention period '{retention_val}'. Must be one of: {', '.join(VALID_KB_RETENTIONS)}"})
+        mic_val = updates.pop('mic_auto_start', None)
+        if mic_val is not None:
+            config_storage.update_voice_config({'mic_auto_start': mic_val})
         if not updates:
-            return config_storage.get_configuration('operator')
-        return config_storage.update_configuration('operator', updates)
+            resp = config_storage.get_configuration('operator')
+        else:
+            resp = config_storage.update_configuration('operator', updates)
+        resp['mic_auto_start'] = config_storage.get_voice_config().get('mic_auto_start', False)
+        return resp
     except HTTPException:
         raise
     except Exception as e:
@@ -462,6 +468,108 @@ async def update_ai_priorities_endpoint(payload: Union[List[str], AIPrioritiesUp
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={'message': str(e)})
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to update AI priorities: {str(e)}'})
+
+class VoiceModelResponse(BaseModel):
+    id: Optional[int] = None
+    provider: str
+    total_keys: int = 0
+    current_key: int = 0
+    keys: List[str] = []
+
+class VoiceModelUpdateRequest(BaseModel):
+    provider: Optional[str] = None
+    keys: Optional[List[str]] = None
+    add_keys: Optional[List[str]] = None
+    remove_keys: Optional[List[str]] = None
+    add_key: Optional[str] = None
+    remove_key: Optional[str] = None
+    current_key: Optional[int] = None
+    total_keys: Optional[int] = None
+
+@router.get('/voice/providers', response_model=List[str], status_code=status.HTTP_200_OK)
+async def get_voice_providers():
+    try:
+        return config_storage.get_all_voice_providers()
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to retrieve voice providers: {str(e)}'})
+
+@router.get('/voice/models', response_model=List[VoiceModelResponse], status_code=status.HTTP_200_OK)
+async def get_all_voice_models():
+    try:
+        return config_storage.get_all_voice_models()
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to retrieve voice models: {str(e)}'})
+
+@router.get('/voice/models/{provider}', response_model=VoiceModelResponse, status_code=status.HTTP_200_OK)
+async def get_voice_model_by_provider(provider: str):
+    try:
+        return config_storage.get_voice_model(provider)
+    except KeyError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={'message': str(e)})
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={'message': str(e)})
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to retrieve voice model: {str(e)}'})
+
+@router.post('/voice/models/{provider}', response_model=VoiceModelResponse, status_code=status.HTTP_200_OK)
+async def update_voice_model_by_provider(provider: str, request: VoiceModelUpdateRequest):
+    try:
+        add_keys = list(request.add_keys) if request.add_keys else []
+        if request.add_key and request.add_key.strip():
+            add_keys.append(request.add_key.strip())
+        remove_keys = list(request.remove_keys) if request.remove_keys else []
+        if request.remove_key and request.remove_key.strip():
+            remove_keys.append(request.remove_key.strip())
+        updated = config_storage.update_voice_model(
+            provider=provider,
+            keys=request.keys,
+            add_keys=add_keys if add_keys else None,
+            remove_keys=remove_keys if remove_keys else None,
+            current_key=request.current_key,
+            total_keys=request.total_keys
+        )
+        return updated
+    except KeyError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={'message': str(e)})
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={'message': str(e)})
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to update voice model: {str(e)}'})
+
+@router.delete('/voice/models/{provider}', status_code=status.HTTP_200_OK)
+async def delete_voice_model_endpoint(provider: str):
+    try:
+        return config_storage.delete_voice_model(provider)
+    except KeyError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={'message': str(e)})
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to delete voice model: {str(e)}'})
+
+class VoiceConfigResponse(BaseModel):
+    mic_auto_start: bool = False
+    voice_enable_master: bool = False
+    voice_enable_while_typing: bool = False
+
+class VoiceConfigUpdateRequest(BaseModel):
+    mic_auto_start: Optional[bool] = None
+    voice_enable_master: Optional[bool] = None
+    voice_enable_while_typing: Optional[bool] = None
+
+@router.get('/voice/config', response_model=VoiceConfigResponse, status_code=status.HTTP_200_OK)
+async def get_voice_config_endpoint():
+    try:
+        return config_storage.get_voice_config()
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to retrieve voice configuration: {str(e)}'})
+
+@router.post('/voice/config', response_model=VoiceConfigResponse, status_code=status.HTTP_200_OK)
+async def update_voice_config_endpoint(request: VoiceConfigUpdateRequest):
+    try:
+        updates = request.model_dump(exclude_unset=True)
+        return config_storage.update_voice_config(updates)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to update voice configuration: {str(e)}'})
+
 
 class GNewsConfigResponse(BaseModel):
     id: str
