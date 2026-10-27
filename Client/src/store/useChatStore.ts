@@ -240,13 +240,17 @@ export const useChatStore = create<ChatStoreState>()(
           };
         });
 
-        // Concurrently submit AI response text to the voice submodule
+        // Submit AI response text to the voice submodule
+        // A short 150ms delay guarantees the UI thread has painted the message bubble
+        // on the screen so the user sees the text message before or as voice starts
         if (aiMessage?.content) {
-          try {
-            chatVoiceBridge.handleAiResponse(aiMessage.id, aiMessage.content);
-          } catch (err) {
-            console.debug("[ChatVoiceBridge] Failed to enqueue AI speech response:", err);
-          }
+          setTimeout(() => {
+            try {
+              chatVoiceBridge.handleAiResponse(aiMessage.id, aiMessage.content);
+            } catch (err) {
+              console.debug("[ChatVoiceBridge] Failed to enqueue AI speech response:", err);
+            }
+          }, 150);
         }
       },
 

@@ -5,17 +5,24 @@ import {
   Square,
   Layers,
   Volume2,
+  VolumeX,
 } from "lucide-react";
 import { useVoiceQueue } from "./useVoiceQueue";
+import { useVoiceStore } from "@/store/useVoiceStore";
+import { cn } from "@/lib/utils";
 
 /**
  * Voice Playback Overlay
  * Centralized floating overlay widget that displays the currently playing
- * voice response, chunk progress, pending queue count, and provides skip/stop controls.
+ * voice response, chunk progress, full volume status, pending queue count,
+ * and provides skip/stop controls.
  */
 export const VoicePlaybackOverlay: FC = () => {
   const { currentResponse, pendingResponses, stopCurrent, stopAll } =
     useVoiceQueue();
+  const volume = useVoiceStore((s) => s.volume);
+  const setVolume = useVoiceStore((s) => s.setVolume);
+  const maximizeVolume = useVoiceStore((s) => s.maximizeVolume);
 
   if (!currentResponse && pendingResponses.length === 0) {
     return null;
@@ -44,9 +51,9 @@ export const VoicePlaybackOverlay: FC = () => {
           </div>
 
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[11px] font-semibold tracking-wide uppercase text-cyan-400 flex items-center gap-1.5">
-                <Volume2 className="w-3 h-3 inline" />
+                <Volume2 className="w-3 h-3 inline text-cyan-300" />
                 <span>MIRA Voice</span>
               </span>
 
@@ -55,6 +62,27 @@ export const VoicePlaybackOverlay: FC = () => {
                   Part {currentChunkIdx + 1}/{totalChunks}
                 </span>
               )}
+
+              {/* Volume Status Badge / Quick Toggle */}
+              <button
+                type="button"
+                id="btn-voice-overlay-volume-toggle"
+                onClick={() => (volume === 0 ? maximizeVolume() : setVolume(0))}
+                title={`Playback Volume: ${Math.round(volume * 100)}% (Click to ${volume === 0 ? "restore full volume" : "mute"})`}
+                className={cn(
+                  "text-[10px] font-mono px-1.5 py-0.2 rounded border flex items-center gap-1 transition-all cursor-pointer",
+                  volume > 0
+                    ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25 shadow-[0_0_8px_rgba(16,185,129,0.15)]"
+                    : "bg-zinc-800 text-zinc-400 border-white/10 hover:bg-zinc-700"
+                )}
+              >
+                {volume === 0 ? (
+                  <VolumeX className="w-2.5 h-2.5 text-zinc-400" />
+                ) : (
+                  <Volume2 className="w-2.5 h-2.5 text-emerald-400" />
+                )}
+                <span>{Math.round(volume * 100)}% Full</span>
+              </button>
 
               {pendingCount > 0 && (
                 <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">
@@ -72,6 +100,20 @@ export const VoicePlaybackOverlay: FC = () => {
 
         {/* Action Controls */}
         <div className="flex items-center gap-1.5 shrink-0">
+          {/* Maximize Volume Quick Action if muted or lower */}
+          {volume < 1 && (
+            <button
+              type="button"
+              id="btn-voice-overlay-max-vol"
+              onClick={maximizeVolume}
+              className="flex items-center justify-center w-7 h-7 rounded-lg text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 transition-all cursor-pointer"
+              title="Maximize volume to 100% Full"
+              aria-label="Maximize volume"
+            >
+              <Volume2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+
           {/* Skip Current Response */}
           <button
             type="button"

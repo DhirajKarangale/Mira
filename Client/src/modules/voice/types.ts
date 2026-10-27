@@ -64,4 +64,6 @@ export interface ChunkGenerationOptions {
   modelId?: string;
   stability?: number;
   similarityBoost?: number;
+  useSpeakerBoost?: boolean;
 }
+

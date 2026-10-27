@@ -21,25 +21,6 @@ export function isKeyRotationError(
   statusCode: number,
   errorData?: unknown
 ): KeyRotationCheckResult {
-  // If the error indicates a library/cloned voice requires a paid subscription,
-  // do NOT rotate keys because all free tier keys will hit the exact same restriction.
-  if (errorData) {
-    const errorStr = (
-      typeof errorData === "string" ? errorData : JSON.stringify(errorData)
-    ).toLowerCase();
-
-    if (
-      errorStr.includes("paid_plan_required") ||
-      errorStr.includes("library voices") ||
-      errorStr.includes("voice_not_found")
-    ) {
-      return {
-        shouldRotate: false,
-        reason: "Voice requires a paid ElevenLabs plan or is missing; not an API key quota failure",
-      };
-    }
-  }
-
   // 1. Authentication failure
   if (statusCode === 401) {
     return {
@@ -48,13 +29,14 @@ export function isKeyRotationError(
     };
   }
 
-  // 2. Quota exhaustion / payment required for account credits
+  // 2. Quota exhaustion / payment required for account credits or plan tier
   if (statusCode === 402) {
     return {
       shouldRotate: true,
       reason: "Usage quota exhausted / payment required (HTTP 402)",
     };
   }
+
 
   // 3. Rate limiting / concurrency or monthly quota exceeded
   if (statusCode === 429) {
@@ -98,33 +80,22 @@ export function isKeyRotationError(
 }
 
 /**
- * Resolves the appropriate voice ID and model ID based on the configured voiceModelId in Vault.
+ * Resolves the appropriate voice ID and model ID based strictly on the configured voice_model_id in Vault.
  */
-function resolveVoiceAndModel(configuredModelId?: string): {
+function resolveVoiceAndModel(configuredVoiceModelId?: string): {
   voiceId: string;
   modelId: string;
 } {
-  const trimmed = (configuredModelId || "").trim();
-  if (!trimmed) {
-    return { voiceId: DEFAULT_VOICE_ID, modelId: DEFAULT_MODEL_ID };
-  }
-
-  // If user entered a known model identifier (e.g. eleven_multilingual_v2, eleven_turbo_v2_5)
-  if (
-    trimmed.startsWith("eleven_") ||
-    trimmed.includes("multilingual") ||
-    trimmed.includes("turbo") ||
-    trimmed.includes("flash")
-  ) {
-    return { voiceId: DEFAULT_VOICE_ID, modelId: trimmed };
-  }
-
-  // Otherwise assume it is a custom voice ID or cloned voice token hash
-  return { voiceId: trimmed, modelId: DEFAULT_MODEL_ID };
+  const trimmed = (configuredVoiceModelId || "").trim();
+  return {
+    voiceId: trimmed || DEFAULT_VOICE_ID,
+    modelId: DEFAULT_MODEL_ID,
+  };
 }
 
 /**
  * Sends a text chunk to ElevenLabs and retrieves its audio Blob.
+ * Strictly uses the voice model with the ID set in voice_config.
  * Automatically rotates through the configured API key array if quota or auth errors occur.
  * Attempts each available key at most once to prevent infinite loops.
  * Never leaks API keys in logs or errors.
@@ -150,7 +121,7 @@ export async function generateChunkAudio(
   const { voiceId: defaultVoice, modelId: defaultModel } = resolveVoiceAndModel(
     voiceStore.voiceModelId
   );
-  let effectiveVoiceId = options?.voiceId || defaultVoice;
+  const targetVoiceId = options?.voiceId || defaultVoice;
   const targetModelId = options?.modelId || defaultModel;
 
   const initialKeyIndex = Math.max(
@@ -160,7 +131,6 @@ export async function generateChunkAudio(
 
   let currentAttempt = 0;
   const totalKeys = keys.length;
-  let hasFallenBackToDefaultVoice = effectiveVoiceId === DEFAULT_VOICE_ID;
 
   while (currentAttempt < totalKeys) {
     const activeKeyIndex = (initialKeyIndex + currentAttempt) % totalKeys;
@@ -168,8 +138,12 @@ export async function generateChunkAudio(
 
     try {
       const endpoint = `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(
-        effectiveVoiceId
+        targetVoiceId
       )}?output_format=mp3_44100_128`;
+
+      console.log(
+        `[ElevenLabs] Sending TTS request using voice model ID: "${targetVoiceId}", model: "${targetModelId}" (key #${activeKeyIndex + 1})`
+      );
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -184,12 +158,16 @@ export async function generateChunkAudio(
           voice_settings: {
             stability: options?.stability ?? 0.5,
             similarity_boost: options?.similarityBoost ?? 0.75,
+            use_speaker_boost: options?.useSpeakerBoost ?? true,
           },
         }),
       });
 
       // Success
       if (response.ok) {
+        console.log(
+          `[ElevenLabs] Generated audio using voice model ID "${targetVoiceId}" with key #${activeKeyIndex + 1}`
+        );
         // If we rotated away from the previous key index, persist the new active key in background
         if (activeKeyIndex !== voiceStore.currentKeyIndex) {
           useVoiceStore
@@ -217,35 +195,11 @@ export async function generateChunkAudio(
         }
       }
 
-      // Check if error is specifically due to a library / paid / non-existent voice
-      const errorStr = (
-        typeof errorPayload === "string"
-          ? errorPayload
-          : JSON.stringify(errorPayload || "")
-      ).toLowerCase();
-
-      const isVoiceRestricted =
-        errorStr.includes("paid_plan_required") ||
-        errorStr.includes("library voices") ||
-        errorStr.includes("voice_not_found") ||
-        errorStr.includes("voice not found") ||
-        errorStr.includes("does not exist");
-
-      if (isVoiceRestricted && !hasFallenBackToDefaultVoice) {
-        console.warn(
-          `[ElevenLabs] Custom voice "${effectiveVoiceId}" requires a paid ElevenLabs plan (library voice). Automatically falling back to premade voice "${DEFAULT_VOICE_ID}" (Sarah).`
-        );
-        effectiveVoiceId = DEFAULT_VOICE_ID;
-        hasFallenBackToDefaultVoice = true;
-        // Retry immediately on the current key with the reliable default voice
-        continue;
-      }
-
       const rotationCheck = isKeyRotationError(response.status, errorPayload);
 
       if (rotationCheck.shouldRotate) {
         console.warn(
-          `[ElevenLabs] Key #${activeKeyIndex + 1} unavailable (${
+          `[ElevenLabs] Key #${activeKeyIndex + 1} unavailable for voice "${targetVoiceId}" (${
             rotationCheck.reason
           }). Attempting rotation to next key (${currentAttempt + 1}/${totalKeys}).`
         );

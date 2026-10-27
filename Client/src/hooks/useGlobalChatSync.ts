@@ -139,6 +139,19 @@ export function useGlobalChatSync() {
               if (targetSid) {
                 const userPrompt = store.sendingSessions[targetSid]?.userPrompt;
                 store.resolveAiMessage(targetSid, job_id, user_message, ai_message);
+
+                // Instantly notify active chat view for zero-latency DOM render
+                window.dispatchEvent(
+                  new CustomEvent("mira:chat_response", {
+                    detail: {
+                      session_id: targetSid,
+                      job_id,
+                      user_message,
+                      ai_message,
+                    },
+                  })
+                );
+
                 notifyIfInactive(
                   targetSid,
                   ai_message?.content,
@@ -176,8 +189,18 @@ export function useGlobalChatSync() {
 
     connectWs();
 
+    // Heartbeat to keep WebSocket active and responsive
+    const pingInterval = setInterval(() => {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        try {
+          socket.send(JSON.stringify({ type: "ping" }));
+        } catch {}
+      }
+    }, 15000);
+
     return () => {
       isMounted = false;
+      clearInterval(pingInterval);
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (socket) {
         socket.onclose = null;
@@ -234,6 +257,18 @@ export function useGlobalChatSync() {
             const userPrompt = sendingInfo?.userPrompt;
             store.resolveAiMessage(sid, sendingInfo?.jobId, null, lastMsg);
             store.setSessionMessages(sid, msgs);
+
+            // Instantly notify active chat view for zero-latency DOM render
+            window.dispatchEvent(
+              new CustomEvent("mira:chat_response", {
+                detail: {
+                  session_id: sid,
+                  job_id: sendingInfo?.jobId,
+                  ai_message: lastMsg,
+                },
+              })
+            );
+
             notifyIfInactive(sid, lastMsg.content, userPrompt, lastMsg.id);
           }
         } catch (e) {
@@ -242,7 +277,8 @@ export function useGlobalChatSync() {
       }
     };
 
-    timer = setInterval(pollActiveSessions, 2000);
+    // Sub-second polling (800ms) while sending sessions are in flight
+    timer = setInterval(pollActiveSessions, 800);
     return () => clearInterval(timer);
   }, []);
 

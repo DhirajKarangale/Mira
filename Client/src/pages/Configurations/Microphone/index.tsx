@@ -106,7 +106,6 @@ export const MicrophonePage: FC = () => {
   const handleUpdateVoiceConfig = async (updates: VoiceConfigUpdateRequest) => {
     try {
       await updateVoiceConfigMutation.mutateAsync(updates);
-      useVoiceStore.getState().setVoiceConfig(updates).catch(() => { });
     } catch (err: unknown) {
       const msg = (err as Error)?.message || "Failed to update voice configuration.";
       toast.error(msg, { title: "Voice Configuration Error" });

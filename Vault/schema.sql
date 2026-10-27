@@ -132,9 +132,9 @@ CREATE INDEX IF NOT EXISTS idx_voice_models_total_keys ON voice_models(total_key
 
 CREATE TABLE IF NOT EXISTS voice_config (
     id INTEGER PRIMARY KEY,
-    mic_auto_start BOOLEAN DEFAULT 0,
-    voice_enable_master BOOLEAN DEFAULT 0,
-    voice_enable_while_typing BOOLEAN DEFAULT 0,
+    mic_auto_start BOOLEAN DEFAULT 1,
+    voice_enable_master BOOLEAN DEFAULT 1,
+    voice_enable_while_typing BOOLEAN DEFAULT 1,
     voice_model_id TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_voice_config_master ON voice_config(voice_enable_master);

@@ -3,6 +3,8 @@ import {
   voiceService,
   type VoiceConfigUpdateRequest,
 } from "@/services";
+import { audioPlayer } from "@/modules/voice/audioPlayer";
+
 
 export interface VoiceState {
   // ElevenLabs keys & active key state
@@ -20,6 +22,7 @@ export interface VoiceState {
   voiceEnableMaster: boolean;
   voiceEnableWhileTyping: boolean;
   voiceModelId: string;
+  volume: number; // 0.0 - 1.0 (default 1.0 = 100% full volume)
 
   // Store metadata
   isLoading: boolean;
@@ -36,6 +39,8 @@ export interface VoiceState {
   setVoiceConfig: (updates: VoiceConfigUpdateRequest) => Promise<void>;
   setVoiceModelId: (modelId: string) => Promise<void>;
   setKeys: (keys: string[], currentKeyIndex?: number) => void;
+  setVolume: (volume: number) => void;
+  maximizeVolume: () => void;
 }
 
 export const useVoiceStore = create<VoiceState>((set, get) => ({
@@ -51,6 +56,7 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
   voiceEnableMaster: false,
   voiceEnableWhileTyping: false,
   voiceModelId: "",
+  volume: 1.0,
 
   isLoading: false,
   isInitialized: false,
@@ -248,4 +254,22 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
       activeKey: newKeys.length > 0 ? newKeys[safeIdx] || null : null,
     });
   },
+
+  /**
+   * Sets playback volume (0.0 to 1.0) and updates the audio player.
+   */
+  setVolume: (volume: number) => {
+    const clamped = Math.max(0, Math.min(1, Number.isFinite(volume) ? volume : 1.0));
+    set({ volume: clamped });
+    audioPlayer.setVolume(clamped);
+  },
+
+  /**
+   * Maximizes voice playback volume to full (1.0).
+   */
+  maximizeVolume: () => {
+    set({ volume: 1.0 });
+    audioPlayer.maximizeVolume();
+  },
 }));
+

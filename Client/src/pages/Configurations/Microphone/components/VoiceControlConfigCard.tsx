@@ -10,8 +10,10 @@ import {
   Check,
   Save,
   RotateCcw,
+  Sparkles,
 } from "lucide-react";
 import type { VoiceConfig, VoiceConfigUpdateRequest } from "@/services";
+import { useVoiceStore } from "@/store/useVoiceStore";
 import { cn } from "@/lib/utils";
 
 interface VoiceControlConfigCardProps {
@@ -28,6 +30,10 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
   const isMasterEnabled = Boolean(voiceConfig?.voice_enable_master);
   const isWhileTypingEnabled = isMasterEnabled && Boolean(voiceConfig?.voice_enable_while_typing);
 
+  const volume = useVoiceStore((s) => s.volume);
+  const setVolume = useVoiceStore((s) => s.setVolume);
+  const maximizeVolume = useVoiceStore((s) => s.maximizeVolume);
+
   const serverModelId = voiceConfig?.voice_model_id ?? "";
   const [modelIdInput, setModelIdInput] = useState(serverModelId);
   const [isCopied, setIsCopied] = useState(false);
@@ -41,11 +47,26 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
   const isDirty = modelIdInput !== serverModelId;
 
   const handleSaveModelId = async () => {
-    if (!isDirty || isSavingModelId || isUpdating) return;
+    if (!isDirty || isSavingModelId) return;
     setIsSavingModelId(true);
     try {
       await onUpdateVoiceConfig({
         voice_model_id: modelIdInput.trim(),
+      });
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 2500);
+    } finally {
+      setIsSavingModelId(false);
+    }
+  };
+
+  const handleSelectPreset = async (presetId: string) => {
+    setModelIdInput(presetId);
+    if (presetId.trim() === serverModelId) return;
+    setIsSavingModelId(true);
+    try {
+      await onUpdateVoiceConfig({
+        voice_model_id: presetId.trim(),
       });
       setJustSaved(true);
       setTimeout(() => setJustSaved(false), 2500);
@@ -318,6 +339,82 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
         </div>
       </div>
 
+      {/* Speech Output Volume & Audio Booster Section */}
+      <div className="relative p-5 sm:p-6 border-t border-white/[0.06] bg-zinc-950/20">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5">
+            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0 shadow-[0_0_12px_rgba(16,185,129,0.15)]">
+              <Volume2 className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm font-semibold text-white tracking-tight">
+                  Speech Output Volume & Booster
+                </h3>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold">
+                  {Math.round(volume * 100)}% Full
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 flex items-center gap-1">
+                  <Sparkles className="w-2.5 h-2.5 text-cyan-400" />
+                  Speaker Boost Active
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Full-fidelity output with Web Audio dynamic gain booster and ElevenLabs neural speaker volume boost
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <button
+              type="button"
+              id="btn-voice-max-volume"
+              onClick={maximizeVolume}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-mono font-semibold transition-all cursor-pointer border flex items-center gap-1.5",
+                volume >= 0.99
+                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
+                  : "bg-white/[0.04] hover:bg-white/[0.08] text-zinc-300 border-white/[0.08]"
+              )}
+              title="Set playback volume to 100% Full"
+            >
+              <Volume2 className="w-3.5 h-3.5" />
+              <span>Full Volume (100%)</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Volume Slider Bar */}
+        <div className="mt-4 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => (volume === 0 ? maximizeVolume() : setVolume(0))}
+            className="text-zinc-400 hover:text-white transition-colors cursor-pointer"
+            title={volume === 0 ? "Restore full volume" : "Mute playback"}
+          >
+            {volume === 0 ? (
+              <VolumeX className="w-4 h-4 text-zinc-500" />
+            ) : (
+              <Volume2 className="w-4 h-4 text-emerald-400" />
+            )}
+          </button>
+          <input
+            id="slider-voice-volume"
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            value={volume}
+            onChange={(e) => setVolume(parseFloat(e.target.value))}
+            className="w-full sm:max-w-xs h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500 hover:accent-emerald-400 transition-all"
+            title={`Adjust Volume: ${Math.round(volume * 100)}%`}
+          />
+          <span className="text-xs font-mono text-zinc-300 w-12 text-right">
+            {Math.round(volume * 100)}%
+          </span>
+        </div>
+      </div>
+
       {/* Voice Model ID Section */}
       <div className="relative p-5 sm:p-6 border-t border-white/[0.06] bg-zinc-950/30">
         <div className="flex flex-col gap-3">
@@ -447,28 +544,47 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {[
-                  { name: "Sarah (Default)", id: "EXAVITQu4vr4xnSDxMaL", desc: "Mature, Reassuring" },
-                  { name: "Alice", id: "Xb7hH8MSUJpSbSDYk0k2", desc: "Clear Educator" },
-                  { name: "George", id: "JBFqnCBsd6RMkjVDRZzb", desc: "Warm Storyteller" },
-                  { name: "Roger", id: "CwhRBWXzGAHq8TQ4Fs17", desc: "Laid-Back Casual" },
-                  { name: "Charlie", id: "IKne3meq5aSn9XLyUdCD", desc: "Deep & Confident" },
+                  { name: "Sarah (Default Female)", id: "EXAVITQu4vr4xnSDxMaL", desc: "Mature, Reassuring" },
+                  { name: "George (Default Male)", id: "JBFqnCBsd6RMkjVDRZzb", desc: "Warm Storyteller" },
+                  { name: "Alice (Female)", id: "Xb7hH8MSUJpSbSDYk0k2", desc: "Clear Educator" },
+                  { name: "Roger (Male)", id: "CwhRBWXzGAHq8TQ4Fs17", desc: "Laid-Back Casual" },
+                  { name: "Charlie (Male)", id: "IKne3meq5aSn9XLyUdCD", desc: "Deep & Confident" },
                 ].map((preset) => (
                   <button
                     key={preset.id}
                     type="button"
-                    onClick={() => setModelIdInput(preset.id)}
+                    onClick={() => handleSelectPreset(preset.id)}
                     className={cn(
-                      "px-2.5 py-1 rounded-lg text-[11px] font-mono transition-all cursor-pointer border",
-                      modelIdInput.trim() === preset.id
+                      "px-2.5 py-1 rounded-lg text-[11px] font-mono transition-all cursor-pointer border flex items-center gap-1.5",
+                      (serverModelId === preset.id || modelIdInput.trim() === preset.id)
                         ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-[0_0_10px_rgba(6,182,212,0.15)] font-semibold"
                         : "bg-white/[0.03] hover:bg-white/[0.08] text-zinc-300 border-white/[0.06]"
                     )}
-                    title={`${preset.name}: ${preset.desc} (${preset.id})`}
+                    title={`Switch to ${preset.name} (${preset.id})`}
                   >
+                    {serverModelId === preset.id && <Check className="w-3 h-3 text-cyan-400" />}
                     <span>{preset.name}</span>
                   </button>
                 ))}
               </div>
+
+              {modelIdInput.trim() === "QTKSa2Iyv0yoxvXY2V8a" && (
+                <div className="mt-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs leading-relaxed space-y-1">
+                  <div className="font-semibold text-amber-300 flex items-center gap-1.5">
+                    <span>⚠️ ElevenLabs Free API Restriction Notice:</span>
+                  </div>
+                  <p>
+                    Voice ID <code className="px-1 py-0.5 rounded bg-black/40 font-mono text-amber-200">QTKSa2Iyv0yoxvXY2V8a</code> (Neha P) is an ElevenLabs <strong>Community Library</strong> voice.
+                  </p>
+                  <p className="text-zinc-300">
+                    ElevenLabs strictly blocks Free Tier API accounts from using Community Library voices (returns <code className="px-1 py-0.5 rounded bg-black/40 font-mono text-rose-300">HTTP 402: Free users cannot use library voices via the API</code>).
+                  </p>
+                  <p className="text-zinc-400 text-[11px]">
+                    To use Neha P, an ElevenLabs paid subscription (Creator/Starter) is required on your ElevenLabs account. On free accounts, please select one of the Premade voices above (like <strong>Sarah</strong> or <strong>George</strong>), which work freely without restriction!
+                  </p>
+                </div>
+              )}
+
               <p className="text-[11px] text-zinc-500 leading-relaxed">
                 Free ElevenLabs accounts only allow Premade voices via API. Library or cloned voices require a paid ElevenLabs plan. If an unpermitted library voice is entered, MIRA automatically falls back to Sarah so you always hear speech.
               </p>

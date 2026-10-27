@@ -812,8 +812,46 @@ export const ChatsPage: FC = () => {
       );
     };
 
+    const handleChatResponseEvent = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { session_id, ai_message, user_message } = customEvent.detail || {};
+      if (!session_id || !ai_message) return;
+
+      const currentSid = selectedSessionIdRef.current;
+      if (currentSid === session_id || !currentSid) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === ai_message.id)) {
+            return prev;
+          }
+          let updated = [...prev];
+          if (user_message) {
+            updated = updated.map((m) =>
+              m.id.startsWith("temp-") &&
+              (m.content === user_message.content || m.content.trim() === user_message.content.trim())
+                ? user_message
+                : m
+            );
+          }
+          updated = updated.filter((m) => !m.id.startsWith("temp-"));
+          updated.push(ai_message);
+          return updated;
+        });
+
+        // Instant smooth scroll to bottom for the newly received message
+        setTimeout(() => {
+          if (isNearBottomRef.current) {
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+          }
+        }, 30);
+      }
+    };
+
     window.addEventListener("mira:chat_rename", handleRenameEvent);
-    return () => window.removeEventListener("mira:chat_rename", handleRenameEvent);
+    window.addEventListener("mira:chat_response", handleChatResponseEvent);
+    return () => {
+      window.removeEventListener("mira:chat_rename", handleRenameEvent);
+      window.removeEventListener("mira:chat_response", handleChatResponseEvent);
+    };
   }, []);
 
   // Synchronize visible messages whenever store's cached messages for selected session update
@@ -1113,7 +1151,15 @@ export const ChatsPage: FC = () => {
 
       // If response returned synchronous ai_message (e.g. fallback or mock)
       if (response.ai_message) {
-        resolveAiMessage(targetSessionId, jobId, response.user_message, response.ai_message);
+        const aiMsg = response.ai_message;
+        resolveAiMessage(targetSessionId, jobId, response.user_message, aiMsg);
+        if (selectedSessionIdRef.current === targetSessionId) {
+          setMessages((prev) => {
+            const hasAi = prev.some((m) => m.id === aiMsg.id);
+            if (hasAi) return prev;
+            return [...prev.filter((m) => !m.id.startsWith("temp-")), aiMsg];
+          });
+        }
         fetchSessions(1, null, false, true);
       } else {
         // Job queued into llm_chat stream; replace tempId in-place with saved user msg
