@@ -11,6 +11,9 @@ venv/
 target/
 **/target/
 **/gen/schemas/
+Client/src-tauri/resources/backend/
+Client/src-tauri/resources/bin/
+!Client/src-tauri/resources/placeholder.txt
 
 # Node & Frontend Build Outputs
 node_modules/
