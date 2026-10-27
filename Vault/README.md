@@ -6,11 +6,12 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 ## 1. Purpose
 
-- **Encrypted Configurations**: Stores configurations in an encrypted SQLite database.
-- **Audit Logging**: Collects and queries encrypted audit logs with retention cleanup.
-- **Application Permissions**: Manages per-application capture permissions.
-- **AI Management**: Stores AI credentials, provider priorities, and concurrency limits.
-- **Cryptography Services**: Encrypts and decrypts sensitive data in transit and at rest.
+- **Encrypted Configurations**: Stores module configurations in an encrypted SQLite database.
+- **Audit Logging**: Collects and queries encrypted audit logs with automatic retention cleanup.
+- **Application Permissions**: Manages per-application screen capture permissions.
+- **AI Credentials & Priority**: Stores LLM API keys, provider priorities, and worker concurrency limits.
+- **Chat & Daily Suggestions Persistence**: Encrypts and persists chat history and daily suggestions.
+- **Cryptography Services**: Provides centralized XChaCha20-Poly1305 data encryption and decryption.
 
 ---
 
@@ -46,7 +47,7 @@ The **Vault** is the centralized security, secret management, encrypted configur
 - **Query Parameters:**
   - `module_name` (string, optional, default: `"all"`): Filter by module.
   - `search` (string, optional): Text search query.
-  - `start_date` / `end_date` (string, optional): Filter by date (`YYYY-MM-DD`).
+  - `start_date` / `end_date` (string, optional): Date filter (`YYYY-MM-DD`).
   - `limit` (integer, optional, default: `50`): Max logs to retrieve.
   - `page` (integer, optional): Page number.
   - `envelope` (boolean, optional, default: `false`): Include pagination wrapper.
@@ -101,11 +102,11 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 - **Request Body (JSON):**
   ```json
-  { "retention_period": 30, "show_logs_operator": true }
+  { "retention_period": 30, "show_logs_vault": true }
   ```
 - **Response (`200 OK`):**
   ```json
-  { "retention_period": 30, "show_logs_operator": true }
+  { "retention_period": 30, "show_logs_vault": true }
   ```
 
 ---
@@ -115,11 +116,11 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 - **Request Body (JSON):**
   ```json
-  { "REDIS_HOST": "localhost", "REDIS_PORT": 6379 }
+  { "REDIS_HOST": "127.0.0.1", "REDIS_PORT": 6379 }
   ```
 - **Response (`200 OK`):**
   ```json
-  { "REDIS_HOST": "localhost", "REDIS_PORT": 6379 }
+  { "REDIS_HOST": "127.0.0.1", "REDIS_PORT": 6379 }
   ```
 
 ---
@@ -129,11 +130,11 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 - **Request Body (JSON):**
   ```json
-  { "CAPTURE_INTERVAL_SECS": 15, "AUTO_START": true }
+  { "CAPTURE_INTERVAL_SECS": 10, "AUTO_START": true }
   ```
 - **Response (`200 OK`):**
   ```json
-  { "CAPTURE_INTERVAL_SECS": 15, "AUTO_START": true }
+  { "CAPTURE_INTERVAL_SECS": 10, "AUTO_START": true }
   ```
 
 ---
@@ -143,19 +144,7 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 - **Response (`200 OK`):**
   ```json
-  {
-    "user_name": "User",
-    "email": "user@example.com",
-    "phone_number": "+1 555-019-2834",
-    "city": "Pune",
-    "state": "Maharashtra",
-    "country": "India",
-    "address": "Pune, Maharashtra, India",
-    "postal_code": "411001",
-    "latitude": 18.51957,
-    "longitude": 73.85535,
-    "exists": true
-  }
+  { "first_name": "John", "city": "Pune", "country": "India", "exists": true }
   ```
 
 ---
@@ -165,67 +154,50 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 - **Request Body (JSON):**
   ```json
-  {
-    "user_name": "User",
-    "email": "user@example.com",
-    "phone_number": "+1 555-019-2834",
-    "city": "Pune",
-    "state": "Maharashtra",
-    "country": "India",
-    "address": "Pune, Maharashtra, India",
-    "postal_code": "411001",
-    "latitude": 18.51957,
-    "longitude": 73.85535
-  }
+  { "first_name": "John", "city": "Pune", "country": "India" }
   ```
 - **Response (`200 OK`):**
   ```json
-  {
-    "user_name": "User",
-    "email": "user@example.com",
-    "phone_number": "+1 555-019-2834",
-    "city": "Pune",
-    "state": "Maharashtra",
-    "country": "India",
-    "address": "Pune, Maharashtra, India",
-    "postal_code": "411001",
-    "latitude": 18.51957,
-    "longitude": 73.85535,
-    "exists": true,
-    "message": "User details saved successfully"
-  }
+  { "first_name": "John", "city": "Pune", "country": "India", "exists": true }
   ```
 
 ---
 
-### 2.12 OS Detection
+### 2.12 Get Detected OS
 `GET /os`
 
 - **Response (`200 OK`):**
-  `"Windows 11"`
+  ```json
+  "windows"
+  ```
 
 ---
 
-### 2.13 Services Registry
-`GET /services`
-- **Response (`200 OK`):**
-  ```json
-  { "vault": "http://127.0.0.1:9001", "operator": "http://127.0.0.1:9003" }
-  ```
-
+### 2.13 Register Service URL
 `POST /services`
+
 - **Request Body (JSON):**
   ```json
-  { "vault": "http://127.0.0.1:9001" }
+  { "service_name": "operator", "url": "http://127.0.0.1:9003" }
   ```
 - **Response (`200 OK`):**
   ```json
-  { "status": "success", "services": { "vault": "http://127.0.0.1:9001" } }
+  { "status": "success", "service_name": "operator" }
   ```
 
 ---
 
-### 2.14 Get Applications & Permissions
+### 2.14 Get Registered Services
+`GET /services`
+
+- **Response (`200 OK`):**
+  ```json
+  { "operator": "http://127.0.0.1:9003", "engine": "http://127.0.0.1:9007" }
+  ```
+
+---
+
+### 2.15 Get Applications & Permissions
 `GET /apps`
 
 - **Response (`200 OK`):**
@@ -235,21 +207,17 @@ The **Vault** is the centralized security, secret management, encrypted configur
 
 ---
 
-### 2.15 Refresh Application Permissions
+### 2.16 Refresh Applications
 `POST /apps/refresh`
 
-- **Request Body (JSON):**
-  ```json
-  [{ "app_name": "Code", "app_id": "code.exe" }]
-  ```
 - **Response (`200 OK`):**
   ```json
-  [{ "app_name": "Code", "app_id": "code.exe", "allowed_to_capture": true }]
+  { "status": "success", "total_apps": 25 }
   ```
 
 ---
 
-### 2.16 Update App Permission
+### 2.17 Update App Permission
 `POST /apps/permission`
 
 - **Request Body (JSON):**
@@ -258,129 +226,366 @@ The **Vault** is the centralized security, secret management, encrypted configur
   ```
 - **Response (`200 OK`):**
   ```json
-  { "status": "success", "message": "App permission updated successfully" }
+  { "status": "success", "app_id": "chrome.exe", "allowed_to_capture": false }
   ```
 
 ---
 
-### 2.17 AI Providers & Configurations
+### 2.18 Get AI Providers
 `GET /ai/providers`
-- **Response (`200 OK`):** `["Groq", "Gemini", "OpenAI"]`
 
+- **Response (`200 OK`):**
+  ```json
+  ["gemini", "groq"]
+  ```
+
+---
+
+### 2.19 Get All AI Configs
 `GET /ai/configs`
+
 - **Response (`200 OK`):**
   ```json
-  [{ "llm_provider": "Groq", "total_keys": 1, "current_key": 0, "keys": ["gsk_..."] }]
+  [{ "llm_provider": "gemini", "total_keys": 1, "current_key": 0, "keys": ["AIza..."] }]
   ```
 
+---
+
+### 2.20 Get AI Config by Provider
 `GET /ai/configs/{provider}`
+
+- **Path Parameters:**
+  - `provider` (string, required): `gemini`, `groq`.
 - **Response (`200 OK`):**
   ```json
-  { "llm_provider": "Groq", "total_keys": 1, "current_key": 0, "keys": ["gsk_..."] }
+  { "llm_provider": "gemini", "total_keys": 1, "current_key": 0, "keys": ["AIza..."] }
   ```
 
+---
+
+### 2.21 Update AI Config
 `POST /ai/configs/{provider}`
+
+- **Path Parameters:**
+  - `provider` (string, required): Provider name.
 - **Request Body (JSON):**
   ```json
-  { "keys": ["gsk_..."], "current_key": 0 }
+  { "add_key": "AIzaSy..." }
   ```
 - **Response (`200 OK`):**
   ```json
-  { "llm_provider": "Groq", "total_keys": 1, "current_key": 0, "keys": ["gsk_..."] }
+  { "llm_provider": "gemini", "total_keys": 2, "current_key": 0 }
   ```
 
+---
+
+### 2.22 Delete AI Config
 `DELETE /ai/configs/{provider}`
+
+- **Path Parameters:**
+  - `provider` (string, required): Provider name.
 - **Response (`200 OK`):**
   ```json
-  { "status": "success", "message": "Deleted AI configuration for Groq" }
+  { "status": "success", "message": "Config deleted for gemini" }
   ```
 
 ---
 
-### 2.18 AI Priorities
+### 2.23 Get AI Priorities
 `GET /ai/priorities`
-- **Response (`200 OK`):** `["Groq", "Gemini"]`
 
-`PUT /ai/priorities`
-- **Request Body (JSON):** `["Groq", "Gemini"]`
-- **Response (`200 OK`):** `["Groq", "Gemini"]`
+- **Response (`200 OK`):**
+  ```json
+  ["gemini", "groq"]
+  ```
 
 ---
 
-### 2.19 Engine Workers Concurrency
-`GET /engine/workers`
+### 2.24 Update AI Priorities
+`PUT /ai/priorities`
+
+- **Request Body (JSON Array):**
+  ```json
+  ["groq", "gemini"]
+  ```
 - **Response (`200 OK`):**
   ```json
-  {
-    "chat_workers": 1,
-    "screenshot_extraction_workers": 1,
-    "screenshot_summarization_workers": 1,
-    "embedding_vector_store_workers": 1,
-    "chat_workers_poll_time": 1.0,
-    "screenshot_extraction_poll_time": 5.0,
-    "screenshot_summarization_poll_time": 5.0,
-    "embedding_vector_store_workers_poll_time": 1.0
-  }
+  ["groq", "gemini"]
   ```
 
-`PUT /engine/workers`
+---
+
+### 2.25 Get News Configuration
+`GET /news/config`
+
+- **Response (`200 OK`):**
+  ```json
+  { "id": "gnews", "total_keys": 1, "current_key": 0, "keys": ["key1..."] }
+  ```
+
+---
+
+### 2.26 Update News Configuration
+`POST /news/config`
+
 - **Request Body (JSON):**
   ```json
-  { "screenshot_extraction_workers": 2 }
+  { "add_key": "new_key" }
   ```
 - **Response (`200 OK`):**
   ```json
-  { "screenshot_extraction_workers": 2, ... }
+  { "id": "gnews", "total_keys": 2, "current_key": 0 }
   ```
 
 ---
 
-### 2.20 System Storage Paths
+### 2.27 Delete News Configuration
+`DELETE /news/config`
+
+- **Response (`200 OK`):**
+  ```json
+  { "status": "success", "message": "GNews config cleared" }
+  ```
+
+---
+
+### 2.28 Get Engine Workers Config
+`GET /engine/workers`
+
+- **Response (`200 OK`):**
+  ```json
+  { "chat_workers": 1, "screenshot_extraction_workers": 1, "screenshot_summarization_workers": 1 }
+  ```
+
+---
+
+### 2.29 Update Engine Workers Config
+`PUT /engine/workers`
+
+- **Request Body (JSON):**
+  ```json
+  { "chat_workers": 2 }
+  ```
+- **Response (`200 OK`):**
+  ```json
+  { "chat_workers": 2 }
+  ```
+
+---
+
+### 2.30 System Storage Status
 `GET /system/storage`
 
 - **Response (`200 OK`):**
   ```json
-  {
-    "system_storage_path": "E:/FullStack/Mira/Vault/system",
-    "knowledge_base_path": "E:/FullStack/Mira/Vault/system/knowledge_base",
-    "logs_path": "E:/FullStack/Mira/Vault/system/logs"
-  }
+  { "database_size_bytes": 1048576, "total_logs": 150, "total_chats": 20 }
   ```
 
 ---
 
-### 2.21 Cryptography Endpoints
-- `POST /crypto/encrypt` -> Body: `{"data": "secret"}` -> `{"ciphertext": "..."}`
-- `POST /crypto/decrypt` -> Body: `{"ciphertext": "..."}` -> `{"data": "secret"}`
-- `POST /crypto/encrypt-batch` -> Body: `{"items": ["..."]}` -> `{"ciphertexts": ["..."]}`
-- `POST /crypto/decrypt-batch` -> Body: `{"ciphertexts": ["..."]}` -> `{"items": ["..."]}`
+### 2.31 Encrypt Data
+`POST /crypto/encrypt`
 
----
-
-### 2.22 Tools & News (GNews) Configuration
-`GET /news/config` (aliases: `/gnews/config`, `/tools/news/config`)
-- **Response (`200 OK`):**
-  ```json
-  {
-    "id": "c1f7a0b3-1f14-41d5-bc44-5cb19e832f91",
-    "total_keys": 1,
-    "current_key": 0,
-    "keys": ["gnews_api_key_here"]
-  }
-  ```
-
-`POST /news/config` (aliases: `/gnews/config`, `/tools/news/config`)
 - **Request Body (JSON):**
   ```json
-  {
-    "keys": ["key1", "key2"],
-    "current_key": 0
-  }
+  { "plaintext": "secret_data" }
   ```
-- **Response (`200 OK`):** Updated GNews configuration with validated current key index.
+- **Response (`200 OK`):**
+  ```json
+  { "ciphertext": "base64..." }
+  ```
 
-`DELETE /news/config` (aliases: `/gnews/config`, `/tools/news/config`)
-- **Response (`200 OK`):** Clears all configured GNews API keys and resets current_key to 0.
+---
+
+### 2.32 Decrypt Data
+`POST /crypto/decrypt`
+
+- **Request Body (JSON):**
+  ```json
+  { "ciphertext": "base64..." }
+  ```
+- **Response (`200 OK`):**
+  ```json
+  { "plaintext": "secret_data" }
+  ```
+
+---
+
+### 2.33 Batch Encrypt Data
+`POST /crypto/encrypt-batch`
+
+- **Request Body (JSON):**
+  ```json
+  { "plaintexts": ["secret1", "secret2"] }
+  ```
+- **Response (`200 OK`):**
+  ```json
+  { "ciphertexts": ["base64_1...", "base64_2..."] }
+  ```
+
+---
+
+### 2.34 Batch Decrypt Data
+`POST /crypto/decrypt-batch`
+
+- **Request Body (JSON):**
+  ```json
+  { "ciphertexts": ["base64_1...", "base64_2..."] }
+  ```
+- **Response (`200 OK`):**
+  ```json
+  { "plaintexts": ["secret1", "secret2"] }
+  ```
+
+---
+
+### 2.35 Get Chat Sessions
+`GET /chats/sessions`
+
+- **Query Parameters:**
+  - `limit` (integer, optional, default: `10`): Page size.
+  - `page` (integer, optional): Page number.
+  - `cursor` (string, optional): Pagination cursor.
+- **Response (`200 OK`):**
+  ```json
+  { "sessions": [{ "session_id": "sid_1", "chat_name": "New Chat" }], "total_items": 1 }
+  ```
+
+---
+
+### 2.36 Get Chats by Session
+`GET /chats/sessions/{session_id}`
+
+- **Path Parameters:**
+  - `session_id` (string, required): Session ID.
+- **Response (`200 OK`):**
+  ```json
+  { "session_id": "sid_1", "messages": [{ "role": "user", "content": "hello" }] }
+  ```
+
+---
+
+### 2.37 Create Chat Message
+`POST /chats`
+
+- **Request Body (JSON):**
+  ```json
+  { "session_id": "sid_1", "role": "user", "content": "hello" }
+  ```
+- **Response (`201 Created`):**
+  ```json
+  { "id": "msg_1", "session_id": "sid_1", "role": "user", "content": "hello" }
+  ```
+
+---
+
+### 2.38 Rename Chat Session
+`PATCH /chats/sessions/{session_id}`
+
+- **Path Parameters:**
+  - `session_id` (string, required): Session ID.
+- **Request Body (JSON):**
+  ```json
+  { "chat_name": "Renamed Session" }
+  ```
+- **Response (`200 OK`):**
+  ```json
+  { "status": "success", "session_id": "sid_1", "chat_name": "Renamed Session" }
+  ```
+
+---
+
+### 2.39 Delete Chat Session
+`DELETE /chats/sessions/{session_id}`
+
+- **Path Parameters:**
+  - `session_id` (string, required): Session ID.
+- **Response (`200 OK`):**
+  ```json
+  { "status": "success", "message": "Chat session deleted." }
+  ```
+
+---
+
+### 2.40 Delete All Chats
+`DELETE /chats/all`
+
+- **Response (`200 OK`):**
+  ```json
+  { "status": "success", "deleted_count": 20 }
+  ```
+
+---
+
+### 2.41 Cleanup Duplicate Chats
+`POST /chats/cleanup`
+
+- **Response (`200 OK`):**
+  ```json
+  { "status": "success", "deleted": 0 }
+  ```
+
+---
+
+### 2.42 Get Latest Daily Suggestions
+`GET /daily_suggestions/latest`
+
+- **Response (`200 OK`):**
+  ```json
+  { "id": 1, "suggestions": ["Task 1"], "completed": [], "weather": {}, "news": [] }
+  ```
+
+---
+
+### 2.43 Get Previous Daily Suggestions
+`GET /daily_suggestions/previous`
+
+- **Query Parameters:**
+  - `skip_today` (boolean, optional, default: `true`): Exclude current day.
+- **Response (`200 OK`):**
+  ```json
+  { "id": 1, "suggestions": ["Task 1"], "completed": [0] }
+  ```
+
+---
+
+### 2.44 Get Daily Suggestions History
+`GET /daily_suggestions/history`
+
+- **Query Parameters:**
+  - `days` (integer, optional, default: `14`): Number of historical days.
+- **Response (`200 OK`):**
+  ```json
+  [{ "id": 1, "date_suggestions": "2026-10-27", "suggestions": [] }]
+  ```
+
+---
+
+### 2.45 Save Daily Suggestions
+`POST /daily_suggestions`
+
+- **Request Body (JSON):**
+  ```json
+  { "suggestions": ["Task 1", "Task 2"], "weather": {} }
+  ```
+- **Response (`200 OK`):**
+  ```json
+  { "id": 1, "status": "saved" }
+  ```
+
+---
+
+### 2.46 Update Suggestion Completion
+`POST /daily_suggestions/completed`
+
+- **Request Body (JSON):**
+  ```json
+  { "index": 0, "completed": true, "record_id": 1 }
+  ```
+- **Response (`200 OK`):**
+  ```json
+  { "status": "success", "completed": [0] }
+  ```
 
 ---
 
@@ -392,6 +597,7 @@ pip install -r requirements.txt
 ```
 
 ### Start Server
+Run from the `Vault/` directory:
 ```bash
 python app.py
 ```

@@ -1,4 +1,4 @@
-import { engineApi, vaultApi, SERVICE_ENDPOINTS } from "@/lib/api";
+import { engineApi, SERVICE_ENDPOINTS } from "@/lib/api";
 
 export interface EngineHealth {
   service: string;
@@ -151,21 +151,10 @@ export const engineService = {
     limit?: number;
     offset?: number;
   }): Promise<ChatSessionsResponse> {
-    try {
-      const response = await vaultApi.get<ChatSessionsResponse>("/chats/sessions", {
-        params,
-      });
-      return response.data;
-    } catch (err) {
-      try {
-        const fallback = await engineApi.get<ChatSessionsResponse>("/chats/sessions", {
-          params,
-        });
-        return fallback.data;
-      } catch {
-        throw err;
-      }
-    }
+    const response = await engineApi.get<ChatSessionsResponse>("/chats/sessions", {
+      params,
+    });
+    return response.data;
   },
 
   async getChatsBySession(
@@ -177,23 +166,11 @@ export const engineService = {
       offset?: number;
     }
   ): Promise<ChatMessagesResponse> {
-    try {
-      const response = await vaultApi.get<ChatMessagesResponse>(
-        `/chats/sessions/${encodeURIComponent(sessionId)}`,
-        { params }
-      );
-      return response.data;
-    } catch (err) {
-      try {
-        const fallback = await engineApi.get<ChatMessagesResponse>(
-          `/chats/sessions/${encodeURIComponent(sessionId)}`,
-          { params }
-        );
-        return fallback.data;
-      } catch {
-        throw err;
-      }
-    }
+    const response = await engineApi.get<ChatMessagesResponse>(
+      `/chats/sessions/${encodeURIComponent(sessionId)}`,
+      { params }
+    );
+    return response.data;
   },
 
   async sendChatMessage(payload: SendChatMessageRequest): Promise<SendChatMessageResponse> {
@@ -219,57 +196,25 @@ export const engineService = {
     sessionId: string,
     chatName: string
   ): Promise<{ status: string; session_id: string; chat_name: string }> {
-    try {
-      const response = await vaultApi.patch<{ status: string; session_id: string; chat_name: string }>(
-        `/chats/sessions/${encodeURIComponent(sessionId)}`,
-        { chat_name: chatName }
-      );
-      return response.data;
-    } catch (err) {
-      try {
-        const fallback = await engineApi.patch<{ status: string; session_id: string; chat_name: string }>(
-          `/chats/sessions/${encodeURIComponent(sessionId)}`,
-          { chat_name: chatName }
-        );
-        return fallback.data;
-      } catch {
-        throw err;
-      }
-    }
+    const response = await engineApi.patch<{ status: string; session_id: string; chat_name: string }>(
+      `/chats/sessions/${encodeURIComponent(sessionId)}`,
+      { chat_name: chatName }
+    );
+    return response.data;
   },
 
   async deleteChatSession(
     sessionId: string
   ): Promise<{ status: string; session_id: string; message?: string }> {
-    try {
-      const response = await vaultApi.delete<{ status: string; session_id: string; message?: string }>(
-        `/chats/sessions/${encodeURIComponent(sessionId)}`
-      );
-      return response.data;
-    } catch (err) {
-      try {
-        const fallback = await engineApi.delete<{ status: string; session_id: string; message?: string }>(
-          `/chats/sessions/${encodeURIComponent(sessionId)}`
-        );
-        return fallback.data;
-      } catch {
-        throw err;
-      }
-    }
+    const response = await engineApi.delete<{ status: string; session_id: string; message?: string }>(
+      `/chats/sessions/${encodeURIComponent(sessionId)}`
+    );
+    return response.data;
   },
 
   async deleteAllChats(): Promise<{ status: string; message?: string }> {
-    try {
-      const response = await vaultApi.delete<{ status: string; message?: string }>("/chats/all");
-      return response.data;
-    } catch (err) {
-      try {
-        const fallback = await engineApi.delete<{ status: string; message?: string }>("/chats/all");
-        return fallback.data;
-      } catch {
-        throw err;
-      }
-    }
+    const response = await engineApi.delete<{ status: string; message?: string }>("/chats/all");
+    return response.data;
   },
 
   async seedDemoChats(count: number = 12): Promise<{ status: string; seeded_count: number }> {

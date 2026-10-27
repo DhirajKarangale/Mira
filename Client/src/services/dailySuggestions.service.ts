@@ -1,4 +1,4 @@
-import { engineApi, vaultApi } from "@/lib/api";
+import { engineApi } from "@/lib/api";
 
 export interface WeatherCurrent {
   time?: string;
@@ -98,38 +98,8 @@ export interface DailySuggestionsPageResponse {
 
 export const dailySuggestionsService = {
   async getPageData(): Promise<DailySuggestionsPageResponse> {
-    try {
-      const response = await engineApi.get<DailySuggestionsPageResponse>("/daily_suggestions");
-      return response.data;
-    } catch {
-      // Fallback to Vault directly
-      try {
-        const [latestRes, prevRes] = await Promise.all([
-          vaultApi.get<DailySuggestionsRecord>("/daily_suggestions/latest"),
-          vaultApi.get<DailySuggestionsRecord>("/daily_suggestions/previous"),
-        ]);
-        return {
-          status: "fallback",
-          today: latestRes.data || {
-            id: null,
-            suggestions: [],
-            completed: [],
-            weather: null,
-            news: [],
-          },
-          previous: prevRes.data || {
-            id: null,
-            suggestions: [],
-            completed: [],
-            weather: null,
-            news: [],
-          },
-          scheduler: { running: false },
-        };
-      } catch (vaultErr) {
-        throw vaultErr;
-      }
-    }
+    const response = await engineApi.get<DailySuggestionsPageResponse>("/daily_suggestions");
+    return response.data;
   },
 
   async triggerRefresh(section: string = "all"): Promise<any> {
@@ -142,31 +112,14 @@ export const dailySuggestionsService = {
     completed: boolean,
     recordId?: number | null
   ): Promise<{ status: string; completed: number[]; record_id?: number }> {
-    try {
-      const response = await engineApi.post<{ status: string; completed: number[]; record_id?: number }>(
-        "/daily_suggestions/complete",
-        {
-          index,
-          completed,
-          record_id: recordId,
-        }
-      );
-      return response.data;
-    } catch {
-      // Fallback directly to Vault
-      const response = await vaultApi.post<{ status: string; completed: number[]; id?: number }>(
-        "/daily_suggestions/completed",
-        {
-          index,
-          completed,
-          record_id: recordId,
-        }
-      );
-      return {
-        status: response.data.status,
-        completed: response.data.completed,
-        record_id: response.data.id,
-      };
-    }
+    const response = await engineApi.post<{ status: string; completed: number[]; record_id?: number }>(
+      "/daily_suggestions/complete",
+      {
+        index,
+        completed,
+        record_id: recordId,
+      }
+    );
+    return response.data;
   },
 };

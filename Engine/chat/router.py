@@ -101,10 +101,6 @@ class RenameChatSessionRequest(BaseModel):
 
 @router.websocket("/ws/chat")
 async def chat_websocket_endpoint(websocket: WebSocket):
-    """
-    WebSocket endpoint for real-time bidirectional chat communication.
-    Clients connect here to receive LLM responses pushed by Chat workers.
-    """
     await ws_manager.connect(websocket)
     try:
         while True:
@@ -151,7 +147,6 @@ async def chat_websocket_endpoint(websocket: WebSocket):
     status_code=status.HTTP_200_OK,
     summary="Get All Chat Sessions",
 )
-@router.get("/chat/sessions", response_model=ChatSessionsResponse, include_in_schema=False)
 async def get_chat_sessions_endpoint(
     limit: int = Query(10, ge=1, le=100, description="Items per page"),
     cursor: Optional[str] = Query(None, description="Cursor for pagination"),
@@ -198,8 +193,6 @@ async def get_chat_sessions_endpoint(
     status_code=status.HTTP_200_OK,
     summary="Get Chats by Session",
 )
-@router.get("/chats/{session_id}", response_model=ChatMessagesResponse, include_in_schema=False)
-@router.get("/chat/sessions/{session_id}", response_model=ChatMessagesResponse, include_in_schema=False)
 async def get_chats_by_session_endpoint(
     session_id: str,
     limit: int = Query(30, ge=1, le=100, description="Items per page"),
@@ -249,13 +242,7 @@ async def get_chats_by_session_endpoint(
     status_code=status.HTTP_200_OK,
     summary="Submit Chat Message and Queue AI Job",
 )
-@router.post("/chats", response_model=SendChatMessageResponse, include_in_schema=False)
 async def send_chat_message_endpoint(request: SendChatMessageRequest):
-    """
-    Submits user query, stores it in Vault, queues a job into Message Broker's llm_chat stream,
-    and returns immediately with status 'queued'.
-    The background chat worker processes the job and broadcasts the AI reply over WebSocket.
-    """
     job_id = (request.job_id or str(uuid.uuid4())).strip()
     session_id = request.session_id.strip() if request.session_id and request.session_id.strip() else str(uuid.uuid4())
     content = request.content.strip()
@@ -328,18 +315,12 @@ async def send_chat_message_endpoint(request: SendChatMessageRequest):
 
 @router.get("/chats/pending", status_code=status.HTTP_200_OK, summary="Get Active / Pending Chat Sessions from Redis")
 async def get_pending_chat_sessions_endpoint():
-    """
-    Returns all sessions that are currently awaiting or generating an AI reply in Redis.
-    """
     active = await asyncio.to_thread(get_active_chat_sessions_broker)
     return {"status": "success", "pending_sessions": active}
 
 
 @router.get("/chats/sessions/{session_id}/status", status_code=status.HTTP_200_OK, summary="Get Chat Session Generation Status")
 async def get_chat_session_status_endpoint(session_id: str):
-    """
-    Checks if a specific session is generating in Redis.
-    """
     clean_sid = (session_id or "").strip()
     active = await asyncio.to_thread(get_active_chat_sessions_broker)
     session_info = active.get(clean_sid) if isinstance(active, dict) else None
@@ -447,13 +428,7 @@ async def seed_demo_chats_endpoint(count: int = Query(12, ge=1, le=30)):
     status_code=status.HTTP_200_OK,
     summary="Rename Chat Session",
 )
-@router.patch("/chats/{session_id}", include_in_schema=False)
 async def rename_chat_session_endpoint(session_id: str, request: RenameChatSessionRequest):
-    """
-    Rename a chat session:
-    1. Persist updated chat_name in Vault database.
-    2. Broadcast chat_rename event to all connected WebSocket clients.
-    """
     clean_sid = (session_id or "").strip()
     clean_name = (request.chat_name or "").strip()
     if not clean_sid:
@@ -478,7 +453,6 @@ async def rename_chat_session_endpoint(session_id: str, request: RenameChatSessi
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Failed to update chat session '{clean_sid}' in Vault",
             )
-        # Broadcast rename event to all clients over WebSocket
         await ws_manager.broadcast_chat_rename(session_id=clean_sid, chat_name=clean_name)
         return {"status": "success", "session_id": clean_sid, "chat_name": clean_name}
     except HTTPException:
@@ -496,17 +470,9 @@ async def rename_chat_session_endpoint(session_id: str, request: RenameChatSessi
     status_code=status.HTTP_200_OK,
     summary="Delete All Chat Sessions",
 )
-@router.delete("/chats/sessions/all", include_in_schema=False)
-@router.delete("/chats/sessions", include_in_schema=False)
-@router.delete("/chats", include_in_schema=False)
 async def delete_all_chats_endpoint():
-    """
-    Deletes all chat records from the Vault chat table and clears all chat sessions from Redis.
-    """
     try:
-        # 1. Delete from Vault
         vault_deleted = await asyncio.to_thread(delete_all_sessions_from_vault)
-        # 2. Clear all Redis chat memories
         await asyncio.to_thread(clear_all_sessions_memory)
 
         log(f"All chat sessions deleted (vault_ok={vault_deleted}).")
@@ -527,13 +493,7 @@ async def delete_all_chats_endpoint():
     status_code=status.HTTP_200_OK,
     summary="Delete Individual Chat Session",
 )
-@router.delete("/chats/{session_id}", include_in_schema=False)
 async def delete_chat_session_endpoint(session_id: str):
-    """
-    Deletes an individual chat session:
-    1. Removes all messages for session_id from Vault's SQLite chat table.
-    2. Clears session short-term memory from Redis.
-    """
     clean_sid = (session_id or "").strip()
     if not clean_sid:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="session_id cannot be empty")

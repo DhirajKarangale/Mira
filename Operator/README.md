@@ -1,6 +1,6 @@
 # Operator
 
-The **Operator** is the desktop screen capture and system automation service written in **Rust** using **Axum**, **Tokio**, and native **Windows GDI / xcap**.
+The **Operator** is the desktop screen capture, application permission, and microphone automation service written in **Rust** using **Axum**, **Tokio**, and native **Windows GDI / xcap**.
 
 ---
 
@@ -10,6 +10,7 @@ The **Operator** is the desktop screen capture and system automation service wri
 - **Active App Filtering**: Detects foreground processes and enforces application capture permissions.
 - **System App Discovery**: Scans installed applications and synchronizes state with Vault.
 - **Message Broker Queuing**: Dispatches capture jobs asynchronously to the Message Broker `ocr_extraction` stream.
+- **Microphone Management**: Controls microphone capture state and auto-start configuration.
 - **Screenshot Cleanup**: Deletes local screenshot files on demand via API.
 
 ---
@@ -37,7 +38,10 @@ The **Operator** is the desktop screen capture and system automation service wri
     "is_running": true,
     "is_capturing": true,
     "auto_start": false,
-    "capture_interval_secs": 10
+    "capture_interval_secs": 10,
+    "microphone_state": "off",
+    "is_microphone_on": false,
+    "mic_auto_start": false
   }
   ```
 
@@ -123,6 +127,60 @@ The **Operator** is the desktop screen capture and system automation service wri
 - **Response (`200 OK`):**
   ```json
   { "status": "success", "app_id": "chrome.exe", "allowed_to_capture": false }
+  ```
+
+---
+
+### 2.10 Microphone Status
+`GET /microphone/status`
+
+- **Response (`200 OK`):**
+  ```json
+  { "state": "off", "is_on": false, "auto_start": false, "mic_auto_start": false }
+  ```
+
+---
+
+### 2.11 Start Microphone
+`POST /microphone/start`
+
+- **Response (`200 OK`):**
+  ```json
+  { "status": "started", "state": "on", "is_on": true }
+  ```
+
+---
+
+### 2.12 Stop Microphone
+`POST /microphone/stop`
+
+- **Response (`200 OK`):**
+  ```json
+  { "status": "stopped", "state": "off", "is_on": false }
+  ```
+
+---
+
+### 2.13 Get Microphone Auto-Start
+`GET /microphone/auto-start`
+
+- **Response (`200 OK`):**
+  ```json
+  { "auto_start": false, "mic_auto_start": false }
+  ```
+
+---
+
+### 2.14 Update Microphone Auto-Start
+`POST /microphone/auto-start`
+
+- **Request Body (JSON):**
+  ```json
+  { "auto_start": true }
+  ```
+- **Response (`200 OK`):**
+  ```json
+  { "status": "updated", "auto_start": true }
   ```
 
 ---

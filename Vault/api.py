@@ -478,8 +478,6 @@ class GNewsConfigUpdateRequest(BaseModel):
     current_key: Optional[int] = None
 
 @router.get('/news/config', response_model=GNewsConfigResponse, status_code=status.HTTP_200_OK)
-@router.get('/gnews/config', response_model=GNewsConfigResponse, status_code=status.HTTP_200_OK)
-@router.get('/tools/news/config', response_model=GNewsConfigResponse, status_code=status.HTTP_200_OK)
 async def get_gnews_config_endpoint():
     try:
         return config_storage.get_gnews_config()
@@ -487,8 +485,6 @@ async def get_gnews_config_endpoint():
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to retrieve GNews configuration: {str(e)}'})
 
 @router.post('/news/config', response_model=GNewsConfigResponse, status_code=status.HTTP_200_OK)
-@router.post('/gnews/config', response_model=GNewsConfigResponse, status_code=status.HTTP_200_OK)
-@router.post('/tools/news/config', response_model=GNewsConfigResponse, status_code=status.HTTP_200_OK)
 async def update_gnews_config_endpoint(request: GNewsConfigUpdateRequest):
     try:
         add_keys = list(request.add_keys) if request.add_keys else []
@@ -509,8 +505,6 @@ async def update_gnews_config_endpoint(request: GNewsConfigUpdateRequest):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to update GNews configuration: {str(e)}'})
 
 @router.delete('/news/config', status_code=status.HTTP_200_OK)
-@router.delete('/gnews/config', status_code=status.HTTP_200_OK)
-@router.delete('/tools/news/config', status_code=status.HTTP_200_OK)
 async def delete_gnews_config_endpoint():
     try:
         return config_storage.delete_gnews_config()
@@ -706,7 +700,6 @@ async def get_vault_chat_sessions(
         )
 
 @router.get('/chats/sessions/{session_id}', response_model=ChatMessagesListResponse, status_code=status.HTTP_200_OK)
-@router.get('/chats/{session_id}', response_model=ChatMessagesListResponse, status_code=status.HTTP_200_OK)
 async def get_vault_chats_by_session(
     session_id: str,
     limit: int = Query(30, ge=1, le=500),
@@ -760,7 +753,6 @@ async def create_vault_chat_message(request: ChatMessageCreateRequest):
         )
 
 @router.patch('/chats/sessions/{session_id}', status_code=status.HTTP_200_OK)
-@router.patch('/chats/{session_id}', status_code=status.HTTP_200_OK)
 async def rename_vault_chat_session(session_id: str, request: ChatSessionRenameRequest):
     try:
         clean_sid = (session_id or "").strip()
@@ -787,9 +779,6 @@ async def rename_vault_chat_session(session_id: str, request: ChatSessionRenameR
         )
 
 @router.delete('/chats/all', status_code=status.HTTP_200_OK)
-@router.delete('/chats/sessions/all', status_code=status.HTTP_200_OK)
-@router.delete('/chats', status_code=status.HTTP_200_OK)
-@router.delete('/chats/sessions', status_code=status.HTTP_200_OK)
 async def delete_all_vault_chats():
     try:
         deleted_count = config_storage.delete_all_chats()
@@ -806,7 +795,6 @@ async def delete_all_vault_chats():
         )
 
 @router.delete('/chats/sessions/{session_id}', status_code=status.HTTP_200_OK)
-@router.delete('/chats/{session_id}', status_code=status.HTTP_200_OK)
 async def delete_vault_chat_session(session_id: str):
     try:
         config_storage.delete_chat_session(session_id)
@@ -818,7 +806,6 @@ async def delete_vault_chat_session(session_id: str):
             detail={'message': f'Failed to delete chat session: {str(e)}'}
         )
 
-@router.get('/chats/cleanup', status_code=status.HTTP_200_OK)
 @router.post('/chats/cleanup', status_code=status.HTTP_200_OK)
 async def cleanup_vault_chats():
     try:
@@ -857,7 +844,6 @@ class SuggestionCompleteRequest(BaseModel):
     record_id: Optional[int] = None
 
 
-@router.get('/daily_suggestions', status_code=status.HTTP_200_OK)
 @router.get('/daily_suggestions/latest', status_code=status.HTTP_200_OK)
 async def get_latest_daily_suggestions_endpoint():
     try:

@@ -73,10 +73,6 @@ async def stop_workers():
     await kb_worker_manager.stop()
     return {'status': 'stopped', 'workers': worker_manager.get_status(), 'knowledge_base': kb_worker_manager.get_status()}
 
-@app.get('/knowledge-base/status', status_code=status.HTTP_200_OK)
-async def get_kb_status():
-    return {'status': 'online', 'workers': kb_worker_manager.get_status(), 'daily_knowledge_bases': kb_storage.list_knowledge_bases()}
-
 @app.get('/knowledge-base', status_code=status.HTTP_200_OK)
 async def list_knowledge_bases_endpoint(start_date: Optional[str]=Query(None, description='Filter KBs covering start date onwards'), end_date: Optional[str]=Query(None, description='Filter KBs covering up to end date'), search: Optional[str]=Query(None, description='Search term for KB name or date'), page: int=Query(1, ge=1, description='Page number (1-based)'), limit: int=Query(10, ge=1, le=100, description='Items per page')):
     try:
@@ -107,15 +103,6 @@ async def cleanup_knowledge_bases_endpoint():
         return {'status': 'success', 'deleted_count': len(deleted), 'deleted': deleted}
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to cleanup expired Knowledge Bases: {str(e)}'})
-
-@app.get('/knowledge-base/retention', status_code=status.HTTP_200_OK)
-async def get_retention_endpoint():
-    try:
-        from knowledge_base import get_kb_retention_period
-        period = await asyncio.to_thread(get_kb_retention_period)
-        return {'status': 'success', 'retention_period': period}
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to fetch retention period: {str(e)}'})
 
 @app.post('/knowledge-base/search', status_code=status.HTTP_200_OK)
 async def search_kb(req: KBSearchRequest):

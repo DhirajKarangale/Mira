@@ -180,9 +180,6 @@ async def clear_all_chat_memory():
 
 @router.get('/chat/active', status_code=status.HTTP_200_OK)
 async def get_active_chat_sessions():
-    """
-    Get all currently active/generating chat sessions from Redis.
-    """
     try:
         return await rs.get_active_chat_sessions()
     except Exception as e:
@@ -191,9 +188,6 @@ async def get_active_chat_sessions():
 
 @router.get('/chat/active/{session_id}', status_code=status.HTTP_200_OK)
 async def get_active_chat_session(session_id: str):
-    """
-    Check if a specific chat session is currently active/generating.
-    """
     try:
         data = await rs.get_active_chat_session(session_id)
         if not data:
@@ -205,9 +199,6 @@ async def get_active_chat_session(session_id: str):
 
 @router.post('/chat/active', status_code=status.HTTP_200_OK)
 async def set_active_chat_session(payload: Dict[str, Any]):
-    """
-    Explicitly register an active chat session in Redis.
-    """
     sid = payload.get("session_id")
     jid = payload.get("job_id")
     if not sid or not jid:
@@ -224,9 +215,6 @@ async def set_active_chat_session(payload: Dict[str, Any]):
 
 @router.delete('/chat/active/{session_id}', status_code=status.HTTP_200_OK)
 async def remove_active_chat_session(session_id: str):
-    """
-    Remove an active chat session from Redis once completed.
-    """
     try:
         return await rs.remove_active_chat_session(session_id)
     except Exception as e:

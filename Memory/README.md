@@ -6,11 +6,11 @@ The **Memory** module is the screenshot extraction, OCR text processing, visual 
 
 ## 1. Purpose
 
-- **Parallel Screenshot Extraction**: Ingests screenshot jobs from the `ocr_extraction` Redis stream.
-- **Image Comparison**: Compares consecutive frames using OpenCV to filter unchanged frames.
+- **Screenshot Ingestion**: Consumes screenshot jobs from the `ocr_extraction` Redis stream.
+- **Image Comparison**: Compares consecutive frames using OpenCV matrix diffs to filter unchanged views.
 - **OCR Text Extraction**: Extracts structured text using Tesseract OCR and Windows UI Automation.
 - **Context Enrichment**: Publishes extracted screen context to the `ocr_summarization` stream.
-- **Knowledge Base Vector Store**: Stores summarized embeddings in local Qdrant collections organized by date (`kb-DD_MM_YYYY-DD_MM_YYYY`).
+- **Knowledge Base Vector Store**: Manages vectorized daily memory collections in local Qdrant.
 - **Semantic Vector Retrieval**: Performs cosine similarity search with application and timestamp filters.
 
 ---
@@ -35,8 +35,8 @@ The **Memory** module is the screenshot extraction, OCR text processing, visual 
   {
     "service": "Memory",
     "status": "online",
-    "workers": { "is_running": true, "worker_count": 1, "poll_time": 5.0 },
-    "knowledge_base": { "is_running": true, "worker_count": 1, "poll_time": 1.0 },
+    "workers": { "is_running": true, "worker_count": 1 },
+    "knowledge_base": { "is_running": true, "worker_count": 1 },
     "image_diff_threshold": 0.008
   }
   ```
@@ -48,7 +48,7 @@ The **Memory** module is the screenshot extraction, OCR text processing, visual 
 
 - **Response (`200 OK`):**
   ```json
-  { "status": "started", "workers": { ... }, "knowledge_base": { ... } }
+  { "status": "started", "workers": { "is_running": true }, "knowledge_base": { "is_running": true } }
   ```
 
 ---
@@ -58,26 +58,12 @@ The **Memory** module is the screenshot extraction, OCR text processing, visual 
 
 - **Response (`200 OK`):**
   ```json
-  { "status": "stopped", "workers": { ... }, "knowledge_base": { ... } }
+  { "status": "stopped", "workers": { "is_running": false }, "knowledge_base": { "is_running": false } }
   ```
 
 ---
 
-### 2.5 Knowledge Base Status
-`GET /knowledge-base/status`
-
-- **Response (`200 OK`):**
-  ```json
-  {
-    "status": "online",
-    "workers": { ... },
-    "daily_knowledge_bases": [{ "name": "kb-24_10_2026-24_10_2026" }]
-  }
-  ```
-
----
-
-### 2.6 List Knowledge Bases
+### 2.5 List Knowledge Bases
 `GET /knowledge-base`
 
 - **Query Parameters:**
@@ -85,7 +71,7 @@ The **Memory** module is the screenshot extraction, OCR text processing, visual 
   - `end_date` (string, optional): End date filter.
   - `search` (string, optional): Search term.
   - `page` (integer, optional, default: `1`): Page number.
-  - `limit` (integer, optional, default: `10`): Page size.
+  - `limit` (integer, optional, default: `10`): Items per page.
 - **Response (`200 OK`):**
   ```json
   {
@@ -93,25 +79,25 @@ The **Memory** module is the screenshot extraction, OCR text processing, visual 
     "total": 1,
     "page": 1,
     "limit": 10,
-    "knowledge_bases": [{ "name": "kb-24_10_2026-24_10_2026" }]
+    "knowledge_bases": [{ "name": "kb-24_10_2026-25_10_2026" }]
   }
   ```
 
 ---
 
-### 2.7 Delete Knowledge Base
+### 2.6 Delete Knowledge Base
 `DELETE /knowledge-base/{name}`
 
 - **Path Parameters:**
-  - `name` (string, required): Knowledge Base name.
+  - `name` (string, required): Knowledge Base collection name.
 - **Response (`200 OK`):**
   ```json
-  { "status": "success", "message": "Knowledge Base '...' deleted successfully.", "name": "..." }
+  { "status": "success", "message": "Knowledge Base deleted successfully.", "name": "kb-name" }
   ```
 
 ---
 
-### 2.8 Cleanup Expired Knowledge Bases
+### 2.7 Cleanup Expired Knowledge Bases
 `POST /knowledge-base/cleanup`
 
 - **Response (`200 OK`):**
@@ -121,17 +107,7 @@ The **Memory** module is the screenshot extraction, OCR text processing, visual 
 
 ---
 
-### 2.9 Get Retention Period
-`GET /knowledge-base/retention`
-
-- **Response (`200 OK`):**
-  ```json
-  { "status": "success", "retention_period": "Never auto delete" }
-  ```
-
----
-
-### 2.10 Search Knowledge Base
+### 2.8 Search Knowledge Base
 `POST /knowledge-base/search`
 
 - **Request Body (JSON):**
@@ -149,18 +125,14 @@ The **Memory** module is the screenshot extraction, OCR text processing, visual 
     "status": "success",
     "count": 1,
     "results": [
-      {
-        "id": "e4b52df3-...",
-        "score": 0.942,
-        "payload": { "app_name": "Code", "summarized_text": "..." }
-      }
+      { "id": "uuid-1", "score": 0.94, "payload": { "app_name": "Code", "summarized_text": "..." } }
     ]
   }
   ```
 
 ---
 
-### 2.11 Batch Ingestion
+### 2.9 Batch Ingestion
 `POST /knowledge-base/batch-ingest`
 
 - **Request Body (JSON):**
@@ -178,7 +150,7 @@ The **Memory** module is the screenshot extraction, OCR text processing, visual 
 
 ---
 
-### 2.12 Direct Image & Text Extraction
+### 2.10 Extract Data
 `POST /extract`
 
 - **Request Body (JSON):**
@@ -192,7 +164,7 @@ The **Memory** module is the screenshot extraction, OCR text processing, visual 
 
 ---
 
-### 2.13 Process Job
+### 2.11 Process Job
 `POST /process-job`
 
 - **Request Body (JSON):**
@@ -214,6 +186,7 @@ pip install -r requirements.txt
 ```
 
 ### Start Server
+Run from the `Memory/` directory:
 ```bash
 python app.py
 ```

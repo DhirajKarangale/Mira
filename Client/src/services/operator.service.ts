@@ -129,11 +129,7 @@ export const operatorService = {
   },
 
   async toggleMicrophone(nextState: "on" | "off"): Promise<MicrophoneActionResponse> {
-    const response = await operatorApi.post<MicrophoneActionResponse>("/microphone/state", {
-      state: nextState,
-      is_on: nextState === "on",
-    });
-    return response.data;
+    return nextState === "on" ? this.startMicrophone() : this.stopMicrophone();
   },
 
   async getMicrophoneAutoStart(): Promise<MicrophoneAutoStartResponse> {

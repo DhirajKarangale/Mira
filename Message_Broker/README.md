@@ -197,6 +197,104 @@ The **Message Broker** is the centralized asynchronous communication hub connect
 
 ---
 
+### 2.14 Store Chat Memory
+`POST /chat/memory`
+
+- **Request Body (JSON):**
+  ```json
+  { "session_id": "sid_1", "user_query": "hello", "ai_response": "hi", "max_limit": 5 }
+  ```
+- **Response (`201 Created`):**
+  ```json
+  { "status": "stored", "session_id": "sid_1" }
+  ```
+
+---
+
+### 2.15 Get Chat Memory
+`GET /chat/memory/{session_id}`
+
+- **Path Parameters:**
+  - `session_id` (string, required): Chat session ID.
+- **Query Parameters:**
+  - `limit` (integer, optional, default: `5`): Turn count.
+- **Response (`200 OK`):**
+  ```json
+  [ { "user_query": "hello", "ai_response": "hi" } ]
+  ```
+
+---
+
+### 2.16 Delete Chat Memory
+`DELETE /chat/memory/{session_id}`
+
+- **Path Parameters:**
+  - `session_id` (string, required): Chat session ID.
+- **Response (`200 OK`):**
+  ```json
+  { "status": "deleted", "session_id": "sid_1" }
+  ```
+
+---
+
+### 2.17 Delete All Chat Memory
+`DELETE /chat/memory`
+
+- **Response (`200 OK`):**
+  ```json
+  { "status": "cleared" }
+  ```
+
+---
+
+### 2.18 Get Active Chat Sessions
+`GET /chat/active`
+
+- **Response (`200 OK`):**
+  ```json
+  { "active_sessions": [] }
+  ```
+
+---
+
+### 2.19 Get Active Chat Session by ID
+`GET /chat/active/{session_id}`
+
+- **Path Parameters:**
+  - `session_id` (string, required): Session ID.
+- **Response (`200 OK`):**
+  ```json
+  { "status": "generating", "job_id": "job_1" }
+  ```
+
+---
+
+### 2.20 Update Active Chat Session
+`POST /chat/active`
+
+- **Request Body (JSON):**
+  ```json
+  { "session_id": "sid_1", "status": "generating", "job_id": "job_1" }
+  ```
+- **Response (`200 OK`):**
+  ```json
+  { "status": "updated", "session_id": "sid_1" }
+  ```
+
+---
+
+### 2.21 Delete Active Chat Session
+`DELETE /chat/active/{session_id}`
+
+- **Path Parameters:**
+  - `session_id` (string, required): Session ID.
+- **Response (`200 OK`):**
+  ```json
+  { "status": "deleted", "session_id": "sid_1" }
+  ```
+
+---
+
 ## 3. Installation & Startup
 
 ### Install Dependencies

@@ -9,69 +9,63 @@ The **Client** is the desktop user interface and control center for MIRA, built 
 - **Desktop Interface**: Native desktop application with custom window controls and responsive views.
 - **Activity Monitoring**: Live screen capture controls, application permission toggles, encrypted log inspection, and Redis telemetry.
 - **Configuration Management**: Manages user details, AI provider API credentials, priority order, and worker concurrency limits.
+- **Agentic Chat**: Real-time chat interface connecting to Engine via WebSocket and REST.
+- **Daily Dashboard**: Daily suggestions, weather forecast, and localized news widgets.
 - **Centralized Service Layer**: Interacts with backend services through unified client services in `src/services/`.
 
 ---
 
-## 2. Integrated Backend Services
+## 2. Centralized Service Layer
 
-The Client communicates with MIRA microservices via centralized HTTP clients (`src/services/`):
+The Client communicates with backend services via centralized service classes in `src/services/`:
 
-### 2.1 Vault Service (`http://127.0.0.1:9001`)
-- `GET /health`: Health status.
-- `GET /user`, `POST /user`: User profile management.
-- `GET /config/{key}`, `POST /config/{module}`: Module configurations.
-- `GET /logs`, `DELETE /logs`: Audit log queries and purges.
-- `POST /retention/cleanup`: Trigger log retention cleanup.
-- `GET /os`: Operating system detection.
-- `GET /ai/providers`, `GET /ai/configs`, `POST /ai/configs/{provider}`, `DELETE /ai/configs/{provider}`: AI credentials.
-- `GET /ai/priorities`, `PUT /ai/priorities`: AI provider execution order.
-- `GET /engine/workers`, `PUT /engine/workers`: Worker concurrency limits.
+### 2.1 Vault Service (`vault.service.ts` -> `http://127.0.0.1:9001`)
+- Health check: `GET /health`
+- User details: `GET /user`, `POST /user`
+- Configuration: `GET /config/{key}`, `POST /config/{module}`
+- Audit logs: `GET /logs`, `DELETE /logs`, `POST /retention/cleanup`
+- Host OS detection: `GET /os`
+- AI credentials: `GET /ai/providers`, `GET /ai/configs`, `GET /ai/configs/{provider}`, `POST /ai/configs/{provider}`, `DELETE /ai/configs/{provider}`
+- AI priorities: `GET /ai/priorities`, `PUT /ai/priorities`
+- News configuration: `GET /news/config`, `POST /news/config`, `DELETE /news/config`
+- Engine workers: `GET /engine/workers`, `PUT /engine/workers`
 
-### 2.2 Message Broker Service (`http://127.0.0.1:9002`)
-- `GET /health`: Health status.
-- `GET /redis/consumer-groups`: Stream and consumer group telemetry.
-- `DELETE /redis/consumer-groups/{group_name}`: Delete consumer group.
-- `POST /redis/clean`: Clear pending messages.
-- `POST /redis/format`: Reset Redis streams and reinitialize groups.
-- `POST /jobs`, `GET /jobs`, `DELETE /jobs`: Queue and manage stream jobs.
+### 2.2 Message Broker Service (`broker.service.ts` -> `http://127.0.0.1:9002`)
+- Health check: `GET /health`
+- Consumer groups: `GET /redis/consumer-groups`, `DELETE /redis/consumer-groups/{group_name}`
+- Redis maintenance: `POST /redis/clean`, `POST /redis/format`
+- Job management: `POST /jobs`, `GET /jobs`, `DELETE /jobs`
 
-### 2.3 Operator Service (`http://127.0.0.1:9003`)
-- `GET /health`: Health status.
-- `GET /status`: Capture loop status and active interval.
-- `POST /start`: Start screen capture loop.
-- `POST /stop`: Stop screen capture loop.
-- `POST /interval`: Update capture frequency.
-- `POST /delete`: Delete local screenshot file.
-- `GET /apps`: Discovered applications and permissions.
-- `POST /apps/refresh`: Scan system applications and sync with Vault.
-- `POST /apps/permission`: Update app capture permission.
+### 2.3 Operator Service (`operator.service.ts` -> `http://127.0.0.1:9003`)
+- Health check: `GET /health`
+- Capture status & control: `GET /status`, `POST /start`, `POST /stop`, `POST /interval`, `POST /delete`
+- Applications & permissions: `GET /apps`, `POST /apps/refresh`, `POST /apps/permission`
+- Microphone control: `GET /microphone/status`, `POST /microphone/start`, `POST /microphone/stop`, `GET /microphone/auto-start`, `POST /microphone/auto-start`
 
-### 2.4 Memory Service (`http://127.0.0.1:9006`)
-- `GET /health`: Health status.
-- `GET /status`: Worker status and difference threshold.
-- `POST /workers/start`: Start worker loops.
-- `POST /workers/stop`: Stop worker loops.
-- `GET /knowledge-base`: List knowledge base daily collections.
-- `DELETE /knowledge-base/{name}`: Delete knowledge base collection.
-- `POST /knowledge-base/cleanup`: Clean expired knowledge bases.
-- `POST /knowledge-base/search`: Search vector knowledge base.
-- `POST /extract`: Extract image matrices and OCR text.
+### 2.4 Memory Service (`memory.service.ts` -> `http://127.0.0.1:9006`)
+- Health check: `GET /health`
+- Worker status & control: `GET /status`, `POST /workers/start`, `POST /workers/stop`
+- Knowledge base collections: `GET /knowledge-base`, `DELETE /knowledge-base/{name}`, `POST /knowledge-base/cleanup`
+- Extraction & search: `POST /extract`, `POST /process-job`
 
-### 2.5 Engine Service (`http://127.0.0.1:9007`)
-- `GET /health`: Health status.
-- `GET /status`: Service status, active provider, and worker limits.
-- `POST /llm/call`: Execute LLM prompt with fallback rotation.
-- `POST /config/sync`: Synchronize AI configuration from Vault.
-- `GET /summarization/status`: Worker pool telemetry.
-- `POST /summarization/start`, `POST /summarization/stop`: Worker pool control.
+### 2.5 Engine Service (`engine.service.ts` -> `http://127.0.0.1:9007`)
+- Health & status: `GET /health`, `GET /status`, `GET /embedding/status`
+- Summarization control: `GET /summarization/status`, `POST /summarization/start`, `POST /summarization/stop`
+- Config sync: `POST /config/sync`
+- Direct LLM calls: `POST /llm/call`
+- Chat operations: `GET /chats/sessions`, `GET /chats/sessions/{session_id}`, `POST /chats/message`, `PATCH /chats/sessions/{session_id}`, `DELETE /chats/sessions/{session_id}`, `DELETE /chats/all`, `GET /chats/pending`, `POST /chats/seed`
+- Chat WebSocket: `WS /ws/chat`
+
+### 2.6 Daily Suggestions Service (`dailySuggestions.service.ts` -> `http://127.0.0.1:9007`)
+- Aggregated dashboard: `GET /daily_suggestions`
+- Refresh triggers: `POST /daily_suggestions/refresh`
+- Task completion: `POST /daily_suggestions/complete`
 
 ---
 
 ## 3. Installation & Startup
 
 ### Install Dependencies
-Dependencies are managed in `package.json`:
 ```bash
 npm install
 ```
