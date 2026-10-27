@@ -37,6 +37,7 @@ export interface SidebarProps {
   isOverlayOpen?: boolean;
   onCloseOverlay?: () => void;
   overlayBreakpoint?: string;
+  hideFloatingTrigger?: boolean;
   title?: string;
   icon?: ComponentType<{ className?: string }> | ReactNode;
   iconBadgeClassName?: string;
@@ -62,6 +63,7 @@ export const Sidebar: FC<SidebarProps> = ({
   isOverlayOpen: controlledIsOverlayOpen,
   onCloseOverlay,
   overlayBreakpoint = "(max-width: 768px)",
+  hideFloatingTrigger = false,
   title,
   icon,
   iconBadgeClassName,
@@ -177,8 +179,24 @@ export const Sidebar: FC<SidebarProps> = ({
   );
 
   if (isOverlayMode) {
+    const shouldShowFloatingTrigger =
+      !hideFloatingTrigger && controlledIsOverlayOpen === undefined && !isOverlayOpen;
+
     return (
       <>
+        {shouldShowFloatingTrigger && (
+          <button
+            type="button"
+            id="btn-sidebar-mobile-trigger"
+            onClick={() => setInternalOverlayOpen(true)}
+            title={`Open ${title || "sidebar"}`}
+            aria-label={`Open ${title || "sidebar"}`}
+            className="fixed left-2.5 top-12 z-30 flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-900/95 border border-white/15 text-zinc-300 hover:text-cyan-400 hover:bg-zinc-800 shadow-xl shadow-black/50 backdrop-blur-md transition-all active:scale-95 cursor-pointer"
+          >
+            <PanelLeftOpen className="w-4 h-4" />
+          </button>
+        )}
+
         <div
           role="presentation"
           aria-hidden="true"
@@ -195,7 +213,7 @@ export const Sidebar: FC<SidebarProps> = ({
           aria-label="Sidebar navigation drawer"
           aria-hidden={!isOverlayOpen}
           className={cn(
-            "fixed top-10 bottom-0 left-0 z-50 w-64 max-w-[80vw] bg-zinc-950/95 backdrop-blur-md border-r border-white/[0.08] text-zinc-300 shadow-2xl transition-transform duration-300 ease-in-out select-none flex flex-col",
+            "fixed top-10 bottom-0 left-0 z-50 w-64 max-w-[80vw] bg-zinc-950/95 backdrop-blur-md border-r border-white/[0.08] text-zinc-300 shadow-2xl transition-transform duration-300 ease-in-out will-change-transform select-none flex flex-col",
             isOverlayOpen
               ? "translate-x-0 pointer-events-auto"
               : "-translate-x-full pointer-events-none",
@@ -209,7 +227,19 @@ export const Sidebar: FC<SidebarProps> = ({
             )}
           >
             {header ? (
-              header
+              <div className="w-full flex items-center justify-between gap-1">
+                <div className="flex-1 min-w-0">{header}</div>
+                <button
+                  type="button"
+                  id="sidebar-overlay-close-button-custom"
+                  onClick={handleCloseOverlay}
+                  title="Close sidebar"
+                  aria-label="Close sidebar"
+                  className="flex items-center justify-center h-8 w-8 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             ) : (
               <>
                 <div className="flex items-center gap-2 min-w-0">

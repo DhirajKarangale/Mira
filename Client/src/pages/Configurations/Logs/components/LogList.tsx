@@ -104,8 +104,8 @@ export const LogList: FC<LogListProps> = ({ logs, loading = false }) => {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto no-scrollbar font-mono text-xs select-text">
-      <div className="divide-y divide-white/[0.04]">
+    <div className="flex-1 overflow-y-auto overflow-x-auto no-scrollbar font-mono text-xs select-text">
+      <div className="divide-y divide-white/[0.04] min-w-[520px] sm:min-w-0">
         {logs.map((log) => {
           const modKey = log.module_name.toLowerCase().replace("-", "_");
           const badgeStyle =

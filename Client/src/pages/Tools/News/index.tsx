@@ -114,7 +114,7 @@ export const NewsToolPage: FC = () => {
   return (
     <div
       id="page-tools-news-container"
-      className="h-full w-full overflow-y-auto no-scrollbar p-6 space-y-6"
+      className="h-full w-full overflow-y-auto no-scrollbar p-3.5 sm:p-6 space-y-5 sm:space-y-6"
     >
       {/* Header Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/[0.08]">

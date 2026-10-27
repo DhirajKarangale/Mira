@@ -103,10 +103,10 @@ export const LogsPage: FC = () => {
       id="logs-subpage-container"
       className="flex flex-col h-full w-full overflow-hidden select-none bg-zinc-950/40"
     >
-      <div className="flex-none px-6 py-4 border-b border-white/[0.06] bg-zinc-950/60 backdrop-blur-md">
+      <div className="flex-none px-3.5 sm:px-6 py-3.5 sm:py-4 border-b border-white/[0.06] bg-zinc-950/60 backdrop-blur-md">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 max-w-7xl mx-auto">
           <div className="flex items-center gap-3.5">
-            <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.2)]">
+            <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.2)] shrink-0">
               <Terminal className="w-5 h-5" />
             </div>
             <div>
@@ -124,7 +124,7 @@ export const LogsPage: FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center p-1 rounded-xl bg-zinc-900/80 border border-white/[0.08] self-start sm:self-auto shadow-inner">
+          <div className="flex items-center p-1 rounded-xl bg-zinc-900/80 border border-white/[0.08] self-start sm:self-auto shadow-inner max-w-full overflow-x-auto no-scrollbar">
             <button
               type="button"
               id="tab-btn-logs-viewer"
@@ -163,7 +163,7 @@ export const LogsPage: FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 pt-6 pb-5">
+      <div className="flex-1 overflow-y-auto px-3.5 sm:px-6 pt-4 sm:pt-6 pb-4 sm:pb-5">
         <div className={cn("max-w-7xl mx-auto flex flex-col", isConfigView ? "min-h-full pb-16" : "h-full")}>
           {isConfigView ? (
             <LogConfigCard onSaved={() => refetch()} />

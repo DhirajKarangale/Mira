@@ -41,10 +41,10 @@ export const RedisPage: FC = () => {
       id="activity-subpage-redis"
       className="flex flex-col h-full w-full overflow-hidden select-none bg-zinc-950/40"
     >
-      <div className="flex-none px-6 py-4 border-b border-white/[0.06] bg-zinc-950/60 backdrop-blur-md">
+      <div className="flex-none px-3.5 sm:px-6 py-3.5 sm:py-4 border-b border-white/[0.06] bg-zinc-950/60 backdrop-blur-md">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 max-w-7xl mx-auto">
           <div className="flex items-center gap-3.5">
-            <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-red-500/10 border border-red-500/25 text-red-400 shadow-[0_0_20px_rgba(239,68,68,0.2)]">
+            <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-red-500/10 border border-red-500/25 text-red-400 shadow-[0_0_20px_rgba(239,68,68,0.2)] shrink-0">
               <Database className="w-5 h-5" />
             </div>
             <div>
@@ -62,12 +62,12 @@ export const RedisPage: FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center p-1 rounded-xl bg-zinc-900/80 border border-white/[0.08] self-start sm:self-auto shadow-inner">
+          <div className="flex items-center p-1 rounded-xl bg-zinc-900/80 border border-white/[0.08] self-start sm:self-auto shadow-inner max-w-full overflow-x-auto no-scrollbar">
             <button
               type="button"
               onClick={() => navigate("/configurations/redis")}
               className={cn(
-                "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
+                "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer shrink-0",
                 !isConfigView
                   ? "bg-red-600 text-white shadow-sm font-semibold shadow-red-950/60"
                   : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
@@ -81,7 +81,7 @@ export const RedisPage: FC = () => {
               type="button"
               onClick={() => navigate("/configurations/redis/config")}
               className={cn(
-                "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
+                "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer shrink-0",
                 isConfigView
                   ? "bg-red-600 text-white shadow-sm font-semibold shadow-red-950/60"
                   : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
@@ -94,7 +94,7 @@ export const RedisPage: FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-6">
+      <div className="flex-1 overflow-y-auto px-3.5 sm:px-6 py-4 sm:py-6">
         <div className="max-w-7xl mx-auto">
           <Routes>
             <Route

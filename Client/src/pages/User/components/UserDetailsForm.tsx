@@ -252,7 +252,7 @@ export const UserDetailsForm: FC<UserDetailsFormProps> = ({
       id="user-details-form"
       onSubmit={handleSubmit}
       noValidate
-      className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-6 sm:p-8 backdrop-blur-xl shadow-2xl space-y-7"
+      className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-4 sm:p-6 lg:p-8 backdrop-blur-xl shadow-2xl space-y-7"
     >
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-white/[0.08] gap-4">
         <div>

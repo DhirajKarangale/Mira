@@ -318,10 +318,10 @@ export const AiConfigPage: FC = () => {
       className="flex flex-col h-full w-full overflow-hidden select-none bg-zinc-950/40 text-zinc-100"
     >
       {/* Top Header Bar */}
-      <div className="flex-none px-6 py-4 border-b border-white/[0.06] bg-zinc-950/60 backdrop-blur-md">
+      <div className="flex-none px-3.5 sm:px-6 py-3.5 sm:py-4 border-b border-white/[0.06] bg-zinc-950/60 backdrop-blur-md">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 max-w-7xl mx-auto">
           <div className="flex items-center gap-3.5">
-            <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-cyan-500/10 border border-cyan-500/25 text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.2)]">
+            <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-cyan-500/10 border border-cyan-500/25 text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.2)] shrink-0">
               <Cpu className="w-5 h-5" />
             </div>
             <div>
@@ -339,9 +339,9 @@ export const AiConfigPage: FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 max-w-full">
             {/* Top Sub-Tabs Bar: LLM Management first, followed by individual LLM tabs */}
-            <div className="flex items-center p-1 rounded-xl bg-zinc-900/80 border border-white/[0.08] self-start sm:self-auto shadow-inner">
+            <div className="flex items-center p-1 rounded-xl bg-zinc-900/80 border border-white/[0.08] self-start sm:self-auto shadow-inner max-w-full overflow-x-auto no-scrollbar">
               {/* Separate LLM Management Tab */}
               <button
                 type="button"
@@ -480,7 +480,7 @@ export const AiConfigPage: FC = () => {
       {/* Main Content Viewport */}
       <div
         id="ai-config-subpage-viewport"
-        className="flex-1 overflow-y-auto px-6 py-6"
+        className="flex-1 overflow-y-auto px-3.5 sm:px-6 py-4 sm:py-6"
       >
         <div className="max-w-7xl mx-auto space-y-6">
           {isLoading && configs.length === 0 ? (

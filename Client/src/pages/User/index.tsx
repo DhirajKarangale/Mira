@@ -54,7 +54,7 @@ export const UserPage: FC = () => {
   return (
     <div
       id="page-content-user"
-      className="h-full w-full overflow-y-auto px-6 py-6 select-none bg-zinc-950/40 text-zinc-100"
+      className="h-full w-full overflow-y-auto px-3.5 sm:px-6 py-4 sm:py-6 select-none bg-zinc-950/40 text-zinc-100"
     >
       <div className="max-w-7xl mx-auto space-y-6">
         <UserHero

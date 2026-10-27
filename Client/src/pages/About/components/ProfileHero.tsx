@@ -3,7 +3,7 @@ import { Briefcase, Terminal, Sparkles } from "lucide-react";
 
 export const ProfileHero: FC = () => {
   return (
-    <div className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-b from-zinc-900/80 via-zinc-900/50 to-zinc-950/80 p-6 sm:p-8 backdrop-blur-xl shadow-2xl overflow-hidden">
+    <div className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-b from-zinc-900/80 via-zinc-900/50 to-zinc-950/80 p-4 sm:p-6 lg:p-8 backdrop-blur-xl shadow-2xl overflow-hidden">
       <div className="absolute top-0 right-1/4 w-96 h-96 bg-emerald-500/10 rounded-full blur-[100px] pointer-events-none" />
       <div className="absolute -bottom-10 -left-10 w-80 h-80 bg-cyan-500/10 rounded-full blur-[100px] pointer-events-none" />
 

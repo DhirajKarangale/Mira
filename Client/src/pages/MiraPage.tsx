@@ -33,7 +33,7 @@ export const MiraPage: FC = () => {
   return (
     <div
       id="page-content-mira"
-      className="relative flex flex-col h-full w-full overflow-y-auto mira-scrollbar p-4 sm:p-6 lg:p-7 gap-5 select-none"
+      className="relative flex flex-col h-full w-full overflow-y-auto mira-scrollbar p-3.5 sm:p-5 lg:p-7 gap-4 sm:gap-5 select-none"
     >
       {/* Background Ambient Glows */}
       <div className="absolute top-10 left-1/4 w-[500px] h-[300px] bg-cyan-500/5 rounded-full blur-[140px] pointer-events-none -z-10" />
@@ -88,34 +88,42 @@ export const MiraPage: FC = () => {
       )}
 
       {/* Unified Dynamic Dashboard Grid:
-          Top-Left: Name & Greeting (WelcomeHeader)
-          Top-Right: Local Weather Forecast (WeatherWidget)
-          Middle-Left: Daily Focus Suggestions (flex-1 dynamic height)
-          Bottom-Left: Music & Focus / Entertainment Picks (anchored at bottom)
-          Right Below Weather: Top Headlines News (with dynamic stories toggle)
+          Mobile Layout (single column flex):
+            1. Welcome Message (WelcomeHeader)
+            2. Weather Forecast (WeatherWidget)
+            3. Daily Suggestions (DailySuggestionsWidget)
+            4. Top Headlines & News (NewsWidget)
+            5. Music & Entertainment (MusicWidget & EntertainmentWidget)
+          Desktop Layout (12-column grid):
+            Left Column (7 cols): WelcomeHeader -> DailySuggestions -> Music & Entertainment
+            Right Column (5 cols): WeatherWidget -> NewsWidget
       */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1 items-stretch">
-        {/* Left Column (approx 7 cols): Name Welcome Header at top, Daily Suggestions, Music & Entertainment at bottom */}
-        <div className="lg:col-span-7 flex flex-col gap-5 justify-between">
-          <div className="flex flex-col gap-5 flex-1">
-            {/* Top-Left: Name Welcome Greeting */}
-            <WelcomeHeader userName={userDetails?.user_name || undefined} />
+      <div className="flex flex-col lg:grid lg:grid-cols-12 gap-4 sm:gap-5 flex-1 items-stretch">
+        {/* Left Column on Desktop (col-span-7); CSS contents on mobile so children participate directly in flex ordering */}
+        <div className="contents lg:flex lg:flex-col lg:col-span-7 lg:gap-5 lg:justify-between">
+          <div className="contents lg:flex lg:flex-col lg:gap-5 lg:flex-1">
+            {/* 1. Name Welcome Header (Mobile Order 1) */}
+            <div className="order-1">
+              <WelcomeHeader userName={userDetails?.user_name || undefined} />
+            </div>
 
-            {/* Prominent Daily Suggestions */}
-            <DailySuggestionsWidget
-              suggestions={today.suggestions}
-              previousSuggestions={previous.suggestions}
-              completedIndices={completedIndices}
-              onToggleComplete={toggleSuggestionCompletion}
-              isRefreshing={Boolean(refreshingSection.suggestions)}
-              isLoading={isPageLoading}
-              onRefresh={() => handleRefresh("suggestions")}
-              hasLlmKeys={hasLlmKeys}
-            />
+            {/* 3. Daily Suggestions (Mobile Order 3) */}
+            <div className="order-3 flex-1 flex flex-col min-h-0">
+              <DailySuggestionsWidget
+                suggestions={today.suggestions}
+                previousSuggestions={previous.suggestions}
+                completedIndices={completedIndices}
+                onToggleComplete={toggleSuggestionCompletion}
+                isRefreshing={Boolean(refreshingSection.suggestions)}
+                isLoading={isPageLoading}
+                onRefresh={() => handleRefresh("suggestions")}
+                hasLlmKeys={hasLlmKeys}
+              />
+            </div>
           </div>
 
-          {/* Music & Entertainment Containers (Anchored flush at bottom, eliminating dead space) */}
-          <div className="mt-auto pt-1">
+          {/* 5. Music & Entertainment Containers (Mobile Order 5, Desktop anchored at bottom) */}
+          <div className="order-5 lg:mt-auto pt-1">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <MusicWidget />
               <EntertainmentWidget />
@@ -123,20 +131,22 @@ export const MiraPage: FC = () => {
           </div>
         </div>
 
-        {/* Right Column (approx 5 cols): Top-Right Weather Card + News Stories Below It */}
-        <div className="lg:col-span-5 flex flex-col gap-5 justify-between">
-          {/* Top-Right: Weather Forecast & Atmospheric Conditions */}
-          <WeatherWidget
-            weather={today.weather}
-            previousWeather={previous.weather}
-            isRefreshing={Boolean(refreshingSection.weather)}
-            onRefresh={() => handleRefresh("weather")}
-            isLocationConfigured={isLocationConfigured}
-            isUserLoading={isUserLoading}
-          />
+        {/* Right Column on Desktop (col-span-5); CSS contents on mobile so children participate directly in flex ordering */}
+        <div className="contents lg:flex lg:flex-col lg:col-span-5 lg:gap-5 lg:justify-between">
+          {/* 2. Weather Forecast (Mobile Order 2) */}
+          <div className="order-2">
+            <WeatherWidget
+              weather={today.weather}
+              previousWeather={previous.weather}
+              isRefreshing={Boolean(refreshingSection.weather)}
+              onRefresh={() => handleRefresh("weather")}
+              isLocationConfigured={isLocationConfigured}
+              isUserLoading={isUserLoading}
+            />
+          </div>
 
-          {/* Top Headlines & Regional/Global News (Stretches to align flush with bottom of left column) */}
-          <div className="flex-1 flex flex-col min-h-0">
+          {/* 4. Top Headlines & News (Mobile Order 4) */}
+          <div className="order-4 flex-1 flex flex-col min-h-0">
             <NewsWidget
               news={today.news}
               previousNews={previous.news}

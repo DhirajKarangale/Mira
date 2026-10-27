@@ -129,6 +129,7 @@ export const ChatsPage: FC = () => {
   const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState<boolean>(false);
   const [deleteAllConfirmText, setDeleteAllConfirmText] = useState<string>("");
   const [isDeletingAll, setIsDeletingAll] = useState<boolean>(false);
+  const [isOverlaySidebarOpen, setIsOverlaySidebarOpen] = useState<boolean>(false);
 
   // ============================================================================
   // Messages State
@@ -1181,58 +1182,7 @@ export const ChatsPage: FC = () => {
       const isSessionSending = Boolean(sendingSessions[item.key]);
       const isUnread = Boolean(unreadSessionIds[item.key]);
 
-      if (isCollapsed) {
-        return (
-          <button
-            type="button"
-            id={`sidebar-item-${item.key}`}
-            role="menuitem"
-            aria-current={isActive ? "page" : undefined}
-            title={sessionName}
-            onClick={() => {
-              if (isDeletingSessionId === item.key) return;
-              markSessionRead(item.key);
-              handleSelect();
-            }}
-            disabled={isDeletingSessionId === item.key}
-            className={cn(
-              "group relative flex items-center justify-center w-full rounded-md text-xs font-medium cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-cyan-400 h-9 px-2 overflow-hidden transition-colors duration-150",
-              isDeletingSessionId === item.key && "opacity-40 pointer-events-none",
-              isActive
-                ? "bg-cyan-950/40 text-cyan-300 border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.12)] font-semibold"
-                : isUnread
-                ? "text-cyan-300 hover:text-cyan-200 hover:bg-cyan-950/30 border border-cyan-500/20"
-                : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5 border border-transparent"
-            )}
-          >
-            <span
-              className={cn(
-                "shrink-0 flex items-center justify-center w-8 h-8 rounded transition-colors relative",
-                isActive ? "text-cyan-400" : isUnread ? "text-cyan-300" : "text-zinc-400 group-hover:text-zinc-200"
-              )}
-            >
-              {isDeletingSessionId === item.key ? (
-                <RefreshCw className="h-4 w-4 animate-spin text-rose-400" />
-              ) : isSessionSending ? (
-                <RefreshCw className="h-4 w-4 animate-spin text-cyan-400" />
-              ) : (
-                <MessageSquare className="h-4 w-4" />
-              )}
-              {isUnread && (
-                <span
-                  className="absolute top-1 right-1 w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.9)] animate-pulse"
-                  title="Unread response"
-                />
-              )}
-            </span>
-            {isActive && (
-              <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-cyan-400 rounded-full" />
-            )}
-          </button>
-        );
-      }
-
-      if (isEditing) {
+      if (isEditing && !isCollapsed) {
         return (
           <div
             data-session-item-actions
@@ -1286,8 +1236,12 @@ export const ChatsPage: FC = () => {
 
       return (
         <div
+          id={`sidebar-item-${item.key}`}
+          role="menuitem"
+          aria-current={isActive ? "page" : undefined}
+          title={isCollapsed && typeof item.name === "string" ? item.name : undefined}
           className={cn(
-            "group relative flex items-center w-full rounded-md text-xs font-medium cursor-pointer h-9 px-2 transition-colors duration-150 select-none",
+            "group relative flex items-center w-full rounded-md text-xs font-medium cursor-pointer h-9 px-2 transition-colors duration-150 select-none overflow-hidden",
             isDeletingSessionId === item.key && "opacity-40 pointer-events-none",
             isActive
               ? "bg-cyan-950/40 text-cyan-300 border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.12)] font-semibold"
@@ -1313,14 +1267,14 @@ export const ChatsPage: FC = () => {
           >
             <span
               className={cn(
-                "shrink-0 flex items-center justify-center w-7 h-7 rounded transition-colors mr-1.5 relative",
+                "shrink-0 flex items-center justify-center w-8 h-8 rounded transition-colors relative",
                 isActive ? "text-cyan-400" : isUnread ? "text-cyan-300" : "text-zinc-400 group-hover:text-zinc-200"
               )}
             >
               {isDeletingSessionId === item.key ? (
-                <RefreshCw className="h-3.5 w-3.5 animate-spin text-rose-400" />
+                <RefreshCw className="h-4 w-4 animate-spin text-rose-400" />
               ) : isSessionSending ? (
-                <RefreshCw className="h-3.5 w-3.5 animate-spin text-cyan-400" />
+                <RefreshCw className="h-4 w-4 animate-spin text-cyan-400" />
               ) : isUnread ? (
                 <span className="relative flex items-center justify-center">
                   <MessageSquare className="h-4 w-4 text-cyan-400" />
@@ -1331,26 +1285,36 @@ export const ChatsPage: FC = () => {
               )}
             </span>
 
-            <span
-              title={sessionName}
+            <div
               className={cn(
-                "truncate tracking-wide text-left flex-1 whitespace-nowrap",
-                isUnread && !isActive ? "text-zinc-100 font-semibold" : ""
+                "flex items-center flex-1 min-w-0 transition-opacity duration-200 ml-1.5 overflow-hidden",
+                isCollapsed ? "opacity-0 pointer-events-none" : "opacity-100"
               )}
             >
-              {sessionName}
-            </span>
-
-            {isUnread && !isActive && (
-              <span className="px-1.5 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-400/30 text-[9px] font-mono text-cyan-300 font-semibold shrink-0 ml-1.5">
-                NEW
+              <span
+                title={sessionName}
+                className={cn(
+                  "truncate tracking-wide text-left flex-1 whitespace-nowrap",
+                  isUnread && !isActive ? "text-zinc-100 font-semibold" : ""
+                )}
+              >
+                {sessionName}
               </span>
-            )}
+
+              {isUnread && !isActive && (
+                <span className="px-1.5 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-400/30 text-[9px] font-mono text-cyan-300 font-semibold shrink-0 ml-1.5">
+                  NEW
+                </span>
+              )}
+            </div>
           </div>
 
           <div
             data-session-item-actions
-            className="flex items-center gap-1 shrink-0 ml-1.5"
+            className={cn(
+              "flex items-center gap-1 shrink-0 ml-1.5 transition-opacity duration-200",
+              isCollapsed ? "opacity-0 pointer-events-none" : "opacity-100"
+            )}
           >
             <div className="relative">
               <button
@@ -1398,9 +1362,9 @@ export const ChatsPage: FC = () => {
                       setMenuOpenSessionId(null);
                       setSessionToDelete({ id: item.key, name: sessionName });
                     }}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-rose-400 hover:text-rose-200 hover:bg-rose-500/15 transition-colors text-left cursor-pointer"
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-colors text-left cursor-pointer"
                   >
-                    <Trash2 className="h-3.5 w-3.5 text-rose-400" />
+                    <Trash2 className="h-3.5 w-3.5" />
                     <span>Delete</span>
                   </button>
                 </div>
@@ -1487,6 +1451,9 @@ export const ChatsPage: FC = () => {
         }}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={setIsSidebarCollapsed}
+        isOverlayOpen={isOverlaySidebarOpen}
+        onCloseOverlay={() => setIsOverlaySidebarOpen(false)}
+        hideFloatingTrigger={true}
         onScroll={handleSessionsScroll}
         renderItem={renderSidebarItem}
         isLoading={sessionsLoading}
@@ -1499,7 +1466,7 @@ export const ChatsPage: FC = () => {
             <div
               className={cn(
                 "absolute inset-0 flex items-center justify-center transition-all duration-200",
-                isSidebarCollapsed
+                isSidebarCollapsed && !isOverlaySidebarOpen
                   ? "opacity-100 pointer-events-auto scale-100"
                   : "opacity-0 pointer-events-none scale-90"
               )}
@@ -1520,7 +1487,7 @@ export const ChatsPage: FC = () => {
             <div
               className={cn(
                 "w-full flex flex-col gap-2 transition-[opacity,transform] duration-200",
-                !isSidebarCollapsed
+                !isSidebarCollapsed || isOverlaySidebarOpen
                   ? "opacity-100 pointer-events-auto translate-x-0"
                   : "opacity-0 pointer-events-none -translate-x-2"
               )}
@@ -1579,7 +1546,7 @@ export const ChatsPage: FC = () => {
         // Issue 5: In sidebar bottoms show total number of chats of users (visible both expanded and collapsed)
         footer={
           <div className="h-8 flex items-center justify-between px-3 text-xs text-zinc-400 font-mono select-none overflow-hidden whitespace-nowrap w-full">
-            {!isSidebarCollapsed ? (
+            {!isSidebarCollapsed || isOverlaySidebarOpen ? (
               <>
                 <span className="truncate">Total Chats: {sessionsTotalItems || sessions.length}</span>
                 {sessions.length > 0 && (
@@ -1616,8 +1583,20 @@ export const ChatsPage: FC = () => {
         className="flex-1 flex flex-col h-full overflow-hidden bg-gradient-to-b from-[#080c14] via-[#090e18] to-[#04070d] relative"
       >
         {/* Chat Window Header */}
-        <header className="h-14 px-4 sm:px-6 border-b border-white/[0.08] bg-zinc-950/50 backdrop-blur-md flex items-center justify-between shrink-0 z-10">
-          <div className="flex items-center gap-3 min-w-0">
+        <header className="h-14 px-3 sm:px-6 border-b border-white/[0.08] bg-zinc-950/50 backdrop-blur-md flex items-center justify-between shrink-0 z-10">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            {/* Mobile Sidebar Drawer Toggle */}
+            <button
+              type="button"
+              id="btn-chat-mobile-sidebar-toggle"
+              onClick={() => setIsOverlaySidebarOpen(true)}
+              title="Open chats drawer"
+              aria-label="Open chats drawer"
+              className="md:hidden flex items-center justify-center w-8 h-8 rounded-lg text-zinc-400 hover:text-cyan-400 hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+            >
+              <PanelLeftOpen className="w-4 h-4" />
+            </button>
+
             <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shrink-0">
               <Bot className="w-4 h-4" />
             </div>

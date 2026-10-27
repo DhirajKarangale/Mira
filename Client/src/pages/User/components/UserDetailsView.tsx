@@ -96,23 +96,23 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
   return (
     <div className="space-y-6">
       {/* Profile Header Banner */}
-      <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-6 sm:p-8 backdrop-blur-xl shadow-xl">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-          <div className="flex items-center gap-5">
-            <div className="relative flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 text-white font-bold text-2xl shadow-xl shadow-blue-600/20 border border-white/20 select-none">
+      <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-4 sm:p-6 lg:p-8 backdrop-blur-xl shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 sm:gap-6">
+          <div className="flex items-center gap-4 sm:gap-5 min-w-0">
+            <div className="relative flex items-center justify-center w-14 h-14 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 text-white font-bold text-xl sm:text-2xl shadow-xl shadow-blue-600/20 border border-white/20 select-none shrink-0">
               <span>{initials}</span>
-              <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-500 border-2 border-zinc-900 flex items-center justify-center">
-                <CheckCircle className="w-3 h-3 text-white" />
+              <span className="absolute -bottom-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-emerald-500 border-2 border-zinc-900 flex items-center justify-center">
+                <CheckCircle className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white" />
               </span>
             </div>
 
-            <div className="space-y-1">
-              <h2 className="text-2xl font-bold text-white tracking-tight">
+            <div className="space-y-1 min-w-0 flex-1">
+              <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight truncate">
                 {details?.user_name || "Anonymous User"}
               </h2>
-              <p className="text-sm text-zinc-400 flex items-center gap-2">
-                <Mail className="w-3.5 h-3.5 text-zinc-500" />
-                <span>{details?.email || "No email registered"}</span>
+              <p className="text-xs sm:text-sm text-zinc-400 flex items-center gap-2 truncate">
+                <Mail className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                <span className="truncate">{details?.email || "No email registered"}</span>
               </p>
               <div className="flex items-center gap-2 pt-1">
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
@@ -148,7 +148,7 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Contact Information Card */}
-        <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-6 backdrop-blur-xl shadow-xl flex flex-col justify-between">
+        <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-4 sm:p-6 backdrop-blur-xl shadow-xl flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between pb-4 mb-4 border-b border-white/[0.06]">
               <div className="flex items-center gap-2.5">
@@ -223,7 +223,7 @@ export const UserDetailsView: FC<UserDetailsViewProps> = ({
         </div>
 
         {/* Location & Region Card */}
-        <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-6 backdrop-blur-xl shadow-xl flex flex-col justify-between">
+        <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-4 sm:p-6 backdrop-blur-xl shadow-xl flex flex-col justify-between">
           <div className="space-y-4">
             <div className="flex items-center justify-between pb-4 border-b border-white/[0.06]">
               <div className="flex items-center gap-2.5">

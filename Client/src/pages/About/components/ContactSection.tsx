@@ -35,7 +35,7 @@ export const ContactSection: FC = () => {
   ];
 
   return (
-    <div className="rounded-3xl border border-white/[0.08] bg-zinc-900/60 p-6 sm:p-8 backdrop-blur-xl shadow-xl relative overflow-hidden space-y-6">
+    <div className="rounded-3xl border border-white/[0.08] bg-zinc-900/60 p-4 sm:p-6 lg:p-8 backdrop-blur-xl shadow-xl relative overflow-hidden space-y-6">
       <div className="absolute top-0 right-1/4 w-72 h-72 bg-emerald-500/5 rounded-full blur-[80px] pointer-events-none" />
 
       <div className="flex items-center gap-3 pb-4 border-b border-white/[0.06]">

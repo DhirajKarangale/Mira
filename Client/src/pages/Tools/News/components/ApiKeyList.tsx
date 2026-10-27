@@ -55,9 +55,9 @@ export const ApiKeyList: FC<ApiKeyListProps> = ({
       id="keys-list-container-gnews"
       className="rounded-2xl border border-white/[0.08] bg-zinc-900/30 backdrop-blur-xl shadow-xl overflow-hidden"
     >
-      <div className="p-6 border-b border-white/[0.06] bg-zinc-950/40 flex items-center justify-between gap-4">
+      <div className="p-4 sm:p-6 border-b border-white/[0.06] bg-zinc-950/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
+          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 shrink-0">
             <Key className="w-4 h-4" />
           </div>
           <div>
@@ -78,14 +78,14 @@ export const ApiKeyList: FC<ApiKeyListProps> = ({
         <button
           type="button"
           onClick={onAddNewKeyClick}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white shadow-md shadow-cyan-600/20 cursor-pointer transition-colors active:scale-95"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white shadow-md shadow-cyan-600/20 cursor-pointer transition-colors active:scale-95 self-start sm:self-auto shrink-0"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>Add Key</span>
         </button>
       </div>
 
-      <div className="p-6 space-y-3">
+      <div className="p-4 sm:p-6 space-y-3">
         {keys.map((key, idx) => (
           <ApiKeyItem
             key={`gnews-key-${idx}`}

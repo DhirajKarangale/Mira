@@ -119,21 +119,21 @@ export const WeatherWidget: FC<WeatherWidgetProps> = ({
   return (
     <div
       id="mira-weather-widget"
-      className="relative flex flex-col justify-between p-4 rounded-2xl bg-zinc-900/40 border border-white/[0.08] backdrop-blur-xl shadow-lg transition-all duration-300 hover:border-cyan-500/20 group overflow-hidden"
+      className="relative flex flex-col justify-between p-3.5 sm:p-4 rounded-2xl bg-zinc-900/40 border border-white/[0.08] backdrop-blur-xl shadow-lg transition-all duration-300 hover:border-cyan-500/20 group overflow-hidden"
     >
       {/* Background Glow */}
       <div className="absolute -top-10 -right-10 w-32 h-32 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none group-hover:bg-cyan-500/15 transition-all duration-500" />
 
       {/* Top Header Row: Location Pill + Status Badges + Refresh */}
       <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-white/[0.06] mb-3 z-10">
-        <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-300">
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-300 min-w-0">
           {isLocationConfigured ? (
             <MapPin className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
           ) : (
             <MapPinOff className="w-3.5 h-3.5 text-amber-400 shrink-0" />
           )}
           <span
-            className="truncate max-w-[190px]"
+            className="truncate max-w-[120px] sm:max-w-[190px]"
             title={isLocationConfigured ? (loc?.name || "Local Forecast") : "Location Not Configured"}
           >
             {isLocationConfigured ? (loc?.name || "Local Forecast") : "Location Not Set"}

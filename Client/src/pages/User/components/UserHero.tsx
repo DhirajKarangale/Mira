@@ -21,7 +21,7 @@ export const UserHero: FC<UserHeroProps> = ({
   const isBusy = loading || isRefreshing;
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-r from-blue-950/20 via-zinc-900/60 to-purple-950/20 p-6 sm:p-8 backdrop-blur-xl shadow-2xl">
+    <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-r from-blue-950/20 via-zinc-900/60 to-purple-950/20 p-4 sm:p-6 lg:p-8 backdrop-blur-xl shadow-2xl">
       <div className="absolute -top-24 -left-24 w-72 h-72 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-24 -right-24 w-72 h-72 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
 
