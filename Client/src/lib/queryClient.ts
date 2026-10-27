@@ -5,10 +5,24 @@ export const queryClient = new QueryClient({
     queries: {
       staleTime: 15 * 60 * 1000,
       gcTime: 60 * 60 * 1000,
-      retry: 1,
+      retry: (failureCount, error: any) => {
+        // While local microservices initialize on launch, retry connection errors up to 4 times
+        const msg = String(error?.message || "").toLowerCase();
+        const code = String(error?.code || "").toUpperCase();
+        const isNetworkErr =
+          code === "ERR_NETWORK" ||
+          code === "ECONNREFUSED" ||
+          msg.includes("network error") ||
+          msg.includes("failed to fetch");
+        if (isNetworkErr && failureCount < 4) {
+          return true;
+        }
+        return failureCount < 1;
+      },
+      retryDelay: (attemptIndex) => Math.min(1000 * (attemptIndex + 1), 3000),
       refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
-      refetchOnMount: false,
+      refetchOnReconnect: true,
+      refetchOnMount: true,
     },
     mutations: {
       retry: 0,

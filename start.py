@@ -91,7 +91,7 @@ MODULE_REGISTRY: List[Dict[str, Any]] = [
         "order": 3,
         "health_path": "/health",
         "type": "rust",
-        "is_optional": False,
+        "is_optional": True,
         "env_port_key": "OPERATOR_PORT",
         "env_host_key": "OPERATOR_HOST",
     },
@@ -488,15 +488,35 @@ class ProcessRunner:
         host = alloc["host"]
         url = alloc["url"]
 
-        if not mod_dir.exists():
-            if mod.get("is_optional", False):
-                log_sys(f"{color('WARNING:', YELLOW)} Skipping optional module {color(mod_name, BOLD + WHITE)} (directory '{mod_dir.name}' not found).")
-                return True
-            else:
-                log_sys(f"{color('ERROR:', RED)} Required module directory '{mod_dir}' does not exist.")
-                return False
+        working_dir = mod_dir if mod_dir.exists() else ROOT_DIR
+        cmd = None
 
-        cmd = self.build_command(mod, port, host)
+        if mod["type"] == "rust":
+            candidates = [
+                ROOT_DIR.parent / "bin" / "operator.exe",
+                ROOT_DIR / "bin" / "operator.exe",
+                mod_dir / "target" / "release" / "operator.exe",
+                ROOT_DIR.parent / "target" / "release" / "operator.exe",
+                ROOT_DIR / "resources" / "bin" / "operator.exe",
+                mod_dir / "operator.exe",
+            ]
+            for exe in candidates:
+                if exe.exists():
+                    log_sys(f"Using precompiled Operator binary: {color(str(exe), CYAN)}")
+                    cmd = [str(exe.resolve()), "--host", host, "--port", str(port)]
+                    working_dir = exe.parent
+                    break
+
+        if cmd is None:
+            if not mod_dir.exists():
+                if mod.get("is_optional", False):
+                    log_sys(f"{color('WARNING:', YELLOW)} Skipping optional module {color(mod_name, BOLD + WHITE)} (directory '{mod_dir.name}' not found).")
+                    return True
+                else:
+                    log_sys(f"{color('ERROR:', RED)} Required module directory '{mod_dir}' does not exist.")
+                    return False
+            cmd = self.build_command(mod, port, host)
+
         env = self.prepare_environment(mod, port, host, url_map)
 
         log_sys(f"Launching {color(mod_name, BOLD + WHITE)} on {color(url, CYAN)} ({color(' '.join(cmd), DIM)})...")
@@ -505,7 +525,7 @@ class ProcessRunner:
             use_shell = os.name == "nt" and mod["type"] == "node"
             proc = subprocess.Popen(
                 cmd,
-                cwd=str(mod_dir),
+                cwd=str(working_dir),
                 env=env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,

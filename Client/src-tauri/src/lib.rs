@@ -38,16 +38,23 @@ fn spawn_backend(app: &tauri::App) -> Option<u32> {
     let candidate_python = [
         resource_dir.join("resources").join("python_runtime").join("python.exe"),
         resource_dir.join("python_runtime").join("python.exe"),
+        std::path::PathBuf::from(r"F:\Software\Python\Python311\python.exe"),
+        std::path::PathBuf::from(r"C:\Python311\python.exe"),
+        std::path::PathBuf::from(r"C:\Python312\python.exe"),
     ];
     let python_exe = candidate_python.into_iter().find(|p| p.exists())
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| "python".to_string());
 
     let mut cmd = Command::new(&python_exe);
+    if let Some(parent) = start_py.parent() {
+        cmd.current_dir(parent);
+    }
     cmd.arg(&start_py);
     cmd.arg("--no-client");
     cmd.arg("--prod");
     cmd.arg("--headless");
+    cmd.env("PYTHONUNBUFFERED", "1");
 
     #[cfg(target_os = "windows")]
     cmd.creation_flags(CREATE_NO_WINDOW);

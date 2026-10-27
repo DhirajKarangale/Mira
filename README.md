@@ -1,4 +1,27 @@
-# MIRA - Memory, Intelligence, Recall, Assistant
+<p align="center">
+  <img src="Client/public/icons/hero-banner.png" alt="MIRA — Memory, Intelligence, Recall, Assistant" width="100%" />
+</p>
+
+<p align="center">
+  <img src="Client/public/icons/favicon-96x96.png" alt="MIRA Logo" width="64" height="64" />
+</p>
+
+<h1 align="center">MIRA</h1>
+<p align="center"><strong>Memory • Intelligence • Recall • Assistant</strong></p>
+
+<p align="center">
+  <em>An autonomous, context-aware AI assistant and personal digital memory that anticipates your needs, organizes your day, and keeps your private data strictly on your device.</em>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20x64-0078D6?style=flat-square&logo=windows&logoColor=white" alt="Windows Platform" />
+  <img src="https://img.shields.io/badge/Desktop%20Framework-Tauri%20v2-FFC131?style=flat-square&logo=tauri&logoColor=black" alt="Tauri v2" />
+  <img src="https://img.shields.io/badge/Frontend-React%2018%20%2B%20TypeScript%20%2B%20Tailwind-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React 18" />
+  <img src="https://img.shields.io/badge/Backend-FastAPI%20%2B%20SQLite%20%2B%20Redis-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI Backend" />
+  <img src="https://img.shields.io/badge/Operator-Native%20Rust%20Engine-DEA584?style=flat-square&logo=rust&logoColor=black" alt="Rust Native Operator" />
+</p>
+
+---
 
 **Project Type:** Personal AI Knowledge Base · Context-Aware AI Assistant · Proactive Personal Agent
 
@@ -136,6 +159,10 @@ Cloud AI models do not need direct access to the entire knowledge base. MIRA's l
 This separation is central to the architecture.
 
 # 5. Local Storage and Cloud AI Architecture
+
+<p align="center">
+  <img src="Client/public/icons/features-banner.png" alt="MIRA Microservices and System Architecture" width="100%" />
+</p>
 
 MIRA will use a hybrid architecture rather than requiring every AI model to run locally.
 
@@ -823,3 +850,41 @@ It also proactively prepares personalized daily plans, news briefings, job oppor
 Through voice and text, users can recall past activities, understand ongoing projects, find information, plan their time, and execute supported computer tasks.
 
 **The central idea is to build an assistant that remembers your digital life, prepares for your needs, and helps you move forward—while keeping your personal knowledge under your control.**
+
+---
+
+# 18. Windows Desktop App & Web Installation
+
+<p align="center">
+  <img src="Client/public/icons/download-app-banner.png" alt="Download and Run MIRA on Windows" width="100%" />
+</p>
+
+MIRA is built for both **Windows Desktop** (native, bundled microservices) and **Web browsers**.
+
+### Option A: Install MIRA Windows Desktop App (Recommended)
+Download and execute the official NSIS setup installer:
+```powershell
+# Built setup installer:
+Client\src-tauri\target\release\bundle\nsis\MIRA_0.1.0_x64-setup.exe
+```
+- **Single Installer:** Fully bundles Python backend services, Redis server, and the native Rust operator.
+- **One-Click Experience:** Guides the user through a branded Windows setup wizard with Start Menu and Desktop shortcuts.
+- **Smart Lifecycle:** Automatically boots child microservices on launch and gracefully shuts them down when closing the application.
+- **Clean Uninstaller:** Fully uninstalls cleanly from Windows Settings > Installed Apps.
+
+### Option B: Build the Windows Installer from Source
+Run the automated multi-service packaging pipeline:
+```powershell
+python package_windows.py
+```
+Or simply double-click:
+```cmd
+package_windows.bat
+```
+
+### Option C: Run in Web / Development Mode
+Start all services simultaneously in development mode:
+```powershell
+python start.py
+```
+Then open `http://localhost:9004` in your browser.

@@ -65,6 +65,17 @@ export const MiraSection: FC = () => {
         </p>
       </div>
 
+      {/* Visual System Architecture & Capabilities Banner */}
+      <div className="relative rounded-2xl overflow-hidden border border-white/[0.08] shadow-2xl bg-zinc-950/80 group">
+        <img
+          src="/icons/features-banner.png"
+          alt="MIRA Multi-Agent System Architecture"
+          className="w-full h-auto max-h-64 object-cover object-center group-hover:scale-[1.01] transition-transform duration-500"
+          loading="lazy"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/60 via-transparent to-transparent pointer-events-none" />
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-1">
         {modules.map((mod) => {
           const Icon = mod.icon;

@@ -270,19 +270,56 @@ class WindowsPackager:
             dirty = True
             log_info("Configured nsis.uninstallerIcon -> icons/icon.ico")
 
-        # Ensure icon.ico has all required multi-resolution frames
+        if nsis_conf.get("sidebarImage") != "icons/installer-sidebar.bmp":
+            nsis_conf["sidebarImage"] = "icons/installer-sidebar.bmp"
+            dirty = True
+            log_info("Configured nsis.sidebarImage -> icons/installer-sidebar.bmp")
+
+        if nsis_conf.get("headerImage") != "icons/installer-header.bmp":
+            nsis_conf["headerImage"] = "icons/installer-header.bmp"
+            dirty = True
+            log_info("Configured nsis.headerImage -> icons/installer-header.bmp")
+
+        # Ensure icon.ico has all required multi-resolution frames and generate NSIS bitmaps
         icon_png = TAURI_DIR / "icons" / "icon.png"
         icon_ico = TAURI_DIR / "icons" / "icon.ico"
+        sidebar_bmp = TAURI_DIR / "icons" / "installer-sidebar.bmp"
+        header_bmp = TAURI_DIR / "icons" / "installer-header.bmp"
+
         if icon_png.exists():
             try:
-                from PIL import Image
+                from PIL import Image, ImageDraw
                 img = Image.open(icon_png).convert("RGBA")
                 sizes = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
                 resized_frames = [img.resize(s, Image.Resampling.LANCZOS) for s in sizes]
                 img.save(icon_ico, format="ICO", sizes=sizes, append_images=resized_frames)
                 log_ok("Verified multi-resolution Windows icon (icon.ico)")
+
+                # Ensure 164x314 sidebar bitmap exists
+                if not sidebar_bmp.exists():
+                    w_side, h_side = 164, 314
+                    sidebar = Image.new("RGB", (w_side, h_side), (7, 11, 20))
+                    draw = ImageDraw.Draw(sidebar)
+                    for y in range(h_side):
+                        ratio = y / h_side
+                        sidebar_line_color = (int(7 + 10 * ratio), int(11 + 25 * ratio), int(20 + 45 * ratio))
+                        draw.line([(0, y), (w_side, y)], fill=sidebar_line_color)
+                    icon_side = img.resize((96, 96), Image.Resampling.LANCZOS)
+                    sidebar.paste(icon_side, ((w_side - 96) // 2, 48), icon_side)
+                    sidebar.save(sidebar_bmp, format="BMP")
+                    log_ok("Generated NSIS installer sidebar bitmap (installer-sidebar.bmp)")
+
+                # Ensure 150x57 header bitmap exists
+                if not header_bmp.exists():
+                    w_head, h_head = 150, 57
+                    head_rgba = Image.new("RGBA", (w_head, h_head), (255, 255, 255, 255))
+                    icon_head = img.resize((48, 48), Image.Resampling.LANCZOS)
+                    head_rgba.paste(icon_head, (w_head - 52, (h_head - 48) // 2), icon_head)
+                    head_rgba.convert("RGB").save(header_bmp, format="BMP")
+                    log_ok("Generated NSIS installer header bitmap (installer-header.bmp)")
+
             except Exception as e:
-                log_warn(f"Notice: Icon check skipped ({e})")
+                log_warn(f"Notice: Icon/Bitmap generation skipped ({e})")
 
         if dirty:
             conf["bundle"] = bundle
@@ -313,10 +350,29 @@ class WindowsPackager:
         size_mb = get_file_size_mb(installer)
         checksum = calculate_sha256(installer)
 
+        # Copy installer to root workspace for immediate access with fresh icon cache key
+        root_installer = ROOT_DIR / "MIRA-Setup.exe"
+        try:
+            shutil.copy2(installer, root_installer)
+            log_ok("Copied installer to workspace root -> MIRA-Setup.exe")
+        except Exception as e:
+            log_warn(f"Notice: Could not copy installer to root ({e})")
+
+        # Notify Windows Shell to refresh icon cache so File Explorer displays updated icon immediately
+        if os.name == "nt":
+            try:
+                import ctypes
+                # SHCNE_ASSOCCHANGED = 0x08000000, SHCNF_IDLIST = 0
+                ctypes.windll.shell32.SHChangeNotify(0x08000000, 0, None, None)
+                log_ok("Notified Windows Explorer shell to refresh icon cache")
+            except Exception:
+                pass
+
         print("\n" + "=" * 80)
         print(f" {BOLD}{GREEN}★ MIRA WINDOWS APPLICATION PACKAGED SUCCESSFULLY! ★{WHITE}")
         print("=" * 80)
         print(f"  {BOLD}Installer File:{WHITE}  {color(str(installer), CYAN)}")
+        print(f"  {BOLD}Root Shortcut:{WHITE}   {color(str(root_installer), CYAN)}")
         print(f"  {BOLD}Package Size:{WHITE}    {size_mb:.2f} MB")
         print(f"  {BOLD}SHA256 Hash:{WHITE}     {checksum}")
         print("-" * 80)
