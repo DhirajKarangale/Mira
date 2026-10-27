@@ -7,8 +7,6 @@ import {
 import { MicrophoneStatusHeader } from "./components/MicrophoneStatusHeader";
 import { MicrophonePrivacyCard } from "./components/MicrophonePrivacyCard";
 import { MicrophoneDeviceCard } from "./components/MicrophoneDeviceCard";
-import { MicrophoneTranscriptionsCard } from "./components/MicrophoneTranscriptionsCard";
-import { ElevenLabsVoiceCard } from "./components/ElevenLabsVoiceCard";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { toast } from "@/components";
 
@@ -111,11 +109,7 @@ export const MicrophonePage: FC = () => {
 
         <MicrophoneDeviceCard isOn={isOn} autoStart={autoStart} />
 
-        <ElevenLabsVoiceCard />
-
         <MicrophonePrivacyCard />
-
-        <MicrophoneTranscriptionsCard isOn={isOn} />
       </div>
     </div>
   );

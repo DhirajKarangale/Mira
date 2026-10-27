@@ -1,29 +1,28 @@
 /**
  * Global Wake-Word ("Mira") Conversational Hook & Active Voice Chat Manager
  *
- * Flow:
- * 1. Continuous Transcription:
- *    - While microphone is turned ON, ElevenLabs Scribe WebSocket remains actively connected
- *      and streaming throughout the user session.
- * 2. Wake-Word "Mira" -> Special New Chat:
- *    - When the user speaks the wake word "Mira" (or phonetic variants "Meera", "Mera", "Myra"),
- *      it triggers a brand new special chat session in the app.
- *    - It selects this new session in the global chat store (`useChatStore`), adds it to the
- *      sidebar list, and appends the user's speech.
- * 3. Continuous Multi-Turn Append in the Same Chat:
- *    - After "Mira" starts the conversation, all next transcriptions continue in that SAME chat session.
- *    - User utterances and AI answers keep appending into the same conversation thread without creating
- *      new chats each turn.
- *    - If the user explicitly speaks the wake word "Mira" again (or after 60s idle timeout),
- *      it triggers a new special chat session.
- * 4. Echo Prevention with Continuous Streaming:
- *    - Uses `transcribeManager.setMutedDuringTTS(true)` only while TTS is actively outputting sound.
- *    - Does NOT tear down the WebSocket, keeping transcription active throughout the entire session.
+ * Rules:
+ * 1. 2-3 Second Speech Gap Accumulator:
+ *    - When the user is talking, accumulates speech until a 2.5s silence gap is detected,
+ *      then sends the completed thought to the backend via sockets/API.
+ * 2. Active Chat Screen Continuity:
+ *    - If the user is on the active chat screen (/chats with an open session), asking with "Mira"
+ *      or speaking in the conversation continues in that SAME session without creating duplicate chats.
+ * 3. Inactive Chat Screen Wake-Word Trigger:
+ *    - When not on the active chat screen, speaking the trigger word "Mira" triggers a brand new
+ *      special chat session, navigates to /chats, and sends the message.
+ * 4. Single Voice Model:
+ *    - Fixed exclusively to the single verified voice model (Sarah / EXAVITQu4vr4xnSDxMaL).
+ *      No variable voice selection options.
+ * 5. Echo Prevention:
+ *    - Disables microphone input during LLM formulation and TTS playback.
  */
 
 import { useEffect, useRef } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { transcribeManager, type TranscribeRecord, recordTranscription } from "@/utils/transcribe";
 import { ttsService } from "@/utils/ttsService";
+import { DEFAULT_VOICE_ID } from "@/utils/ttsVoices";
 import { engineService } from "@/services/engine.service";
 import { useChatStore } from "@/store/useChatStore";
 import { toast } from "@/components";
@@ -31,8 +30,11 @@ import { toast } from "@/components";
 // Wake-word matcher regex: matches "mira", "meera", "mera", "myra"
 const WAKE_WORD_REGEX = /\b(mira|meera|mera|myra)\b/i;
 
-// Idle timeout for an active voice conversation (60 seconds)
+// Idle timeout for an ongoing voice conversation (60 seconds)
 const CONVERSATION_IDLE_TIMEOUT_MS = 60000;
+
+// Speech gap before sending accumulated thought to backend (2.5 seconds)
+const SPEECH_GAP_DELAY_MS = 2500;
 
 // Strips wake-word prefixes: "hey mira", "hello meera", "mira," etc.
 function extractWakeWordQuery(rawText: string): string {
@@ -49,63 +51,80 @@ function generateVoiceId(): string {
 }
 
 export function useMiraWakeWord() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const locationRef = useRef(location);
+  locationRef.current = location;
+
   const isSpeakingRef = useRef<boolean>(false);
   const isProcessingRef = useRef<boolean>(false);
-  const lastProcessedTextRef = useRef<string>("");
-  const lastProcessedTimeRef = useRef<number>(0);
 
-  // Active voice chat session ID that receives ongoing conversation
+  // Active voice chat session ID
   const activeVoiceSessionIdRef = useRef<string | null>(null);
   const lastVoiceActivityTimeRef = useRef<number>(0);
 
-  useEffect(() => {
-    const handleVoiceHeard = async (e: any) => {
-      const record: TranscribeRecord = e.detail;
-      if (!record || !record.text || record.source === "chat") return;
+  // Speech gap buffer: accumulates speech segments until the user pauses for 2-3s
+  const pendingBufferRef = useRef<string[]>([]);
+  const silenceTimerRef = useRef<any>(null);
 
-      // 1. If currently synthesizing or formulating, discard to prevent echo
+  useEffect(() => {
+    const processFinalSpeech = async (speechText: string) => {
+      const fullText = speechText.trim();
+      if (!fullText) return;
+
+      // 1. If currently speaking or processing, drop to prevent echo
       if (isSpeakingRef.current || isProcessingRef.current || transcribeManager.getIsMutedDuringTTS()) {
         return;
       }
 
       const now = Date.now();
-      const hasWakeWord = WAKE_WORD_REGEX.test(record.text);
+      const hasWakeWord = WAKE_WORD_REGEX.test(fullText);
+
+      // Check whether user is currently on the active chat screen
+      const currentPath = locationRef.current.pathname;
+      const selectedSessionId = useChatStore.getState().selectedSessionId;
+      const isChatRoute = currentPath.startsWith("/chats");
+      const isOnActiveChat = isChatRoute && Boolean(selectedSessionId);
+
       const isWithinActiveConversation =
         Boolean(activeVoiceSessionIdRef.current) &&
         now - lastVoiceActivityTimeRef.current < CONVERSATION_IDLE_TIMEOUT_MS;
 
-      // Only trigger if wake-word "Mira" is present OR we are actively in an ongoing conversation
-      if (!hasWakeWord && !isWithinActiveConversation) {
+      // Rule:
+      // - If NOT on active chat: MUST have trigger word "Mira" to start a new chat
+      // - If ON active chat: triggers if "Mira" is spoken OR continuing active conversation
+      if (!isOnActiveChat && !hasWakeWord) {
+        return;
+      }
+      if (isOnActiveChat && !hasWakeWord && !isWithinActiveConversation) {
         return;
       }
 
-      // Debounce duplicate transcripts within 1500ms
-      if (
-        record.text.toLowerCase() === lastProcessedTextRef.current.toLowerCase() &&
-        now - lastProcessedTimeRef.current < 1500
-      ) {
-        return;
-      }
-      lastProcessedTextRef.current = record.text;
-      lastProcessedTimeRef.current = now;
-
-      // Determine query: strip wake word if present, otherwise take spoken words
+      // Determine query: strip wake-word prefix if present
       const userQuery = hasWakeWord
-        ? extractWakeWordQuery(record.text)
-        : record.text.trim();
+        ? extractWakeWordQuery(fullText)
+        : fullText.trim();
 
       if (!userQuery) return;
 
       // Save to transcribe.json
-      recordTranscription(record.text, new Date().toISOString(), "voice").catch(() => {});
+      recordTranscription(fullText, new Date().toISOString(), "voice").catch(() => {});
 
-      // 2. Session Management:
-      // If user hit the word "mira" -> TRIGGER A SPECIAL NEW CHAT!
-      // Otherwise, continue in the same chat and keep appending to it!
-      let targetSessionId = activeVoiceSessionIdRef.current;
-      const isTriggeringNewChat = hasWakeWord || !targetSessionId;
+      // Session Management:
+      // Requirement 3: If on active chat, continue in the same session!
+      // Requirement 4: If NOT on active chat screen and trigger word is heard, create a new chat!
+      let targetSessionId: string;
+      let isNewChat = false;
 
-      if (isTriggeringNewChat || !targetSessionId) {
+      if (isOnActiveChat && selectedSessionId) {
+        // Continue on the active session
+        targetSessionId = selectedSessionId;
+        activeVoiceSessionIdRef.current = targetSessionId;
+        console.log(`[Mira Voice] User is on active chat screen. Continuing in same session: ${targetSessionId}`);
+      } else {
+        // Not on active chat screen: create a brand new special chat!
+        isNewChat = true;
         targetSessionId = `voice-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
         activeVoiceSessionIdRef.current = targetSessionId;
 
@@ -120,7 +139,7 @@ export function useMiraWakeWord() {
           message_count: 1,
         };
 
-        // Instantly register new session in global chat store
+        // Register new session in global chat store
         useChatStore.getState().setCachedSessions((prev) => [
           newSession,
           ...prev.filter((s) => s.session_id !== targetSessionId),
@@ -128,19 +147,19 @@ export function useMiraWakeWord() {
         useChatStore.getState().setSelectedSessionId(targetSessionId);
         useChatStore.getState().setSkipInitialFetchSessionId(targetSessionId);
 
-        console.log(`[Mira Voice] Triggered SPECIAL NEW CHAT session: ${targetSessionId} ("${chatTitle}")`);
-      } else {
-        console.log(`[Mira Voice] Continuing conversation in SAME CHAT session: ${targetSessionId}`);
+        // Bring the user to the chats screen so they see the conversation
+        navigate("/chats");
+        console.log(`[Mira Voice] Triggered NEW CHAT from inactive screen: ${targetSessionId} ("${chatTitle}")`);
       }
 
       const finalSessionId: string = targetSessionId;
       lastVoiceActivityTimeRef.current = Date.now();
 
-      // 3. Mute microphone capture during LLM call & TTS playback to prevent hearing itself
+      // Mute microphone capture during LLM call & TTS playback to prevent echo loopback
       isProcessingRef.current = true;
       transcribeManager.setMutedDuringTTS(true);
 
-      // 4. Optimistically append user's speech to the active chat session
+      // Optimistically append user's speech
       const userMsgId = generateVoiceId();
       useChatStore.getState().addOptimisticMessage(finalSessionId, {
         id: userMsgId,
@@ -151,7 +170,7 @@ export function useMiraWakeWord() {
       });
 
       toast.info(`"${userQuery}"`, {
-        title: isTriggeringNewChat ? "🎙️ Mira (New Chat)" : "🎙️ Mira Voice",
+        title: isNewChat ? "🎙️ Mira (New Chat)" : "🎙️ Mira Voice",
       });
 
       // Persist user message to Vault in background
@@ -159,11 +178,11 @@ export function useMiraWakeWord() {
         session_id: finalSessionId,
         content: userQuery,
         role: "user",
-        chat_name: isTriggeringNewChat ? `🎙️ ${userQuery.slice(0, 30)}` : undefined,
+        chat_name: isNewChat ? `🎙️ ${userQuery.slice(0, 30)}` : undefined,
         generate_ai_reply: false,
       }).catch((err) => console.warn("[Voice] sendChatMessage save error:", err));
 
-      // 5. Query LLM
+      // Query LLM
       let replyText = "";
       try {
         const llmRes = await engineService.callLLM(userQuery, "chat");
@@ -179,7 +198,7 @@ export function useMiraWakeWord() {
         isProcessingRef.current = false;
       }
 
-      // 6. Optimistically append AI's response to the active chat session
+      // Optimistically append AI's response to the active session
       const aiMsgId = generateVoiceId();
       useChatStore.getState().addOptimisticMessage(finalSessionId, {
         id: aiMsgId,
@@ -197,31 +216,26 @@ export function useMiraWakeWord() {
         generate_ai_reply: false,
       }).catch(() => {});
 
-      // 7. Speak response via ElevenLabs TTS
+      // Speak response using the single fixed voice model
       isSpeakingRef.current = true;
       toast.success(
         replyText.slice(0, 85) + (replyText.length > 85 ? "..." : ""),
         { title: "🎙️ Mira Responding" }
       );
 
-      const storedVoice = typeof window !== "undefined" ? localStorage.getItem("mira_selected_tts_voice_id") : null;
-      const voiceId =
-        storedVoice && storedVoice !== "Be3X8pg7kLN4vyyMC3QN" && storedVoice !== "m7GHBtY0UEqljrKQw2JH"
-          ? storedVoice
-          : "EXAVITQu4vr4xnSDxMaL";
-
       const unfreezeMic = () => {
         isSpeakingRef.current = false;
         lastVoiceActivityTimeRef.current = Date.now();
-        // Unmute microphone: WebSocket and stream stayed connected, ready immediately for next user speech!
+        // Unmute microphone: WebSocket and audio capture stayed active
         transcribeManager.setMutedDuringTTS(false);
       };
 
       // Safety timer: maximum 25s TTS timeout
       const safetyTimer = setTimeout(unfreezeMic, 25000);
 
+      // Single verified voice model (Sarah / EXAVITQu4vr4xnSDxMaL)
       ttsService.speak(replyText, {
-        voiceId,
+        voiceId: DEFAULT_VOICE_ID,
         onFinish: () => {
           clearTimeout(safetyTimer);
           unfreezeMic();
@@ -233,10 +247,39 @@ export function useMiraWakeWord() {
       });
     };
 
+    const handleVoiceHeard = (e: any) => {
+      const record: TranscribeRecord = e.detail;
+      if (!record || !record.text || record.source === "chat") return;
+
+      // Discard if currently speaking or muted
+      if (isSpeakingRef.current || isProcessingRef.current || transcribeManager.getIsMutedDuringTTS()) {
+        return;
+      }
+
+      // Accumulate speech into buffer
+      pendingBufferRef.current.push(record.text);
+
+      // Reset 2.5s silence gap timer (Requirement 2: gap of 2-3 sec before sending to backend)
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+      }
+
+      silenceTimerRef.current = setTimeout(() => {
+        const fullSpeech = pendingBufferRef.current.join(" ").trim();
+        pendingBufferRef.current = [];
+        if (fullSpeech) {
+          processFinalSpeech(fullSpeech);
+        }
+      }, SPEECH_GAP_DELAY_MS);
+    };
+
     window.addEventListener("mira-voice-heard", handleVoiceHeard);
 
     return () => {
       window.removeEventListener("mira-voice-heard", handleVoiceHeard);
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+      }
     };
-  }, []);
+  }, [navigate]);
 }

@@ -400,7 +400,7 @@ class TranscribeManager {
     try {
       const wsUrl = `wss://api.elevenlabs.io/v1/speech-to-text/realtime?model_id=scribe_v2_realtime&token=${encodeURIComponent(
         tokenRes.token
-      )}&audio_format=pcm_16000&commit_strategy=vad&vad_silence_threshold_secs=1.2&vad_threshold=0.4`;
+      )}&audio_format=pcm_16000&commit_strategy=vad&vad_silence_threshold_secs=2.5&vad_threshold=0.4`;
 
       const ws = new WebSocket(wsUrl);
       this.websocket = ws;

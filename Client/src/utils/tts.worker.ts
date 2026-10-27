@@ -231,7 +231,7 @@ async function fetchChunkWithKeyRotation(
             originalVoiceId: voiceId,
             fallbackVoiceId: FALLBACK_PREMADE_VOICE_ID,
             reason:
-              "Library voice (Tara/Aisha) requires an ElevenLabs paid plan. Auto-switched to standard voice.",
+              "Voice requires an ElevenLabs paid plan. Auto-switched to standard voice.",
           });
           return fetchChunkWithKeyRotation(
             chunk,
