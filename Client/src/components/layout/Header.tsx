@@ -2,6 +2,7 @@ import type { FC } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { NavTabs } from "./NavTabs";
 import { WindowControls } from "./WindowControls";
+import { Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Header: FC = () => {
@@ -34,17 +35,13 @@ export const Header: FC = () => {
       >
         <div
           className={cn(
-            "flex items-center justify-center h-5 w-5 rounded overflow-hidden transition-all duration-150 shrink-0",
+            "flex items-center justify-center h-5 w-5 rounded transition-all duration-150 shrink-0",
             isMiraActive
-              ? "bg-cyan-500/25 border border-cyan-400/40 shadow-[0_0_8px_rgba(6,182,212,0.3)]"
-              : "bg-zinc-800/80 border border-white/10 group-hover:border-cyan-500/30"
+              ? "bg-cyan-500/25 border border-cyan-400/40 text-cyan-300 shadow-[0_0_8px_rgba(6,182,212,0.3)]"
+              : "bg-zinc-800/80 border border-white/10 text-zinc-300 group-hover:text-cyan-400 group-hover:border-cyan-500/30"
           )}
         >
-          <img
-            src="/icons/icon.png"
-            alt="MIRA"
-            className="h-4 w-4 object-contain rounded-sm"
-          />
+          <Bot className="h-3.5 w-3.5" />
         </div>
 
         <div className="flex items-center gap-1.5">

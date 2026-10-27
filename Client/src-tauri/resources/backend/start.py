@@ -687,6 +687,11 @@ def main() -> None:
         help="Check health and connectivity status of currently running modules"
     )
     parser.add_argument(
+        "--kill-ports",
+        action="store_true",
+        help="Forcefully terminate any existing processes holding the default ports"
+    )
+    parser.add_argument(
         "--prod",
         action="store_true",
         help="Run services in production mode (no reload, precompiled binaries)"
