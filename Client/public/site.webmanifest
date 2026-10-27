@@ -1,0 +1,23 @@
+{
+  "name": "MIRA - Personal AI Assistant",
+  "short_name": "MIRA",
+  "description": "Personal AI Assistant and Autonomous Digital Memory",
+  "icons": [
+    {
+      "src": "/icons/web-app-manifest-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/web-app-manifest-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "theme_color": "#080c14",
+  "background_color": "#080c14",
+  "display": "standalone",
+  "orientation": "any"
+}

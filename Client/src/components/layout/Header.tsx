@@ -41,7 +41,8 @@ export const Header: FC = () => {
           )}
         >
           <img
-            src="/icons/icon.png"
+            src="/icons/Square30x30Logo.png"
+            srcSet="/icons/64x64.png 2x"
             alt="MIRA"
             className="h-4 w-4 object-contain rounded-sm"
           />

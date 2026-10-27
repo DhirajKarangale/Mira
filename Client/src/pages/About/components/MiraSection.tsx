@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import { Cpu, ShieldCheck, Radio, Terminal, Brain, LayoutDashboard } from "lucide-react";
+import { ShieldCheck, Radio, Terminal, Brain, LayoutDashboard } from "lucide-react";
 
 export const MiraSection: FC = () => {
   const modules = [
@@ -44,16 +44,35 @@ export const MiraSection: FC = () => {
     <div className="rounded-3xl border border-white/[0.08] bg-zinc-900/60 p-6 sm:p-8 backdrop-blur-xl shadow-xl relative overflow-hidden space-y-6">
       <div className="absolute top-0 left-1/3 w-80 h-80 bg-blue-500/5 rounded-full blur-[90px] pointer-events-none" />
 
-      <div className="flex items-center gap-3 pb-4 border-b border-white/[0.06]">
-        <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
-          <Cpu className="w-5 h-5" />
+      <div className="flex items-center gap-3.5 pb-4 border-b border-white/[0.06]">
+        <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-zinc-950 border border-cyan-500/30 p-2 shadow-[0_0_20px_rgba(6,182,212,0.2)] overflow-hidden shrink-0">
+          <img
+            src="/icons/Square71x71Logo.png"
+            alt="MIRA"
+            className="w-full h-full object-contain"
+          />
         </div>
         <div>
-          <h2 className="text-lg font-bold text-white tracking-tight">About MIRA</h2>
+          <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+            <span>About MIRA</span>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-semibold">
+              v0.1.0
+            </span>
+          </h2>
           <p className="text-xs text-zinc-400">
             Multi-agent Intelligent Robotic Assistant & Distributed Desktop Architecture
           </p>
         </div>
+      </div>
+
+      <div className="relative w-full rounded-2xl overflow-hidden border border-white/[0.08] shadow-lg max-h-48 bg-zinc-950">
+        <img
+          src="/icons/features-banner.png"
+          alt="MIRA Features & Distributed Architecture"
+          className="w-full h-full object-cover object-center"
+          loading="lazy"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/70 via-transparent to-transparent pointer-events-none" />
       </div>
 
       <div className="space-y-3 text-sm text-zinc-300 leading-relaxed font-normal">

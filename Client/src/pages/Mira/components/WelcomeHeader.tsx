@@ -1,6 +1,6 @@
 import { useMemo, type FC, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { Sun, Moon, Sparkles, User } from "lucide-react";
+import { Sun, Moon, User } from "lucide-react";
 
 interface WelcomeHeaderProps {
   userName?: string;
@@ -92,8 +92,13 @@ export const WelcomeHeader: FC<WelcomeHeaderProps> = ({ userName }) => {
       className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3.5 sm:gap-4 p-3.5 sm:p-4 rounded-2xl bg-zinc-900/40 border border-white/[0.08] backdrop-blur-xl shadow-[0_8px_30px_rgb(0,0,0,0.2)]"
     >
       <div className="flex items-center gap-3 flex-1 min-w-0">
-        <div className="flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-500/10 border border-cyan-500/30 text-cyan-300 shadow-[0_0_20px_rgba(6,182,212,0.15)] shrink-0">
-          <Sparkles className="w-5 h-5 text-cyan-400" />
+        <div className="flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-zinc-900/80 border border-cyan-500/30 p-1.5 shadow-[0_0_20px_rgba(6,182,212,0.2)] shrink-0 overflow-hidden">
+          <img
+            src="/icons/Square44x44Logo.png"
+            srcSet="/icons/Square89x89Logo.png 2x"
+            alt="MIRA"
+            className="w-full h-full object-contain rounded-lg"
+          />
         </div>
         <div className="min-w-0 flex-1">
           <h1 className="text-lg sm:text-2xl font-bold tracking-tight bg-gradient-to-r from-zinc-100 via-zinc-200 to-zinc-400 bg-clip-text text-transparent break-words">
