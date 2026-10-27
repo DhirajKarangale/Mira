@@ -24,25 +24,34 @@ async def lifespan(app: FastAPI):
         config.CONFIG.fetch_from_vault()
     except Exception as e:
         log_error(f'Startup configuration sync from Vault encountered an error: {e}')
-    try:
-        log('Initializing embedding model manager...')
-        await asyncio.to_thread(initialize_embedding_model)
-    except Exception as e:
-        log_error(f'Failed to initialize embedding model manager: {e}')
-    try:
-        await start_ocr_summarization()
-    except Exception as e:
-        log_error(f'Failed to start OCR Summarization module: {e}')
+
+    # Start chat workers immediately so chat messages can be accepted and processed right away
     try:
         await start_chat_workers()
     except Exception as e:
         log_error(f'Failed to start Chat module workers: {e}')
-    try:
-        await start_daily_suggestions()
-    except Exception as e:
-        log_error(f'Failed to start Daily Suggestions module: {e}')
+
+    # Run heavy embedding model loading and background summarization asynchronously so port 9007 opens immediately
+    async def _async_background_init():
+        try:
+            log('Initializing embedding model manager in background...')
+            await asyncio.to_thread(initialize_embedding_model)
+        except Exception as e:
+            log_error(f'Failed to initialize embedding model manager: {e}')
+        try:
+            await start_ocr_summarization()
+        except Exception as e:
+            log_error(f'Failed to start OCR Summarization module: {e}')
+        try:
+            await start_daily_suggestions()
+        except Exception as e:
+            log_error(f'Failed to start Daily Suggestions module: {e}')
+
+    bg_task = asyncio.create_task(_async_background_init())
+
     yield
     log('Engine service shutting down cleanly...')
+    bg_task.cancel()
     try:
         await stop_daily_suggestions()
     except Exception as e:

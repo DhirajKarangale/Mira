@@ -152,13 +152,13 @@ export const engineService = {
     offset?: number;
   }): Promise<ChatSessionsResponse> {
     try {
-      const response = await engineApi.get<ChatSessionsResponse>("/chats/sessions", {
+      const response = await vaultApi.get<ChatSessionsResponse>("/chats/sessions", {
         params,
       });
       return response.data;
     } catch (err) {
       try {
-        const fallback = await vaultApi.get<ChatSessionsResponse>("/chats/sessions", {
+        const fallback = await engineApi.get<ChatSessionsResponse>("/chats/sessions", {
           params,
         });
         return fallback.data;
@@ -178,14 +178,14 @@ export const engineService = {
     }
   ): Promise<ChatMessagesResponse> {
     try {
-      const response = await engineApi.get<ChatMessagesResponse>(
+      const response = await vaultApi.get<ChatMessagesResponse>(
         `/chats/sessions/${encodeURIComponent(sessionId)}`,
         { params }
       );
       return response.data;
     } catch (err) {
       try {
-        const fallback = await vaultApi.get<ChatMessagesResponse>(
+        const fallback = await engineApi.get<ChatMessagesResponse>(
           `/chats/sessions/${encodeURIComponent(sessionId)}`,
           { params }
         );
@@ -197,8 +197,22 @@ export const engineService = {
   },
 
   async sendChatMessage(payload: SendChatMessageRequest): Promise<SendChatMessageResponse> {
-    const response = await engineApi.post<SendChatMessageResponse>("/chats/message", payload);
-    return response.data;
+    const maxAttempts = 10;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await engineApi.post<SendChatMessageResponse>("/chats/message", payload);
+        return response.data;
+      } catch (err: any) {
+        const isNetErr = err?.code === "ERR_NETWORK" || err?.message?.includes("Network Error");
+        if (isNetErr && attempt < maxAttempts) {
+          console.warn(`[EngineService] AI Engine is initializing (attempt ${attempt}/${maxAttempts}). Retrying in 1s...`);
+          await new Promise((r) => setTimeout(r, 1000));
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw new Error("AI Engine service is initializing or unreachable on port 9007 after multiple attempts.");
   },
 
   async renameChatSession(
@@ -206,14 +220,14 @@ export const engineService = {
     chatName: string
   ): Promise<{ status: string; session_id: string; chat_name: string }> {
     try {
-      const response = await engineApi.patch<{ status: string; session_id: string; chat_name: string }>(
+      const response = await vaultApi.patch<{ status: string; session_id: string; chat_name: string }>(
         `/chats/sessions/${encodeURIComponent(sessionId)}`,
         { chat_name: chatName }
       );
       return response.data;
     } catch (err) {
       try {
-        const fallback = await vaultApi.patch<{ status: string; session_id: string; chat_name: string }>(
+        const fallback = await engineApi.patch<{ status: string; session_id: string; chat_name: string }>(
           `/chats/sessions/${encodeURIComponent(sessionId)}`,
           { chat_name: chatName }
         );
@@ -228,13 +242,13 @@ export const engineService = {
     sessionId: string
   ): Promise<{ status: string; session_id: string; message?: string }> {
     try {
-      const response = await engineApi.delete<{ status: string; session_id: string; message?: string }>(
+      const response = await vaultApi.delete<{ status: string; session_id: string; message?: string }>(
         `/chats/sessions/${encodeURIComponent(sessionId)}`
       );
       return response.data;
     } catch (err) {
       try {
-        const fallback = await vaultApi.delete<{ status: string; session_id: string; message?: string }>(
+        const fallback = await engineApi.delete<{ status: string; session_id: string; message?: string }>(
           `/chats/sessions/${encodeURIComponent(sessionId)}`
         );
         return fallback.data;
@@ -246,11 +260,11 @@ export const engineService = {
 
   async deleteAllChats(): Promise<{ status: string; message?: string }> {
     try {
-      const response = await engineApi.delete<{ status: string; message?: string }>("/chats/all");
+      const response = await vaultApi.delete<{ status: string; message?: string }>("/chats/all");
       return response.data;
     } catch (err) {
       try {
-        const fallback = await vaultApi.delete<{ status: string; message?: string }>("/chats/all");
+        const fallback = await engineApi.delete<{ status: string; message?: string }>("/chats/all");
         return fallback.data;
       } catch {
         throw err;

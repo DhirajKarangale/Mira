@@ -37,6 +37,14 @@ def synthesis_node(state: AgentState) -> Dict[str, Any]:
         or ""
     ).strip()
 
+    # Fast Path: If previous node is general_llm or history_answer, it already generated a complete,
+    # natural, formatted answer. Bypassing redundant second LLM call cuts chat response latency in half!
+    if executed_node in ("general_llm", "history_answer") and previous_answer:
+        log(f"[SynthesisNode] Fast path: node '{executed_node}' already generated direct answer. Bypassing extra synthesis LLM call.")
+        return {
+            "final_response": previous_answer,
+        }
+
     # Fallback resolution if previous answer was not set
     if not previous_answer:
         if retrieved_ctx:

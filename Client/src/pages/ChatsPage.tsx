@@ -108,10 +108,14 @@ export const ChatsPage: FC = () => {
   const isCurrentSessionSending = isSessionSending(selectedSessionId);
 
   // ============================================================================
-  // Sessions State
+  // Sessions State (Initialized from persistent cache to prevent sidebar reload flicker)
   // ============================================================================
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [sessionsLoading, setSessionsLoading] = useState<boolean>(true);
+  const [sessions, setSessions] = useState<ChatSession[]>(() => {
+    return useChatStore.getState().cachedSessions || [];
+  });
+  const [sessionsLoading, setSessionsLoading] = useState<boolean>(() => {
+    return (useChatStore.getState().cachedSessions || []).length === 0;
+  });
   const [loadingMoreSessions, setLoadingMoreSessions] = useState<boolean>(false);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [sessionsPage, setSessionsPage] = useState<number>(1);
@@ -292,14 +296,24 @@ export const ChatsPage: FC = () => {
         markSessionRead(nextSessionId);
       }
 
-      // 4. Update session ID ref and Zustand store
+      // 4. Immediately display arriving session's cached messages (instantaneous switch, zero flicker)
+      if (nextSessionId) {
+        const nextCached = useChatStore.getState().sessionMessagesCache[nextSessionId];
+        if (nextCached && nextCached.length > 0) {
+          setMessages(nextCached);
+          setMessagesLoading(false);
+        } else {
+          setMessages([]);
+          setMessagesLoading(true);
+        }
+      } else {
+        setMessages([]);
+        setMessagesLoading(false);
+      }
+
+      // 5. Update session ID ref and Zustand store
       selectedSessionIdRef.current = nextSessionId;
       setSelectedSessionId(nextSessionId);
-
-      // 5. If switching to new chat, clear visible messages immediately
-      if (!nextSessionId) {
-        setMessages([]);
-      }
 
       // 6. Restore arriving session's draft into input state and ref
       const arrivingKey = nextSessionId || "new";
@@ -539,7 +553,8 @@ export const ChatsPage: FC = () => {
   fetchSessionsRef.current = fetchSessions;
 
   useEffect(() => {
-    fetchSessions(1, null, false);
+    const hasCached = (useChatStore.getState().cachedSessions || []).length > 0;
+    fetchSessions(1, null, false, hasCached);
   }, []);
 
   // Auto-pagination observer: when sentinel is visible and more items exist, automatically load next page
@@ -579,13 +594,14 @@ export const ChatsPage: FC = () => {
       sessionId: string,
       pageToLoad: number = 1,
       cursorToUse?: string | null,
-      append: boolean = false
+      append: boolean = false,
+      silent: boolean = false
     ) => {
       if (!sessionId) return;
       try {
-        if (!append) {
+        if (!append && !silent) {
           setMessagesLoading(true);
-        } else {
+        } else if (append) {
           setLoadingMoreMessages(true);
         }
         setMessagesError(null);
@@ -648,7 +664,17 @@ export const ChatsPage: FC = () => {
 
           currentMessagesCount = deduped.length;
           newMessagesList = deduped;
-          setMessages(deduped);
+
+          // Prevent reload flicker: If backend messages are identical to displayed messages, retain previous array reference
+          setMessages((prev) => {
+            if (
+              prev.length === deduped.length &&
+              prev.every((p, idx) => p.id === deduped[idx]?.id && p.content === deduped[idx]?.content)
+            ) {
+              return prev;
+            }
+            return deduped;
+          });
         }
 
         setSessionMessages(sessionId, newMessagesList);
@@ -707,20 +733,26 @@ export const ChatsPage: FC = () => {
       setIsAutoScrolling(false);
       setShowScrollBottom(false);
 
-      // Instant display from cache if available
+      // Instant display from cache if available (zero delay)
       const cached = useChatStore.getState().sessionMessagesCache[selectedSessionId];
-      if (cached && cached.length > 0) {
+      const hasCached = Boolean(cached && cached.length > 0);
+      if (hasCached) {
         setMessages(cached);
+        setMessagesLoading(false);
       } else {
         setMessages([]);
+        setMessagesLoading(true);
       }
-      fetchMessages(selectedSessionId, 1, null, false);
+
+      // Revalidate in the background silently if cache already existed
+      fetchMessages(selectedSessionId, 1, null, false, hasCached);
     } else {
       setMessages([]);
       setMessagesPage(1);
       setMessagesTotalPages(1);
       setMessagesCursor(null);
       setMessagesHasMore(false);
+      setMessagesLoading(false);
     }
   }, [selectedSessionId, skipInitialFetchSessionId, fetchMessages, setSkipInitialFetchSessionId]);
 
@@ -1108,8 +1140,11 @@ export const ChatsPage: FC = () => {
           messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
         }
       }, 100);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to send message";
+    } catch (err: any) {
+      const isNet = err?.code === "ERR_NETWORK" || String(err?.message || "").includes("Network Error");
+      const message = isNet
+        ? "AI Engine is initializing or unreachable on port 9007. Please wait a moment and try again."
+        : err?.response?.data?.detail?.message || err?.message || "Failed to send message";
       toast.error(message, { title: "Chat Error" });
       clearSendingSession(targetSessionId);
     }

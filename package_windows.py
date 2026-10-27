@@ -199,7 +199,8 @@ class WindowsPackager:
                 low = f.lower()
                 if (
                     low.endswith((".lock", ".db", ".db-journal", ".db-wal", ".db-shm", ".pyc", ".log", ".tmp"))
-                    or low in (".git", "__pycache__", ".pytest_cache", "tests", "target", "screenshots", "knowledge_base", "cache")
+                    or low in (".git", "__pycache__", ".pytest_cache", "tests", "target", "screenshots", "cache")
+                    or low.startswith("kb-")
                     or "lock" in low
                 ):
                     ignored.add(f)
@@ -350,14 +351,6 @@ class WindowsPackager:
         size_mb = get_file_size_mb(installer)
         checksum = calculate_sha256(installer)
 
-        # Copy installer to root workspace for immediate access with fresh icon cache key
-        root_installer = ROOT_DIR / "MIRA-Setup.exe"
-        try:
-            shutil.copy2(installer, root_installer)
-            log_ok("Copied installer to workspace root -> MIRA-Setup.exe")
-        except Exception as e:
-            log_warn(f"Notice: Could not copy installer to root ({e})")
-
         # Notify Windows Shell to refresh icon cache so File Explorer displays updated icon immediately
         if os.name == "nt":
             try:
@@ -372,7 +365,6 @@ class WindowsPackager:
         print(f" {BOLD}{GREEN}★ MIRA WINDOWS APPLICATION PACKAGED SUCCESSFULLY! ★{WHITE}")
         print("=" * 80)
         print(f"  {BOLD}Installer File:{WHITE}  {color(str(installer), CYAN)}")
-        print(f"  {BOLD}Root Shortcut:{WHITE}   {color(str(root_installer), CYAN)}")
         print(f"  {BOLD}Package Size:{WHITE}    {size_mb:.2f} MB")
         print(f"  {BOLD}SHA256 Hash:{WHITE}     {checksum}")
         print("-" * 80)

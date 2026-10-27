@@ -130,6 +130,7 @@ def init_config_storage(schema_path: Optional[Path]=None, enc_db_path: Optional[
     _seed_default_ai_configs()
     _seed_default_gnews_config()
     try:
+        _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_chats_session_id ON chats(session_id)")
         _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_chats_session_created ON chats(session_id, created_at)")
         _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_chats_created ON chats(created_at)")
         _DB_CONN.commit()

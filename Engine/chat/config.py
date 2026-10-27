@@ -17,7 +17,7 @@ CONSUMER_GROUP_LLM_CHAT: str = "CONSUMER_GROUP_LLM_CHAT"
 MAX_SHORT_TERM_MEMORY: int = 50
 
 DEFAULT_CHAT_WORKERS: int = 1
-DEFAULT_POLL_TIME: float = 1.0
+DEFAULT_POLL_TIME: float = 0.2
 
 
 def get_broker_base_url() -> str:

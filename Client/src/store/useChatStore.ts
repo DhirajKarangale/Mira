@@ -329,13 +329,27 @@ export const useChatStore = create<ChatStoreState>()(
     {
       name: "mira-chat-store",
       storage: createJSONStorage(() => localStorage),
-      // Only persist selectedSessionId, sendingSessions, inputDrafts, and unreadSessionIds
-      partialize: (state) => ({
-        selectedSessionId: state.selectedSessionId,
-        sendingSessions: state.sendingSessions,
-        inputDrafts: state.inputDrafts,
-        unreadSessionIds: state.unreadSessionIds,
-      }),
+      // Persist selectedSessionId, sendingSessions, inputDrafts, unreadSessionIds, cachedSessions, and sessionMessagesCache
+      partialize: (state) => {
+        // Keep up to 30 most recently viewed sessions and 50 messages per session for fast rehydration
+        const trimmedCache: Record<string, ChatMessage[]> = {};
+        const cacheEntries = Object.entries(state.sessionMessagesCache || {});
+        for (const [sid, msgs] of cacheEntries.slice(-30)) {
+          if (Array.isArray(msgs)) {
+            // Strip any pending optimistic temp messages so they don't persist as ghosts
+            trimmedCache[sid] = msgs.filter((m) => !m.id.startsWith("temp-")).slice(-50);
+          }
+        }
+
+        return {
+          selectedSessionId: state.selectedSessionId,
+          sendingSessions: state.sendingSessions,
+          inputDrafts: state.inputDrafts,
+          unreadSessionIds: state.unreadSessionIds,
+          cachedSessions: (state.cachedSessions || []).slice(0, 50),
+          sessionMessagesCache: trimmedCache,
+        };
+      },
       onRehydrateStorage: () => (state) => {
         if (!state) return;
         // Purge any stale sending sessions on rehydration (> 5 mins)

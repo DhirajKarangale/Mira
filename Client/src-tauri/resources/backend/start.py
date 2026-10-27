@@ -15,15 +15,41 @@ import webbrowser
 from pathlib import Path
 from typing import Any, Dict, List, Set, Tuple
 
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-
 ROOT_DIR = Path(__file__).resolve().parent
+
+# Ensure valid stdout and stderr in headless/windowless GUI environments (e.g. spawned by Tauri with CREATE_NO_WINDOW)
+if sys.stdout is None or not hasattr(sys.stdout, "write"):
+    try:
+        sys.stdout = open(ROOT_DIR / "mira_backend.log", "a", encoding="utf-8", buffering=1)
+    except Exception:
+        import io
+        sys.stdout = io.StringIO()
+if sys.stderr is None or not hasattr(sys.stderr, "write"):
+    try:
+        sys.stderr = open(ROOT_DIR / "mira_backend.log", "a", encoding="utf-8", buffering=1)
+    except Exception:
+        import io
+        sys.stderr = io.StringIO()
+
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 SERVICES_JSON_PATH = ROOT_DIR / "services.json"
 
-USE_COLOR = os.name != "nt" or "WT_SESSION" in os.environ or "TERM" in os.environ or sys.stdout.isatty()
+USE_COLOR = (
+    os.name != "nt"
+    or "WT_SESSION" in os.environ
+    or "TERM" in os.environ
+    or bool(sys.stdout and hasattr(sys.stdout, "isatty") and sys.stdout.isatty())
+)
 
 def color(text: str, code: str) -> str:
     if not USE_COLOR:
@@ -82,13 +108,27 @@ MODULE_REGISTRY: List[Dict[str, Any]] = [
         "env_host_key": "SERVER_HOST",
     },
     {
+        "id": "engine",
+        "name": "Engine",
+        "description": "LLM orchestration, LangChain/LangGraph workflow coordinator",
+        "dir": ROOT_DIR / "Engine",
+        "default_port": 9007,
+        "default_host": "127.0.0.1",
+        "order": 3,
+        "health_path": "/health",
+        "type": "fastapi",
+        "is_optional": True,
+        "env_port_key": "PORT",
+        "env_host_key": "HOST",
+    },
+    {
         "id": "operator",
         "name": "Operator",
         "description": "Rust OS automation, active app tracking, and silent capture",
         "dir": ROOT_DIR / "Operator",
         "default_port": 9003,
         "default_host": "127.0.0.1",
-        "order": 3,
+        "order": 4,
         "health_path": "/health",
         "type": "rust",
         "is_optional": True,
@@ -101,20 +141,6 @@ MODULE_REGISTRY: List[Dict[str, Any]] = [
         "description": "Image processing, OCR extraction, and Qdrant vector retrieval",
         "dir": ROOT_DIR / "Memory",
         "default_port": 9006,
-        "default_host": "127.0.0.1",
-        "order": 4,
-        "health_path": "/health",
-        "type": "fastapi",
-        "is_optional": True,
-        "env_port_key": "PORT",
-        "env_host_key": "HOST",
-    },
-    {
-        "id": "engine",
-        "name": "Engine",
-        "description": "LLM orchestration, LangChain/LangGraph workflow coordinator",
-        "dir": ROOT_DIR / "Engine",
-        "default_port": 9007,
         "default_host": "127.0.0.1",
         "order": 5,
         "health_path": "/health",
@@ -750,7 +776,18 @@ def main() -> None:
 
     active_modules = []
     for mod in target_modules:
-        if not mod["dir"].exists() and mod.get("is_optional", False):
+        if mod["id"] == "operator":
+            candidates = [
+                ROOT_DIR.parent / "bin" / "operator.exe",
+                ROOT_DIR / "bin" / "operator.exe",
+                mod["dir"] / "target" / "release" / "operator.exe",
+                ROOT_DIR.parent / "target" / "release" / "operator.exe",
+                ROOT_DIR / "resources" / "bin" / "operator.exe",
+                mod["dir"] / "operator.exe",
+            ]
+            if not any(c.exists() for c in candidates) and not mod["dir"].exists() and mod.get("is_optional", False):
+                continue
+        elif not mod["dir"].exists() and mod.get("is_optional", False):
             continue
         active_modules.append(mod)
 
@@ -812,9 +849,12 @@ def main() -> None:
     for alloc in sorted_allocs:
         success = runner.start_module(alloc, url_map)
         if not success:
-            log_sys(f"{color('ERROR: Failed to start', RED)} {alloc['module']['name']}. Aborting startup.")
-            runner.shutdown()
-            sys.exit(1)
+            if alloc["module"].get("is_optional", False):
+                log_sys(f"{color('WARNING:', YELLOW)} Optional module {alloc['module']['name']} failed to start. Continuing with remaining modules...")
+            else:
+                log_sys(f"{color('ERROR: Failed to start', RED)} {alloc['module']['name']}. Aborting startup.")
+                runner.shutdown()
+                sys.exit(1)
 
     print("\n" + "=" * 82)
     log_sys(f"{color('ALL MIRA MODULES ARE ONLINE AND SYNCHRONIZED!', GREEN + BOLD)}")
@@ -833,11 +873,13 @@ def main() -> None:
         except Exception as e:
             log_sys(f"Notice: Could not auto-open browser ({e})")
 
+    notified_terminations: Set[str] = set()
     try:
         while True:
             for mod_id, proc in list(runner.processes.items()):
                 code = proc.poll()
-                if code is not None:
+                if code is not None and mod_id not in notified_terminations:
+                    notified_terminations.add(mod_id)
                     mod_name = allocations[mod_id]["module"]["name"]
                     log_sys(f"{color('WARNING:', YELLOW)} {mod_name} terminated with exit code {code}.")
             time.sleep(1.0)

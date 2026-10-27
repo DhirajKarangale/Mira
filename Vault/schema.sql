@@ -89,6 +89,9 @@ CREATE TABLE IF NOT EXISTS chats (
     content TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+CREATE INDEX IF NOT EXISTS idx_chats_session_id ON chats(session_id);
+CREATE INDEX IF NOT EXISTS idx_chats_session_created ON chats(session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_chats_created ON chats(created_at);
 
 CREATE TABLE IF NOT EXISTS daily_suggestions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
