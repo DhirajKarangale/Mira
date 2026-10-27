@@ -118,14 +118,14 @@ export const DailySuggestionsWidget: FC<DailySuggestionsWidgetProps> = ({
 
         {/* Progress Bar */}
         {hasLlmKeys && totalCount > 0 && (
-          <div className="flex items-center gap-2 mt-1">
-            <div className="flex-1 h-1.5 rounded-full bg-zinc-800/80 overflow-hidden">
+          <div className="flex items-center gap-2.5 mt-1">
+            <div className="flex-1 h-2 rounded-full bg-zinc-800 border border-white/[0.06] overflow-hidden p-[1px]">
               <div
                 className="h-full bg-gradient-to-r from-cyan-500 to-emerald-400 transition-all duration-300 rounded-full"
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
-            <span className="text-[10px] font-mono text-zinc-400 w-8 text-right">
+            <span className="text-[11px] font-mono font-medium text-cyan-300 w-9 text-right shrink-0">
               {progressPercent}%
             </span>
           </div>
@@ -177,7 +177,7 @@ export const DailySuggestionsWidget: FC<DailySuggestionsWidgetProps> = ({
         </div>
       ) : totalCount === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center py-10 px-4 text-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center shadow-[0_0_20px_rgba(16,185,129,0.15)]">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center shadow-[0_0_20px_rgba(168,85,247,0.15)]">
             <Sparkles className="w-6 h-6" />
           </div>
           <div className="space-y-1">
@@ -199,7 +199,7 @@ export const DailySuggestionsWidget: FC<DailySuggestionsWidgetProps> = ({
           </button>
         </div>
       ) : (
-        <div className="flex flex-col gap-2 flex-1">
+        <div className="flex flex-col gap-2 flex-1 min-h-0 overflow-y-auto mira-scrollbar pr-1.5">
           {activeSuggestions.map((text, idx) => {
             const isCompleted = completedSet.has(idx);
 
@@ -207,7 +207,7 @@ export const DailySuggestionsWidget: FC<DailySuggestionsWidgetProps> = ({
               <div
                 key={idx}
                 onClick={() => onToggleComplete(idx)}
-                className={`group flex items-start gap-3 p-3 rounded-xl border transition-all duration-200 cursor-pointer select-none ${
+                className={`group flex items-start gap-3 p-3 rounded-xl border transition-all duration-200 cursor-pointer select-none shrink-0 ${
                   isCompleted
                     ? "bg-zinc-900/30 border-emerald-500/20 text-zinc-400"
                     : "bg-zinc-800/30 border-white/[0.05] hover:border-cyan-500/30 hover:bg-zinc-800/60 text-zinc-200"

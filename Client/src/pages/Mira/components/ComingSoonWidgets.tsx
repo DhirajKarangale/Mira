@@ -9,32 +9,44 @@ export const MusicWidget: FC = () => {
     >
       <div className="absolute -top-10 -right-10 w-28 h-28 bg-purple-500/10 rounded-full blur-2xl pointer-events-none group-hover:bg-purple-500/15 transition-all duration-500" />
 
-      <div className="flex items-center justify-between gap-2 mb-2 z-10">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20">
+      <div className="flex items-center justify-between gap-2 mb-2 z-10 flex-wrap sm:flex-nowrap">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="p-1.5 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20 shrink-0">
             <Music className="w-4 h-4" />
           </div>
-          <h3 className="text-sm font-semibold text-zinc-100">Music & Focus</h3>
+          <h3 className="text-sm font-semibold text-zinc-100 truncate">Music & Focus</h3>
         </div>
 
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wide uppercase bg-purple-500/10 border border-purple-500/30 text-purple-300 shadow-[0_0_12px_rgba(168,85,247,0.15)]">
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wide uppercase bg-purple-500/10 border border-purple-500/30 text-purple-300 shadow-[0_0_12px_rgba(168,85,247,0.15)] shrink-0">
           <Clock className="w-2.5 h-2.5" />
           <span>Coming Soon</span>
         </span>
       </div>
 
-      <div className="flex flex-col gap-1.5 py-2 z-10">
-        <p className="text-xs text-zinc-300 font-medium">
+      <div className="flex flex-col gap-1.5 py-1 z-10">
+        <p className="text-xs text-zinc-300 font-medium truncate">
           Personalized Soundscapes & Playlists
         </p>
-        <p className="text-[11px] text-zinc-500 leading-relaxed">
+        <p className="text-[11px] text-zinc-500 leading-relaxed line-clamp-2">
           AI-curated focus tracks, ambient background flows, and study playlists synchronized with your daily work sessions.
         </p>
       </div>
 
-      <div className="flex items-center gap-2 pt-2 border-t border-white/[0.04] text-[11px] text-purple-400/80 font-medium z-10">
+      {/* Feature Vibe Preview Tags */}
+      <div className="flex items-center gap-1.5 flex-wrap my-1 z-10">
+        {["Deep Focus", "Lo-Fi Beats", "Ambient Rain"].map((tag) => (
+          <span
+            key={tag}
+            className="px-2 py-0.5 rounded-md text-[10px] font-mono bg-purple-500/10 border border-purple-500/20 text-purple-300/90"
+          >
+            {tag}
+          </span>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-2 pt-2 border-t border-white/[0.04] text-[11px] text-purple-400/80 font-medium z-10 mt-1">
         <Sparkles className="w-3 h-3 text-purple-400 shrink-0" />
-        <span>Integration with your local music and streaming libraries</span>
+        <span className="truncate">Integration with your local music and streaming libraries</span>
       </div>
     </div>
   );
@@ -48,33 +60,46 @@ export const EntertainmentWidget: FC = () => {
     >
       <div className="absolute -top-10 -right-10 w-28 h-28 bg-pink-500/10 rounded-full blur-2xl pointer-events-none group-hover:bg-pink-500/15 transition-all duration-500" />
 
-      <div className="flex items-center justify-between gap-2 mb-2 z-10">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-pink-500/10 text-pink-400 border border-pink-500/20">
+      <div className="flex items-center justify-between gap-2 mb-2 z-10 flex-wrap sm:flex-nowrap">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="p-1.5 rounded-lg bg-pink-500/10 text-pink-400 border border-pink-500/20 shrink-0">
             <Film className="w-4 h-4" />
           </div>
-          <h3 className="text-sm font-semibold text-zinc-100">Entertainment Picks</h3>
+          <h3 className="text-sm font-semibold text-zinc-100 truncate">Entertainment Picks</h3>
         </div>
 
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wide uppercase bg-pink-500/10 border border-pink-500/30 text-pink-300 shadow-[0_0_12px_rgba(236,72,153,0.15)]">
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wide uppercase bg-pink-500/10 border border-pink-500/30 text-pink-300 shadow-[0_0_12px_rgba(236,72,153,0.15)] shrink-0">
           <Clock className="w-2.5 h-2.5" />
           <span>Coming Soon</span>
         </span>
       </div>
 
-      <div className="flex flex-col gap-1.5 py-2 z-10">
-        <p className="text-xs text-zinc-300 font-medium">
+      <div className="flex flex-col gap-1.5 py-1 z-10">
+        <p className="text-xs text-zinc-300 font-medium truncate">
           Downtime, Cinema & Reading Recommendations
         </p>
-        <p className="text-[11px] text-zinc-500 leading-relaxed">
+        <p className="text-[11px] text-zinc-500 leading-relaxed line-clamp-2">
           Tailored movie recommendations, trending series, and weekend leisure ideas matching your personal taste.
         </p>
       </div>
 
-      <div className="flex items-center gap-2 pt-2 border-t border-white/[0.04] text-[11px] text-pink-400/80 font-medium z-10">
+      {/* Feature Vibe Preview Tags */}
+      <div className="flex items-center gap-1.5 flex-wrap my-1 z-10">
+        {["Weekend Cinema", "Trending Series", "Curated Reads"].map((tag) => (
+          <span
+            key={tag}
+            className="px-2 py-0.5 rounded-md text-[10px] font-mono bg-pink-500/10 border border-pink-500/20 text-pink-300/90"
+          >
+            {tag}
+          </span>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-2 pt-2 border-t border-white/[0.04] text-[11px] text-pink-400/80 font-medium z-10 mt-1">
         <Sparkles className="w-3 h-3 text-pink-400 shrink-0" />
-        <span>Weekend plans and relaxation suggestions</span>
+        <span className="truncate">Weekend plans and relaxation suggestions</span>
       </div>
     </div>
   );
 };
+

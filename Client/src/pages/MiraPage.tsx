@@ -87,33 +87,45 @@ export const MiraPage: FC = () => {
         </div>
       )}
 
-      {/* Unified Dashboard Grid: Left Column (Welcome, Suggestions, Coming Soon) | Right Column (Weather Card, News) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1 items-start">
-        {/* Left Column (approx 7 columns) */}
-        <div className="lg:col-span-7 flex flex-col gap-5">
-          <WelcomeHeader userName={userDetails?.user_name || undefined} />
+      {/* Unified Dynamic Dashboard Grid:
+          Top-Left: Name & Greeting (WelcomeHeader)
+          Top-Right: Local Weather Forecast (WeatherWidget)
+          Middle-Left: Daily Focus Suggestions (flex-1 dynamic height)
+          Bottom-Left: Music & Focus / Entertainment Picks (anchored at bottom)
+          Right Below Weather: Top Headlines News (with dynamic stories toggle)
+      */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1 items-stretch">
+        {/* Left Column (approx 7 cols): Name Welcome Header at top, Daily Suggestions, Music & Entertainment at bottom */}
+        <div className="lg:col-span-7 flex flex-col gap-5 justify-between">
+          <div className="flex flex-col gap-5 flex-1">
+            {/* Top-Left: Name Welcome Greeting */}
+            <WelcomeHeader userName={userDetails?.user_name || undefined} />
 
-          {/* Prominent Daily Suggestions */}
-          <DailySuggestionsWidget
-            suggestions={today.suggestions}
-            previousSuggestions={previous.suggestions}
-            completedIndices={completedIndices}
-            onToggleComplete={toggleSuggestionCompletion}
-            isRefreshing={Boolean(refreshingSection.suggestions)}
-            isLoading={isPageLoading}
-            onRefresh={() => handleRefresh("suggestions")}
-            hasLlmKeys={hasLlmKeys}
-          />
+            {/* Prominent Daily Suggestions */}
+            <DailySuggestionsWidget
+              suggestions={today.suggestions}
+              previousSuggestions={previous.suggestions}
+              completedIndices={completedIndices}
+              onToggleComplete={toggleSuggestionCompletion}
+              isRefreshing={Boolean(refreshingSection.suggestions)}
+              isLoading={isPageLoading}
+              onRefresh={() => handleRefresh("suggestions")}
+              hasLlmKeys={hasLlmKeys}
+            />
+          </div>
 
-          {/* Music & Entertainment Containers (Side-by-side) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <MusicWidget />
-            <EntertainmentWidget />
+          {/* Music & Entertainment Containers (Anchored flush at bottom, eliminating dead space) */}
+          <div className="mt-auto pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <MusicWidget />
+              <EntertainmentWidget />
+            </div>
           </div>
         </div>
 
-        {/* Right Column: Top-Right Weather Card + News Stories Below It (approx 5 columns) */}
-        <div className="lg:col-span-5 flex flex-col gap-5">
+        {/* Right Column (approx 5 cols): Top-Right Weather Card + News Stories Below It */}
+        <div className="lg:col-span-5 flex flex-col gap-5 justify-between">
+          {/* Top-Right: Weather Forecast & Atmospheric Conditions */}
           <WeatherWidget
             weather={today.weather}
             previousWeather={previous.weather}
@@ -123,15 +135,18 @@ export const MiraPage: FC = () => {
             isUserLoading={isUserLoading}
           />
 
-          <NewsWidget
-            news={today.news}
-            previousNews={previous.news}
-            isRefreshing={Boolean(refreshingSection.news)}
-            onRefresh={() => handleRefresh("news")}
-            isLocationConfigured={isLocationConfigured}
-            isUserLoading={isUserLoading}
-            hasGnewsKeys={hasGnewsKeys}
-          />
+          {/* Top Headlines & Regional/Global News (Stretches to align flush with bottom of left column) */}
+          <div className="flex-1 flex flex-col min-h-0">
+            <NewsWidget
+              news={today.news}
+              previousNews={previous.news}
+              isRefreshing={Boolean(refreshingSection.news)}
+              onRefresh={() => handleRefresh("news")}
+              isLocationConfigured={isLocationConfigured}
+              isUserLoading={isUserLoading}
+              hasGnewsKeys={hasGnewsKeys}
+            />
+          </div>
         </div>
       </div>
 

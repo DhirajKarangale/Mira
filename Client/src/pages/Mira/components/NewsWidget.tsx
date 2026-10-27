@@ -1,4 +1,4 @@
-import { type FC } from "react";
+import { useState, type FC } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Newspaper,
@@ -9,6 +9,7 @@ import {
   Globe,
   ArrowRight,
   KeyRound,
+  ChevronDown,
 } from "lucide-react";
 import type { NewsArticle } from "@/services/dailySuggestions.service";
 
@@ -49,12 +50,14 @@ export const NewsWidget: FC<NewsWidgetProps> = ({
   hasGnewsKeys = true,
 }) => {
   const navigate = useNavigate();
+  const [showAllNews, setShowAllNews] = useState(false);
 
   const hasCurrentData = Boolean(isLocationConfigured && news && news.length > 0);
   const hasPreviousData = Boolean(isLocationConfigured && previousNews && previousNews.length > 0);
 
   const activeNews = hasCurrentData ? news : (isRefreshing && hasPreviousData ? previousNews : []);
   const isDisplayingOutdated = !hasCurrentData && isRefreshing && hasPreviousData;
+  const displayedNews = showAllNews ? activeNews : activeNews.slice(0, 3);
 
   return (
     <div
@@ -74,7 +77,9 @@ export const NewsWidget: FC<NewsWidgetProps> = ({
                 {!hasGnewsKeys
                   ? "Key Required"
                   : isLocationConfigured
-                  ? "3 Key Stories"
+                  ? activeNews.length > 0
+                    ? `${activeNews.length} Stor${activeNews.length === 1 ? "y" : "ies"}`
+                    : "Top Headlines"
                   : "Location Required"}
               </span>
             </h2>
@@ -194,58 +199,78 @@ export const NewsWidget: FC<NewsWidgetProps> = ({
           )}
         </div>
       ) : (
-        <div className="flex flex-col gap-3 flex-1">
-          {activeNews.slice(0, 3).map((article, index) => {
-            const timeAgo = formatRelativeTime(article.published_at);
-            return (
-              <article
-                key={article.url || index}
-                className="group relative flex flex-col justify-between p-3.5 rounded-xl bg-zinc-800/30 border border-white/[0.05] hover:border-cyan-500/30 hover:bg-zinc-800/60 transition-all duration-200"
-              >
-                <div>
-                  {/* Source and Time Tag */}
-                  <div className="flex items-center justify-between gap-2 mb-1.5 text-[11px]">
-                    <div className="flex items-center gap-1.5 text-cyan-400 font-medium">
-                      <Globe className="w-3 h-3 shrink-0" />
-                      <span className="truncate max-w-[150px]">{article.source || "News Source"}</span>
+        <div className="flex flex-col gap-2 flex-1 min-h-0">
+          <div className="flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto mira-scrollbar pr-1">
+            {displayedNews.map((article, index) => {
+              const timeAgo = formatRelativeTime(article.published_at);
+              return (
+                <article
+                  key={article.url || index}
+                  className="group relative flex flex-col justify-between p-3.5 rounded-xl bg-zinc-800/30 border border-white/[0.05] hover:border-cyan-500/30 hover:bg-zinc-800/60 transition-all duration-200"
+                >
+                  <div>
+                    {/* Source and Time Tag */}
+                    <div className="flex items-center justify-between gap-2 mb-1.5 text-[11px]">
+                      <div className="flex items-center gap-1.5 text-cyan-400 font-medium">
+                        <Globe className="w-3 h-3 shrink-0" />
+                        <span className="truncate max-w-[150px]">{article.source || "News Source"}</span>
+                      </div>
+                      {timeAgo && (
+                        <span className="text-zinc-500 font-mono text-[10px] shrink-0">{timeAgo}</span>
+                      )}
                     </div>
-                    {timeAgo && (
-                      <span className="text-zinc-500 font-mono text-[10px] shrink-0">{timeAgo}</span>
+
+                    {/* Title */}
+                    <h3 className="text-xs sm:text-sm font-semibold text-zinc-200 group-hover:text-cyan-300 transition-colors line-clamp-2 leading-snug">
+                      {article.title}
+                    </h3>
+
+                    {/* Summary */}
+                    {article.summary && (
+                      <p className="text-xs text-zinc-400 mt-1.5 line-clamp-3 leading-relaxed">
+                        {article.summary}
+                      </p>
                     )}
                   </div>
 
-                  {/* Title */}
-                  <h3 className="text-xs sm:text-sm font-semibold text-zinc-200 group-hover:text-cyan-300 transition-colors line-clamp-2 leading-snug">
-                    {article.title}
-                  </h3>
-
-                  {/* Summary */}
-                  {article.summary && (
-                    <p className="text-xs text-zinc-400 mt-1.5 line-clamp-3 leading-relaxed">
-                      {article.summary}
-                    </p>
+                  {/* Clickable Source Link */}
+                  {article.url && (
+                    <div className="mt-2.5 pt-2 border-t border-white/[0.04] flex items-center justify-end">
+                      <a
+                        href={article.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[11px] font-medium text-cyan-400 hover:text-cyan-300 transition-colors group-hover:underline"
+                      >
+                        <span>Read article</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
                   )}
-                </div>
+                </article>
+              );
+            })}
+          </div>
 
-                {/* Clickable Source Link */}
-                {article.url && (
-                  <div className="mt-2.5 pt-2 border-t border-white/[0.04] flex items-center justify-end">
-                    <a
-                      href={article.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-[11px] font-medium text-cyan-400 hover:text-cyan-300 transition-colors group-hover:underline"
-                    >
-                      <span>Read article</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  </div>
-                )}
-              </article>
-            );
-          })}
+          {/* Toggle More Stories Button */}
+          {activeNews.length > 3 && (
+            <button
+              type="button"
+              id="btn-toggle-show-all-news"
+              onClick={() => setShowAllNews((prev) => !prev)}
+              className="w-full mt-1 py-2 px-3 rounded-xl text-xs font-semibold text-cyan-400 hover:text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/15 border border-cyan-500/20 hover:border-cyan-500/30 transition-all duration-200 flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-[0.99]"
+            >
+              <span>
+                {showAllNews
+                  ? "Show fewer headlines"
+                  : `View all ${activeNews.length} headlines (+${activeNews.length - 3} more)`}
+              </span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showAllNews ? "rotate-180" : ""}`} />
+            </button>
+          )}
         </div>
       )}
     </div>
   );
 };
+
