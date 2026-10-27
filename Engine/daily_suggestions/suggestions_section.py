@@ -7,6 +7,7 @@ import logging
 import random
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple
+from collections import defaultdict
 import requests
 
 from .vault_client import (
@@ -288,20 +289,19 @@ def retrieve_rich_activity_signals(user_profile: Dict[str, Any]) -> Dict[str, An
     """
     Queries Activity Knowledge Base (past 48 hours) and performs deep contextual analysis:
       1. Ongoing projects, workspaces, repos, and active codebases.
-      2. Multiple projects and context switching patterns.
-      3. Evidence of frustration (recurring errors, stuck debugging loops) - ONLY with evidence.
-      4. Learning opportunities and researched documentation topics.
-      5. Smart reminders (hackathons, job portals, uncommitted code, routines).
-      6. Chronological session timeline.
+      2. In-flight files and active implementation topics (ranked by recency & frequency).
+      3. Evidence of frustration / specific errors (e.g. build errors, charmap/tracebacks).
+      4. Chronological session timeline prioritizing today's most recent sessions.
     """
     default_signals = {
         "activity_summary": "No screen activity recorded in the past 2 days.",
         "ongoing_work": [],
+        "active_files_detail": [],
         "active_apps": [],
         "context_switching": {"detected": False, "evidence": "Single-focus or minimal activity."},
         "frustration": {"detected": False, "evidence": "No frustration or recurring error patterns detected."},
         "learning": {"detected": False, "topics": [], "evidence": "No documentation lookups or learning gaps observed."},
-        "reminders": {"detected": False, "items": [], "evidence": "No pending hackathons, jobs, or uncommitted code observed."},
+        "reminders": {"detected": False, "items": [], "evidence": "No pending reminders."},
         "most_recent_session": "None",
         "has_activity": False,
     }
@@ -310,13 +310,13 @@ def retrieve_rich_activity_signals(user_profile: Dict[str, Any]) -> Dict[str, An
         from chat.workflow.user_activity_node import (
             _find_relevant_knowledge_bases,
             _search_across_knowledge_bases,
-            _build_session_blocks,
         )
     except Exception as e:
         logger.debug(f"[SuggestionsSection] Could not import user_activity_node: {e}")
         return default_signals
 
     user_tz = resolve_user_timezone(user_profile)
+    now_in_tz = datetime.now(user_tz)
     now_utc = datetime.now(timezone.utc)
     start_ts = int(now_utc.timestamp()) - 172800  # 48 hours
     end_ts = int(now_utc.timestamp())
@@ -333,99 +333,134 @@ def retrieve_rich_activity_signals(user_profile: Dict[str, Any]) -> Dict[str, An
             start_ts=start_ts,
             end_ts=end_ts,
             user_tz=user_tz,
-            limit=250,
+            limit=500,
         )
         if not records:
             return default_signals
 
-        # 1. Build session blocks
-        session_blocks = _build_session_blocks(records, max_blocks=25)
-        lines: List[str] = []
-        for s in session_blocks:
-            app = s.get("app_name", "Unknown App")
-            time_span = s.get("start_fmt", "")
-            if s.get("end_fmt") and s.get("end_fmt") != time_span:
-                time_span = f"{time_span} - {s['end_fmt']}"
-            actions = "; ".join(s.get("actions", [])) if s.get("actions") else "Active"
-            lines.append(f"- [{time_span}] {app}: {actions}")
+        # Sort descending (newest first)
+        records_desc = sorted(records, key=lambda x: x.get("timestamp", 0), reverse=True)
+        today_date = now_in_tz.date()
 
-        activity_summary = "\n".join(lines)
+        # 1. Extract active files with recency & frequency tracking
+        path_pattern = re.compile(
+            r'([a-zA-Z0-9_\-\.\/\\]+\.(?:py|tsx?|jsx?|rs|go|java|cpp|html|css|json|sql|md|txt|ya?ml|toml))',
+            re.IGNORECASE
+        )
+        file_stats: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
+            "count": 0,
+            "last_seen_ts": 0,
+            "last_seen_fmt": "",
+            "actions": [],
+            "is_today": False,
+        })
 
-        # 2. Extract active apps
-        active_apps = list({r.get("app_name", "").strip() for r in records if r.get("app_name")})
+        for r in records_desc:
+            ts = r.get("timestamp", 0)
+            ts_fmt = r.get("timestamp_formatted", "")
+            txt = (r.get("summarized_text") or "").strip()
+            is_today = (datetime.fromtimestamp(ts, tz=user_tz).date() == today_date)
 
-        # 3. Identify Ongoing Projects & Codebases
-        project_candidates: Set[str] = set()
-        file_candidates: Set[str] = set()
-
-        path_pattern = re.compile(r'([a-zA-Z0-9_\-\.\/\\]+\.(?:py|tsx?|jsx?|rs|go|java|cpp|html|css|json|sql|md))', re.IGNORECASE)
-        repo_pattern = re.compile(r'\b(?:project|repo|workspace|folder|branch)\s+[:=]?\s*["\']?([a-zA-Z0-9_\-]+)["\']?', re.IGNORECASE)
-
-        for r in records:
-            txt = str(r.get("summarized_text") or "")
             for m in path_pattern.findall(txt):
                 fname = m.replace("\\", "/").split("/")[-1]
-                if len(fname) > 2:
-                    file_candidates.add(fname)
-            for m in repo_pattern.findall(txt):
-                if len(m) > 2 and m.lower() not in ("the", "this", "main", "true", "false"):
-                    project_candidates.add(m)
-            # Detect known workspace components
-            for kw in ("Mira", "Engine", "Client", "Vault", "Memory", "Operator", "Message_Broker"):
-                if kw.lower() in txt.lower():
-                    project_candidates.add(kw)
+                # Filter out generic system files or noise
+                if fname.lower() in ("python.exe", "schema.sql", "package.json", "tsconfig.json", "index.html") and len(fname) < 5:
+                    continue
+                if len(fname) > 3 and not fname.startswith("http") and not fname.isdigit():
+                    fs = file_stats[fname]
+                    fs["count"] += 1
+                    if is_today:
+                        fs["is_today"] = True
+                    if ts > fs["last_seen_ts"]:
+                        fs["last_seen_ts"] = ts
+                        fs["last_seen_fmt"] = ts_fmt
+                    if len(fs["actions"]) < 3 and len(txt) > 30:
+                        fs["actions"].append(txt[:140])
+
+        # Rank files: today's files first, then last_seen_ts, then frequency
+        sorted_files = sorted(
+            file_stats.items(),
+            key=lambda x: (x[1]["is_today"], x[1]["last_seen_ts"], x[1]["count"]),
+            reverse=True
+        )
 
         ongoing_work: List[str] = []
-        if project_candidates:
-            ongoing_work.append(f"Projects/Repositories: {', '.join(sorted(project_candidates)[:4])}")
-        if file_candidates:
-            ongoing_work.append(f"Active Files: {', '.join(sorted(file_candidates)[:5])}")
+        active_files_detail: List[str] = []
+        for fname, d in sorted_files[:7]:
+            act_snippet = d["actions"][0] if d["actions"] else "Active workspace file"
+            clean_snip = re.sub(r'\s+', ' ', act_snippet).strip()
+            ongoing_work.append(f"`{fname}` ({clean_snip})")
+            active_files_detail.append(fname)
 
-        most_recent_session = lines[-1] if lines else "None"
+        # 2. Extract specific active errors encountered
+        error_patterns = [
+            re.compile(r'(?:UnicodeEncodeError|SyntaxError|TypeError|ImportError|AttributeError)[^\n\.]*', re.IGNORECASE),
+            re.compile(r'(?:traceback|build failed|compilation error|failed test)[^\n\.]*', re.IGNORECASE),
+        ]
+        active_errors: List[str] = []
+        for r in records_desc[:60]:
+            txt = r.get("summarized_text") or ""
+            for ep in error_patterns:
+                for em in ep.findall(txt):
+                    clean = re.sub(r'\s+', ' ', em).strip()
+                    if len(clean) > 8 and clean not in active_errors:
+                        active_errors.append(clean)
+                        if len(active_errors) >= 3:
+                            break
 
-        # 4. Multiple Projects & Context Switching Analysis
-        distinct_recent_projects = list(project_candidates)
-        is_context_switching = len(distinct_recent_projects) >= 2 and len(active_apps) >= 4
-        ctx_switching_data = {
-            "detected": is_context_switching,
-            "evidence": f"Frequent toggling across {len(distinct_recent_projects)} projects ({', '.join(distinct_recent_projects[:3])}) and multiple applications." if is_context_switching else "Focused, single-stream workflow with minimal context switching.",
-        }
-
-        # 5. Frustration / Troubleshooting Loop Analysis
-        # STRICT RULE: Do NOT assume frustration without supporting evidence.
-        error_keywords = (
-            "traceback", "syntaxerror", "typeerror", "connectionrefused",
-            "cannot import", "unhandled exception", "failed test", "build failed",
-            "fatal error", "segfault", "compilation error", "merge conflict",
-        )
-        error_matches: List[str] = []
-        for r in records:
-            txt = str(r.get("summarized_text") or "").lower()
-            for ek in error_keywords:
-                if ek in txt:
-                    error_matches.append(ek)
-                    break
-
-        frustration_detected = len(error_matches) >= 3
+        frustration_detected = bool(active_errors)
         if frustration_detected:
-            frust_evidence = f"Recurring errors/failures detected ({', '.join(sorted(set(error_matches))[:3])}) across multiple recent sessions."
+            frust_evidence = f"Specific error(s) encountered in recent sessions: {'; '.join(active_errors[:2])}"
         else:
             frust_evidence = "No frustration or recurring error patterns detected."
 
         frustration_data = {
             "detected": frustration_detected,
             "evidence": frust_evidence,
-            "advice_needed": frustration_detected or is_context_switching,
+            "advice_needed": frustration_detected,
         }
+
+        # 3. Active apps
+        active_apps = list({r.get("app_name", "").strip() for r in records_desc[:60] if r.get("app_name")})
+
+        # 4. Context switching
+        ctx_detected = len(active_apps) >= 5 and len(sorted_files) >= 6
+        ctx_switching_data = {
+            "detected": ctx_detected,
+            "evidence": "Toggling across multiple active files and tools in recent workflow." if ctx_detected else "Focused, continuous workflow on primary workspace.",
+        }
+
+        # 5. Build chronological timeline prioritizing today's most recent sessions
+        timeline_lines: List[str] = []
+        seen_sessions: Set[str] = set()
+
+        for r in records_desc:
+            app = r.get("app_name", "App")
+            ts_fmt = r.get("timestamp_formatted", "")
+            txt = (r.get("summarized_text") or "").strip()
+            if not txt:
+                continue
+            key = f"{app}_{txt[:50].lower()}"
+            if key in seen_sessions:
+                continue
+            seen_sessions.add(key)
+            clean_txt = re.sub(r'\s+', ' ', txt)
+            timeline_lines.append(f"- [{ts_fmt}] {app}: {clean_txt[:160]}")
+            if len(timeline_lines) >= 15:
+                break
+
+        timeline_lines.reverse()
+        activity_summary = "\n".join(timeline_lines)
+        most_recent_session = timeline_lines[-1] if timeline_lines else "None"
 
         # 6. Learning & Skill Opportunities Analysis
         learning_keywords = (
-            "docs.", "stackoverflow.com", "developer.mozilla.org", "github.com/issues",
-            "tutorial", "documentation", "api reference", "cheatsheet", "how to"
+            "docs.", "stackoverflow.com", "developer.mozilla.org", "tutorial",
+            "documentation", "api reference", "cheatsheet", "how to"
         )
         researched_topics: Set[str] = set()
         tech_terms = ("fastapi", "react", "typescript", "python", "rust", "tailwind", "qdrant", "docker", "sqlite", "sqlcipher", "vite", "redis")
-        for r in records:
+        for r in records_desc:
             txt = str(r.get("summarized_text") or "").lower()
             if any(lk in txt for lk in learning_keywords):
                 for tt in tech_terms:
@@ -439,31 +474,33 @@ def retrieve_rich_activity_signals(user_profile: Dict[str, Any]) -> Dict[str, An
             "evidence": f"Researched documentation/troubleshooting for: {', '.join(sorted(researched_topics))}" if learning_detected else "No documentation lookups or learning gaps observed.",
         }
 
-        # 7. Smart Reminders & Discovered Opportunities Analysis
+        # 7. Reminders Analysis (hackathons, job portals, pull requests)
         reminder_items: List[str] = []
-        for r in records:
+        for r in records_desc:
             txt = str(r.get("summarized_text") or "")
             t_low = txt.lower()
             if any(k in t_low for k in ("hackathon", "devpost.com", "unstop.com")):
                 reminder_items.append("Follow up on hackathon / dev competition exploration")
                 break
-            if any(k in t_low for k in ("linkedin.com/jobs", "wellfound.com", "indeed.com", "careers")):
-                reminder_items.append("Follow up on job / role opportunities recently explored")
-                break
-            if "pull request" in t_low or "draft pr" in t_low:
+            if any(k in t_low for k in ("pull request", "draft pr", "release.yml")):
                 reminder_items.append("Review or submit pending pull request")
+                break
+            if "prompts.txt" in t_low:
+                reminder_items.append("Review packaging requirements in prompts.txt")
                 break
 
         reminders_detected = bool(reminder_items)
         reminders_data = {
             "detected": reminders_detected,
             "items": reminder_items,
-            "evidence": "; ".join(reminder_items) if reminders_detected else "No pending hackathons, job explorations, or unsubmitted PRs observed.",
+            "evidence": "; ".join(reminder_items) if reminders_detected else "No pending external reminders.",
         }
 
         return {
             "activity_summary": activity_summary,
             "ongoing_work": ongoing_work,
+            "active_files_detail": active_files_detail,
+            "active_errors": active_errors,
             "active_apps": active_apps,
             "context_switching": ctx_switching_data,
             "frustration": frustration_data,
@@ -542,9 +579,13 @@ def generate_daily_suggestions_with_llm(
     # 3. Activity Signals (Activity Knowledge Base)
     act_sig = activity_signals or {}
     ongoing_work_list = act_sig.get("ongoing_work") or []
-    ongoing_work_text = "; ".join(ongoing_work_list) if ongoing_work_list else "Recent workspace development"
     active_apps = act_sig.get("active_apps") or []
     most_recent_session = act_sig.get("most_recent_session") or "None"
+
+    if ongoing_work_list:
+        ongoing_work_text = "\n".join(f"  * {item}" for item in ongoing_work_list)
+    else:
+        ongoing_work_text = "  * Recent workspace development"
 
     ctx_data = act_sig.get("context_switching") or {}
     ctx_detected = ctx_data.get("detected", False)
@@ -553,16 +594,11 @@ def generate_daily_suggestions_with_llm(
     frust_data = act_sig.get("frustration") or {}
     frust_detected = frust_data.get("detected", False)
     frust_evidence = frust_data.get("evidence", "")
-
-    learn_data = act_sig.get("learning") or {}
-    learn_detected = learn_data.get("detected", False)
-    learn_evidence = learn_data.get("evidence", "")
-    learn_topics = learn_data.get("topics") or []
+    active_errors = act_sig.get("active_errors") or []
 
     rem_data = act_sig.get("reminders") or {}
     rem_detected = rem_data.get("detected", False)
     rem_evidence = rem_data.get("evidence", "")
-    rem_items = rem_data.get("items") or []
 
     cg = chat_goals or []
     chat_goals_text = "; ".join(cg) if cg else "None stated"
@@ -572,15 +608,13 @@ def generate_daily_suggestions_with_llm(
 
     if is_weekend:
         weekend_planning_instruction = (
-            "- Today is a WEEKEND (Saturday / Sunday). Create a balanced, rejuvenating weekend plan:\n"
-            "  * 1-2 focused personal projects, side dev work, or wrapping up loose ends.\n"
-            f"  * 1-2 rejuvenation, outing, outdoor, or friends/family moments (tailored to user context in {city_name}).\n"
-            "  * 1 relaxation, hobby, or entertainment suggestion (music, movie, reading, unwinding).\n"
-            "  * Keep the tone refreshing and non-stressful. Avoid grueling weekday grinds."
+            "- Today is a WEEKEND (Saturday / Sunday). Balance focused personal project progress with rejuvenation:\n"
+            "  * Prioritize 2-3 specific in-flight side project milestones from active files.\n"
+            f"  * Include 1-2 refreshing outdoor/outing suggestions tailored to {city_name} or unwinding."
         )
     else:
         weekend_planning_instruction = (
-            "- Today is a WEEKDAY. Focus on high-impact deep work, core project milestones, and sustainable execution without overloading."
+            "- Today is a WEEKDAY. Focus squarely on high-impact core engineering tasks, resolving active bugs, and shipping code."
         )
 
     prompt = f"""You are MIRA, a personal AI assistant known for being sharp, intelligent, delightfully witty, and deeply practical.
@@ -598,72 +632,43 @@ User Context (User Knowledge Base): {profile_text}
 
 ---
 2. RECENT ONGOING WORK & WORKSPACE ACTIVITY (Activity Knowledge Base - Past 48h):
-- Primary projects & active codebases: {ongoing_work_text}
+Primary Projects & Active In-Flight Files:
+{ongoing_work_text}
 - Active applications: {', '.join(active_apps) if active_apps else 'None recorded'}
 - Most recent activity: {most_recent_session}
-- Timeline of recent sessions:
+- Chronological timeline of recent sessions:
 {activity_context}
 
 ---
 3. ACTIVITY SIGNALS & EVIDENCE ANALYSIS:
 - Context Switching: {'YES - ' + ctx_evidence if ctx_detected else 'NONE - Single-focus workflow'}
-- Frustration / Troubleshooting: {'YES - ' + frust_evidence if frust_detected else 'NONE - Smooth workflow detected (Do NOT assume frustration)'}
-- Learning & Knowledge Gaps: {'YES - ' + learn_evidence if learn_detected else 'NONE - No documentation lookups'}
-- Smart Reminders & Discovered Opportunities: {'YES - ' + rem_evidence if rem_detected else 'NONE - No explored hackathons/jobs/PRs'}
+- Active Bugs / Troubleshooting: {'YES - ' + frust_evidence if frust_detected else 'NONE - Clean workflow detected'}
+- Discovered Opportunities / Reminders: {'YES - ' + rem_evidence if rem_detected else 'NONE'}
 - Recent Stated Chat Goals: {chat_goals_text}
 
 ---
 TASK:
-Generate exactly {target_count} personalized, practical, and actionable daily suggestions for today.
+Generate exactly {target_count} personalized, practical, and highly specific daily suggestions for today.
 
-STRICT PLANNING RULES:
-1. ONGOING WORK (Prioritize existing work):
-   - Track progress on verified active tasks and projects ({ongoing_work_text}).
-   - Prioritize completing existing in-flight work before introducing unnecessary new tasks.
-   - If there are unfinished suggestions from yesterday, prioritize continuing or wrapping them up.
-   - Suggest the next logical step based on demonstrated progress and known pending items.
-
-2. MULTIPLE PROJECTS & FRUSTRATION:
-   - Review the Frustration & Context Switching section above.
-   - STRICT CONSTRAINT: Do NOT assume frustration without supporting evidence.
-   - If frustration or high context switching is confirmed by evidence: suggest concrete ways to prioritize work, break complex tasks into bite-sized steps, or pause switching between projects.
-   - If NO frustration is detected: proceed with steady, productive momentum.
-
-3. WEEKEND vs WEEKDAY PLANNING:
-   {weekend_planning_instruction}
-
-4. DAILY PLANNING & FLOW:
-   - Organize the suggestions into a realistic daily flow without overloading the day.
-   - Morning/Start: Deep focus on top priority milestone or finishing in-flight work.
-   - Mid-day: Secondary tasks, code review, or targeted follow-up.
-   - Later: Smart reminder, learning gap, or winding down.
-
-5. ACCURACY & CONTEXT (Zero Hallucination):
-   - Ground every single suggestion strictly in the verified context above.
-   - STRICT CONSTRAINT: Do NOT invent fake tasks, phantom deadlines, unverified clients, imaginary relationships, or fabricated preferences. If a detail is not in the context, do NOT invent it.
-
-6. ACTIONABLE SUGGESTIONS:
-   - Each suggestion must have a clear purpose and be achievable within today's timeframe.
-   - Start with an action verb and specify the concrete component, file, or objective.
-
-7. LEARNING & IMPROVEMENT:
-   - If learning/documentation research is confirmed in Evidence above, suggest studying that specific topic or practicing that skill to support the ongoing project.
-   - STRICT CONSTRAINT: Only include learning tasks if they directly support current ongoing work. Do NOT invent random courses.
-
-8. SMART REMINDERS:
-   - If hackathons, job applications, uncommitted code, open PRs, or routines are confirmed in Evidence or chat goals above, include a smart reminder to follow up.
-   - Do NOT invent deadlines or commitments that were not documented.
-
-9. PERSONALIZED TONE:
-   - Keep suggestions concise, friendly, and lightly humorous or roast-like (MIRA's signature witty charm), without sacrificing clarity or usefulness.
-   - Length: Exactly 1 to 2 short sentences per suggestion (maximum 28 words).
+CRITICAL SPECIFICITY & VALUE RULES:
+1. NEVER BE VAGUE OR GENERIC:
+   - Strictly avoid useless filler like "stabilize the UI", "explore a hackathon", "take a short break", "drink water / stretch", "read documentation", or "tackle recurring errors".
+2. CONCRETE FILE & PROBLEM TARGETING:
+   - Every single task MUST explicitly reference the CONCRETE files, scripts, components, or exact bugs the user is currently working on (e.g. {', '.join(act_sig.get('active_files_detail', [])[:5]) or 'active files in context'}).
+   - State the exact next engineering action (e.g. resolve specific error in packaging script, verify candidate paths in launcher, align route icons in navigation component).
+3. ROAST-LIKE & WITTY PERSONALITY:
+   - Deliver each suggestion with MIRA's signature cheeky, slightly roast-like wit (teasing packaging quirks, Windows charmap bugs, or endless tabs), but ensure the underlying task is 100% concrete, useful, and actionable.
+4. ZERO HALLUCINATION:
+   - Do NOT invent fake tasks, phantom deadlines, or unverified projects. Ground every suggestion in the verified files and actions above.
+5. LENGTH & FORMAT:
+   - Exactly 1 to 2 short sentences per suggestion (maximum 28 words).
    - Return strictly a valid JSON array of {target_count} strings:
 [
   "Suggestion 1",
   "Suggestion 2",
   ...
 ]
-Do NOT include any markdown asterisks inside strings or text outside the JSON array."""
+Do NOT include markdown asterisks inside strings or text outside the JSON array."""
 
     try:
         raw_resp = call_llm(prompt, work="summarization")
@@ -678,7 +683,7 @@ Do NOT include any markdown asterisks inside strings or text outside the JSON ar
     except Exception as e:
         log_error(f"[SuggestionsSection] LLM suggestion generation failed: {e}")
 
-    # Deterministic fallback strictly grounded in verified signals
+    # Deterministic fallback strictly grounded in verified in-flight files and active errors
     fallback_suggestions: List[str] = []
 
     # 1. Roll forward yesterday's pending tasks first
@@ -687,25 +692,19 @@ Do NOT include any markdown asterisks inside strings or text outside the JSON ar
         if len(fallback_suggestions) >= 2:
             break
 
-    # 2. Next logical task on ongoing project
-    if ongoing_work_list:
-        fallback_suggestions.append(f"Continue active progress on {ongoing_work_list[0]} — tackle the next core milestone.")
+    # 2. Address active bug / error if detected
+    if frust_detected and active_errors:
+        clean_err = active_errors[0][:75]
+        fallback_suggestions.append(f"Debug and resolve the active issue: {clean_err}.")
 
-    # 3. Context switching / frustration resolution if detected
-    if frust_detected:
-        fallback_suggestions.append("Step back and break down the tricky error into 2 smaller, isolated test cases before diving back in.")
-    elif ctx_detected:
-        fallback_suggestions.append("Lock in on one primary project for your morning block to minimize context-switching fatigue.")
+    # 3. Next concrete tasks on verified active files
+    for work_item in ongoing_work_list:
+        file_part = work_item.split('(')[0].strip()
+        fallback_suggestions.append(f"Continue implementation on {file_part} — finish the next core milestone.")
+        if len(fallback_suggestions) >= target_count:
+            break
 
-    # 4. Learning task if evidence present
-    if learn_detected and learn_topics:
-        fallback_suggestions.append(f"Spend 20 focused minutes reviewing {learn_topics[0]} documentation to solidify your implementation.")
-
-    # 5. Smart reminder if present
-    if rem_detected and rem_items:
-        fallback_suggestions.append(f"Follow up on your explored opportunity: {rem_items[0]}.")
-
-    # 6. Weekend balance vs Weekday productivity
+    # 4. Fill remaining slots with weekend balance or weekday engineering verifications
     if is_weekend:
         if len(fallback_suggestions) < target_count:
             fallback_suggestions.append(f"Take a refreshing weekend outing or walk in {city_name} to recharge your mind away from screens.")
@@ -714,14 +713,17 @@ Do NOT include any markdown asterisks inside strings or text outside the JSON ar
         if len(fallback_suggestions) < target_count:
             fallback_suggestions.append("Unwind this evening with your favorite music or movie to rest up for the coming week.")
     else:
-        if len(fallback_suggestions) < target_count:
-            fallback_suggestions.append("Run the test suite and verify edge cases across your recent commits before wrapping up.")
-        if len(fallback_suggestions) < target_count:
-            fallback_suggestions.append("Take a dedicated 15-minute stretch and hydration break to keep your energy high.")
-        if len(fallback_suggestions) < target_count:
-            fallback_suggestions.append("Review your uncommitted changes and push a clean git commit to lock in today's progress.")
+        filler_pool = [
+            "Run the test suite across your active modules to verify no regressions were introduced.",
+            "Review your git diff and push clean commits for today's completed milestones.",
+            "Verify your background service startup arguments and port bindings before the next build.",
+            "Audit active configurations to ensure all environment variables and API keys are properly wired.",
+        ]
+        for fp in filler_pool:
+            if len(fallback_suggestions) >= target_count:
+                break
+            fallback_suggestions.append(fp)
 
-    # Trim or pad to target_count
     return fallback_suggestions[:target_count]
 
 
@@ -729,9 +731,9 @@ async def refresh_suggestions(force: bool = False, force_regenerate: bool = Fals
     """
     Executes Daily Suggestions refresh:
       - Daily suggestions for a given calendar day are constant.
-      - If suggestions already exist for today and force_regenerate is False:
+      - If suggestions already exist for today and force/force_regenerate is False:
         returns existing suggestions without calling LLM or overwriting completion states.
-      - If today has no suggestions, or if it is a new day, or force_regenerate is True:
+      - If today has no suggestions, or if it is a new day, or force/force_regenerate is True:
         generates personalized practical suggestions via LLM and persists them.
     """
     user_profile = await asyncio.to_thread(get_user_profile, force_refresh=True) or {}
@@ -744,7 +746,8 @@ async def refresh_suggestions(force: bool = False, force_regenerate: bool = Fals
         and is_same_day_as_today(current_record.get("date_suggestions"), user_profile)
     )
 
-    if has_suggestions_today and not force_regenerate:
+    should_regenerate = force or force_regenerate
+    if has_suggestions_today and not should_regenerate:
         log("[SuggestionsSection] Daily suggestions for today already exist (constant for the day). Returning existing data.")
         return current_record.get("suggestions") or []
 

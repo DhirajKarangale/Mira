@@ -184,7 +184,8 @@ class TestDailySuggestionsEngine(unittest.TestCase):
         self.assertEqual(status_data["news"]["interval_hours"], 3.0)
         self.assertEqual(status_data["suggestions"]["interval_hours"], 24.0)
 
-    def test_rest_of_day_overview_and_valuable_suggestion(self):
+    @patch("daily_suggestions.weather_section.call_llm", return_value="Shegaon is 32°C and clear, with a high of 33.5°C and low of 21°C.")
+    def test_rest_of_day_overview_and_valuable_suggestion(self, mock_llm):
         """Verify rest_of_day short overview and practical valuable suggestion generation."""
         mock_weather_data = {
             "current": {
