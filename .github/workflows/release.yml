@@ -63,6 +63,13 @@ jobs:
             build-essential \
             pkg-config \
             libclang-dev \
+            libgbm-dev \
+            libegl-dev \
+            libdrm-dev \
+            libwayland-dev \
+            libxcb1-dev \
+            libxcb-shm0-dev \
+            libxcb-randr0-dev \
             libpipewire-0.3-dev \
             libwebkit2gtk-4.1-dev \
             libayatana-appindicator3-dev \
