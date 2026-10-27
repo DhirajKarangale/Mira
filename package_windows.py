@@ -219,6 +219,18 @@ class WindowsPackager:
         shutil.copy2(ROOT_DIR / "services.json", RESOURCES_BACKEND_DIR / "services.json")
         log_ok("Staged start.py orchestrator & services.json")
 
+        # 5. Stage WebView2Loader.dll for NSIS bundle
+        windows_hooks_dir = TAURI_DIR / "windows"
+        windows_hooks_dir.mkdir(parents=True, exist_ok=True)
+        webview2_candidates = [
+            TAURI_DIR / "target" / "release" / "WebView2Loader.dll",
+            TAURI_DIR / "target" / "debug" / "WebView2Loader.dll",
+        ]
+        webview2_src = next((p for p in webview2_candidates if p.exists()), None)
+        if webview2_src:
+            shutil.copy2(webview2_src, windows_hooks_dir / "WebView2Loader.dll")
+            log_ok(f"Staged WebView2Loader.dll for NSIS installer ({get_file_size_mb(webview2_src):.2f} MB)")
+
     def verify_tauri_config(self) -> None:
         log_step(5, self.total_steps, "Validating Tauri Bundle Configuration")
         tauri_conf_path = TAURI_DIR / "tauri.conf.json"
@@ -240,6 +252,37 @@ class WindowsPackager:
             bundle["resources"] = resources
             dirty = True
             log_info("Added 'resources/**/*' to bundle.resources")
+
+        windows_conf = bundle.setdefault("windows", {})
+        nsis_conf = windows_conf.setdefault("nsis", {})
+        if nsis_conf.get("installerHooks") != "./windows/hooks.nsh":
+            nsis_conf["installerHooks"] = "./windows/hooks.nsh"
+            dirty = True
+            log_info("Configured nsis.installerHooks -> ./windows/hooks.nsh (embeds WebView2Loader.dll)")
+
+        if nsis_conf.get("installerIcon") != "icons/icon.ico":
+            nsis_conf["installerIcon"] = "icons/icon.ico"
+            dirty = True
+            log_info("Configured nsis.installerIcon -> icons/icon.ico")
+
+        if nsis_conf.get("uninstallerIcon") != "icons/icon.ico":
+            nsis_conf["uninstallerIcon"] = "icons/icon.ico"
+            dirty = True
+            log_info("Configured nsis.uninstallerIcon -> icons/icon.ico")
+
+        # Ensure icon.ico has all required multi-resolution frames
+        icon_png = TAURI_DIR / "icons" / "icon.png"
+        icon_ico = TAURI_DIR / "icons" / "icon.ico"
+        if icon_png.exists():
+            try:
+                from PIL import Image
+                img = Image.open(icon_png).convert("RGBA")
+                sizes = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
+                resized_frames = [img.resize(s, Image.Resampling.LANCZOS) for s in sizes]
+                img.save(icon_ico, format="ICO", sizes=sizes, append_images=resized_frames)
+                log_ok("Verified multi-resolution Windows icon (icon.ico)")
+            except Exception as e:
+                log_warn(f"Notice: Icon check skipped ({e})")
 
         if dirty:
             conf["bundle"] = bundle
