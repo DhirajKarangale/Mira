@@ -55,6 +55,8 @@ CREATE TABLE IF NOT EXISTS app_permissions (
     app_name TEXT NOT NULL,
     allowed_to_capture BOOLEAN DEFAULT 1
 );
+CREATE INDEX IF NOT EXISTS idx_app_permissions_name ON app_permissions(app_name COLLATE NOCASE ASC);
+CREATE INDEX IF NOT EXISTS idx_app_permissions_lower_app_id ON app_permissions(LOWER(app_id));
 
 CREATE TABLE IF NOT EXISTS ai_configs (
     id INTEGER PRIMARY KEY,
@@ -63,6 +65,7 @@ CREATE TABLE IF NOT EXISTS ai_configs (
     current_key INTEGER DEFAULT 0,
     keys TEXT DEFAULT '[]'
 );
+CREATE INDEX IF NOT EXISTS idx_ai_configs_lower_provider ON ai_configs(LOWER(llm_provider));
 
 CREATE TABLE IF NOT EXISTS ai_priorities (
     id INTEGER PRIMARY KEY,
@@ -92,6 +95,8 @@ CREATE TABLE IF NOT EXISTS chats (
 CREATE INDEX IF NOT EXISTS idx_chats_session_id ON chats(session_id);
 CREATE INDEX IF NOT EXISTS idx_chats_session_created ON chats(session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_chats_created ON chats(created_at);
+CREATE INDEX IF NOT EXISTS idx_chats_session_created_id ON chats(session_id, created_at ASC, id ASC);
+CREATE INDEX IF NOT EXISTS idx_chats_session_role_created ON chats(session_id, role, created_at DESC, id DESC);
 
 CREATE TABLE IF NOT EXISTS daily_suggestions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -107,12 +112,14 @@ CREATE TABLE IF NOT EXISTS daily_suggestions (
     date_news TIMESTAMP,
     news TEXT DEFAULT '[]'
 );
+CREATE INDEX IF NOT EXISTS idx_daily_suggestions_date ON daily_suggestions(date_suggestions DESC);
 
 CREATE TABLE IF NOT EXISTS gnews_config (
     id TEXT PRIMARY KEY,
     current_key INTEGER DEFAULT 0,
     keys TEXT DEFAULT '[]'
 );
+
 
 
 

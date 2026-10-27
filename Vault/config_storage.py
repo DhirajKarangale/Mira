@@ -15,6 +15,7 @@ logger = logging.getLogger('mira.vault.config_storage')
 _DB_CONN: Optional[sqlite3.Connection] = None
 _PARSED_SCHEMA: Dict[str, Dict[str, Any]] = {}
 TABLE_REGEX = re.compile('CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?([a-zA-Z0-9_]+)\\s*\\((.*?)\\);', re.DOTALL | re.IGNORECASE)
+INDEX_REGEX = re.compile(r'CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?.*?;', re.DOTALL | re.IGNORECASE)
 
 def get_schema_file_path() -> Path:
     return getattr(config, 'SCHEMA_FILE_PATH', config.VAULT_DIR / 'schema.sql')
@@ -130,12 +131,33 @@ def init_config_storage(schema_path: Optional[Path]=None, enc_db_path: Optional[
     _seed_default_ai_configs()
     _seed_default_gnews_config()
     try:
+        schema_file = schema_path if schema_path is not None else get_schema_file_path()
+        if schema_file.exists():
+            schema_content = schema_file.read_text(encoding='utf-8')
+            for match in INDEX_REGEX.finditer(schema_content):
+                idx_sql = match.group(0).strip()
+                if idx_sql:
+                    try:
+                        _DB_CONN.execute(idx_sql)
+                    except Exception as ex_idx:
+                        logger.debug(f"Index execution error for '{idx_sql}': {ex_idx}")
+            _DB_CONN.commit()
+    except Exception as e:
+        logger.debug(f"Automatic schema index creation: {e}")
+
+    try:
         _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_chats_session_id ON chats(session_id)")
         _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_chats_session_created ON chats(session_id, created_at)")
         _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_chats_created ON chats(created_at)")
+        _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_chats_session_created_id ON chats(session_id, created_at ASC, id ASC)")
+        _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_chats_session_role_created ON chats(session_id, role, created_at DESC, id DESC)")
+        _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_app_permissions_name ON app_permissions(app_name COLLATE NOCASE ASC)")
+        _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_app_permissions_lower_app_id ON app_permissions(LOWER(app_id))")
+        _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_ai_configs_lower_provider ON ai_configs(LOWER(llm_provider))")
+        _DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_daily_suggestions_date ON daily_suggestions(date_suggestions DESC)")
         _DB_CONN.commit()
     except Exception as e:
-        logger.debug(f"Index creation on chats table: {e}")
+        logger.debug(f"Index creation fallback: {e}")
     try:
         cleanup_duplicate_chats()
     except Exception as e:
