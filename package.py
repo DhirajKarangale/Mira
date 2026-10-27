@@ -150,7 +150,7 @@ class UnifiedPackager:
             self.os_name = "Linux"
             self.op_bin_name = "operator"
             self.npm_cmd = "npm"
-            self.default_bundle = "all"
+            self.default_bundle = "deb,appimage"
 
         self.bundle_target = args.bundle or self.default_bundle
         self.total_steps = 5 if args.stage_only else 6
@@ -306,11 +306,22 @@ class UnifiedPackager:
         dirty = False
 
         # Set bundle targets
-        desired_targets = self.bundle_target
-        if desired_targets != "all" and bundle.get("targets") != desired_targets:
+        if self.is_windows:
+            desired_targets = "nsis"
+        elif self.is_macos:
+            desired_targets = "dmg"
+        elif self.is_linux:
+            desired_targets = ["deb", "appimage"]
+        else:
+            desired_targets = "all"
+
+        if self.args.bundle:
+            desired_targets = self.args.bundle
+
+        if bundle.get("targets") != desired_targets:
             bundle["targets"] = desired_targets
             dirty = True
-            log_info(f"Configured bundle.targets -> '{desired_targets}'")
+            log_info(f"Configured bundle.targets -> {desired_targets}")
 
         # Ensure resources bundle pattern
         resources = bundle.setdefault("resources", [])
@@ -414,9 +425,17 @@ class UnifiedPackager:
             return
 
         log_step(6, self.total_steps, f"Building {self.os_name} Application Package ({self.bundle_target})")
+        if self.is_linux:
+            os.environ["APPIMAGE_EXTRACT_AND_RUN"] = "1"
         tauri_cmd = [self.npm_cmd, "run", "tauri", "build"]
-        if self.bundle_target != "all":
-            tauri_cmd.extend(["--", "--bundles", self.bundle_target])
+        if self.args.bundle:
+            tauri_cmd.extend(["--", "--bundles", self.args.bundle])
+        elif self.is_linux:
+            tauri_cmd.extend(["--", "--bundles", "deb,appimage"])
+        elif self.is_macos:
+            tauri_cmd.extend(["--", "--bundles", "dmg"])
+        elif self.is_windows:
+            tauri_cmd.extend(["--", "--bundles", "nsis"])
 
         run_command(tauri_cmd, CLIENT_DIR, f"Tauri {self.os_name} application packaging")
 
@@ -424,7 +443,9 @@ class UnifiedPackager:
         packages: List[Path] = []
 
         if self.is_windows:
-            packages.extend((bundle_base / "nsis").glob("*.exe"))
+            for p in bundle_base.rglob("*.exe"):
+                if p not in packages:
+                    packages.append(p)
             if os.name == "nt":
                 try:
                     import ctypes
@@ -433,11 +454,17 @@ class UnifiedPackager:
                 except Exception:
                     pass
         elif self.is_macos:
-            packages.extend((bundle_base / "dmg").glob("*.dmg"))
-            packages.extend((bundle_base / "macos").glob("*.app"))
+            for p in bundle_base.rglob("*.dmg"):
+                if p not in packages:
+                    packages.append(p)
+            for p in bundle_base.rglob("*.app"):
+                if p not in packages:
+                    packages.append(p)
         elif self.is_linux:
-            packages.extend((bundle_base / "deb").glob("*.deb"))
-            packages.extend((bundle_base / "appimage").glob("*.AppImage"))
+            for pattern in ("*.deb", "*.AppImage", "*.appimage"):
+                for p in bundle_base.rglob(pattern):
+                    if p not in packages:
+                        packages.append(p)
 
         if not packages:
             log_err(f"Build completed but no release packages found in {bundle_base}")
