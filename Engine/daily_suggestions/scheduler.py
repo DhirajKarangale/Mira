@@ -12,7 +12,11 @@ from .config import (
 )
 from .weather_section import refresh_weather_forecast, parse_timestamp
 from .news_section import refresh_news
-from .suggestions_section import refresh_suggestions, is_same_day_as_today
+from .suggestions_section import (
+    refresh_suggestions,
+    is_same_day_as_today,
+    check_entry_has_suggestions_for_today,
+)
 from .vault_client import fetch_latest_daily_suggestions
 from chat.workflow.timezone_helper import resolve_user_timezone
 from config import get_user_profile
@@ -209,7 +213,6 @@ class DailySuggestionsScheduler:
 
             try:
                 res = await task
-                self._suggestions_wake_event.set()
                 return res
             except asyncio.CancelledError:
                 log("[DailySuggestionsScheduler] Suggestions task cancelled.")
@@ -359,37 +362,47 @@ class DailySuggestionsScheduler:
                 await asyncio.sleep(60.0)
 
     async def _suggestions_loop(self) -> None:
-        log("[DailySuggestionsScheduler] Suggestions loop started.")
-        await asyncio.sleep(3.0)
+        log("[DailySuggestionsScheduler] Suggestions worker started (strictly runs once a day / every 24hr).")
+        await asyncio.sleep(2.0)
 
         while self._running:
             try:
-                # Run suggestions: keeps constant if already generated for today,
-                # generates new ones if starting up on a new day.
-                try:
-                    await self.run_suggestions(force_regenerate=False)
-                except Exception as e:
-                    log_error(f"[DailySuggestionsScheduler] Suggestions loop error: {e}")
+                # 1. On startup and on each cycle: Check if daily_suggestions table has entry for today
+                user_profile = await asyncio.to_thread(get_user_profile) or {}
+                existing_entry = await check_entry_has_suggestions_for_today(user_profile)
 
-                # Calculate remaining seconds until next calendar day midnight in user timezone
+                if existing_entry:
+                    log(
+                        f"[DailySuggestionsScheduler] Entry with date_suggestions for today found in daily_suggestions table "
+                        f"(ID {existing_entry.get('id')}, {len(existing_entry.get('suggestions', []))} suggestions). "
+                        "Fine — preserving today's tasks."
+                    )
+                else:
+                    log("[DailySuggestionsScheduler] No entry with date_suggestions for today found in table. Running suggestions...")
+                    try:
+                        await self.run_suggestions(force_regenerate=False)
+                    except Exception as e:
+                        log_error(f"[DailySuggestionsScheduler] Suggestions run error: {e}")
+
+                # 2. Compute delay until next calendar day midnight (strictly runs every new day / every 24hr)
                 user_profile = await asyncio.to_thread(get_user_profile) or {}
                 user_tz = resolve_user_timezone(user_profile)
                 now_tz = datetime.now(user_tz)
                 tomorrow_midnight = (now_tz + timedelta(days=1)).replace(
-                    hour=0, minute=1, second=0, microsecond=0
+                    hour=0, minute=0, second=5, microsecond=0
                 )
                 remaining = max(60.0, (tomorrow_midnight - now_tz).total_seconds())
 
                 next_run_dt = datetime.now(timezone.utc) + timedelta(seconds=remaining)
                 self._suggestions_next_run = next_run_dt.isoformat()
-                log(f"[DailySuggestionsScheduler] Suggestions will refresh next in {int(remaining // 3600)}h {int((remaining % 3600) // 60)}m ({self._suggestions_next_run})")
+                log(f"[DailySuggestionsScheduler] Suggestions will run next at new day midnight in {int(remaining // 3600)}h {int((remaining % 3600) // 60)}m ({self._suggestions_next_run})")
 
-                # Wait until midnight or until triggered
+                # Wait until midnight
                 self._suggestions_wake_event.clear()
                 try:
                     await asyncio.wait_for(self._suggestions_wake_event.wait(), timeout=remaining)
                 except asyncio.TimeoutError:
-                    pass
+                    log("[DailySuggestionsScheduler] Midnight reached: Triggering new day daily suggestions cycle.")
 
             except asyncio.CancelledError:
                 break

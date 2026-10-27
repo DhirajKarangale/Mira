@@ -11,6 +11,7 @@ from collections import defaultdict
 import requests
 
 from .vault_client import (
+    fetch_today_daily_suggestions,
     fetch_latest_daily_suggestions,
     fetch_daily_suggestions_history,
     fetch_previous_daily_suggestions,
@@ -88,6 +89,38 @@ def is_suggestions_refresh_needed(
         return False
 
     return True
+
+
+async def check_entry_has_suggestions_for_today(user_profile: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    """
+    Checks the daily_suggestions table in Vault to determine if we have ANY entry with
+    date_suggestions data for today in the user's configured timezone.
+    Returns the matching record if found, or None if no entry exists for today.
+    """
+    user_tz = resolve_user_timezone(user_profile or {})
+    today_str = datetime.now(user_tz).strftime("%Y-%m-%d")
+
+    # 1. Query dedicated today endpoint from Vault
+    entry = await asyncio.to_thread(fetch_today_daily_suggestions, today_str)
+    if entry and entry.get("suggestions") and len(entry.get("suggestions", [])) > 0:
+        if is_same_day_as_today(entry.get("date_suggestions"), user_profile):
+            return entry
+
+    # 2. Check latest record
+    latest = await asyncio.to_thread(fetch_latest_daily_suggestions)
+    if latest and latest.get("suggestions") and len(latest.get("suggestions", [])) > 0:
+        if is_same_day_as_today(latest.get("date_suggestions"), user_profile):
+            return latest
+
+    # 3. Check history of last 10 records to inspect all recent table rows
+    history = await asyncio.to_thread(fetch_daily_suggestions_history, 10)
+    for r in history:
+        date_sugg = r.get("date_suggestions")
+        suggestions = r.get("suggestions") or []
+        if date_sugg and len(suggestions) > 0 and is_same_day_as_today(date_sugg, user_profile):
+            return r
+
+    return None
 
 
 def determine_suggestion_count(history: List[Dict[str, Any]], is_weekend: bool) -> int:
@@ -737,21 +770,20 @@ async def refresh_suggestions(force: bool = False, force_regenerate: bool = Fals
         generates personalized practical suggestions via LLM and persists them.
     """
     user_profile = await asyncio.to_thread(get_user_profile, force_refresh=True) or {}
-    current_record = await asyncio.to_thread(fetch_latest_daily_suggestions)
-
-    has_suggestions_today = bool(
-        current_record
-        and current_record.get("suggestions")
-        and len(current_record.get("suggestions", [])) > 0
-        and is_same_day_as_today(current_record.get("date_suggestions"), user_profile)
-    )
+    
+    # Check if ANY entry in daily_suggestions table has date_suggestions for today
+    existing_today_record = await check_entry_has_suggestions_for_today(user_profile)
+    has_suggestions_today = bool(existing_today_record is not None)
 
     should_regenerate = force or force_regenerate
     if has_suggestions_today and not should_regenerate:
-        log("[SuggestionsSection] Daily suggestions for today already exist (constant for the day). Returning existing data.")
-        return current_record.get("suggestions") or []
+        log(
+            f"[SuggestionsSection] Entry with date_suggestions for today found in daily_suggestions table "
+            f"(ID {existing_today_record.get('id')}). Preserving existing constant tasks for today."
+        )
+        return existing_today_record.get("suggestions") or []
 
-    log("[SuggestionsSection] Initiating daily suggestions generation (new day or forced regeneration)...")
+    log("[SuggestionsSection] No entry with date_suggestions for today found (or force regeneration). Generating daily suggestions...")
 
     # Protect backend: immediately stop if no LLM keys configured
     from config import CONFIG

@@ -844,6 +844,19 @@ class SuggestionCompleteRequest(BaseModel):
     record_id: Optional[int] = None
 
 
+@router.get('/daily_suggestions/today', status_code=status.HTTP_200_OK)
+async def get_today_daily_suggestions_endpoint(date_str: Optional[str] = Query(None)):
+    try:
+        data = config_storage.find_daily_suggestions_entry_for_today(date_str=date_str)
+        return data or {}
+    except Exception as e:
+        logger.error(f"Failed to fetch today daily suggestions: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={'message': f'Failed to retrieve today daily suggestions: {str(e)}'}
+        )
+
+
 @router.get('/daily_suggestions/latest', status_code=status.HTTP_200_OK)
 async def get_latest_daily_suggestions_endpoint():
     try:

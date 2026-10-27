@@ -1381,6 +1381,43 @@ def get_latest_daily_suggestions() -> Optional[Dict[str, Any]]:
     return _format_daily_suggestion_row(row, cursor.description)
 
 
+def find_daily_suggestions_entry_for_today(date_str: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """
+    Checks the daily_suggestions table for ANY entry with valid date_suggestions for today.
+    If date_str is provided (e.g. 'YYYY-MM-DD'), checks if date_suggestions starts with date_str.
+    Also checks today's UTC date and local system date prefixes.
+    Returns the matching record dict if found, or None if no entry with date_suggestions exists for today.
+    """
+    global _DB_CONN
+    if _DB_CONN is None:
+        init_config_storage()
+    cursor = _DB_CONN.execute(
+        "SELECT * FROM daily_suggestions WHERE date_suggestions IS NOT NULL AND date_suggestions != '' ORDER BY id DESC"
+    )
+    rows = cursor.fetchall()
+    if not rows:
+        return None
+
+    target_prefixes = set()
+    if date_str and str(date_str).strip():
+        target_prefixes.add(str(date_str).strip())
+    else:
+        target_prefixes.add(datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+        target_prefixes.add(datetime.now().strftime("%Y-%m-%d"))
+
+    for r in rows:
+        item = _format_daily_suggestion_row(r, cursor.description)
+        date_sugg = str(item.get("date_suggestions") or "").strip()
+        suggestions = item.get("suggestions") or []
+        if not date_sugg or not suggestions:
+            continue
+        for prefix in target_prefixes:
+            if date_sugg.startswith(prefix):
+                return item
+
+    return None
+
+
 def get_previous_daily_suggestions(skip_today: bool = False) -> Optional[Dict[str, Any]]:
     """Returns the latest record that has content, optionally skipping today's record."""
     global _DB_CONN
@@ -1433,14 +1470,25 @@ def save_daily_suggestions(updates: Dict[str, Any], record_id: Optional[int] = N
     now_date_str = now_utc.strftime("%Y-%m-%d")
 
     if target_id is None:
-        cursor = _DB_CONN.execute("SELECT id, date_suggestions, date_weather, date_news FROM daily_suggestions ORDER BY id DESC LIMIT 1")
-        latest = cursor.fetchone()
-        if latest:
-            latest_id, d_sugg, d_weath, d_news = latest
-            for ts in (d_sugg, d_weath, d_news):
-                if ts and str(ts).strip().startswith(now_date_str):
-                    target_id = latest_id
-                    break
+        # Check if ANY row in daily_suggestions matches today
+        cursor = _DB_CONN.execute(
+            "SELECT id FROM daily_suggestions "
+            "WHERE date_suggestions LIKE ? OR date_weather LIKE ? OR date_news LIKE ? "
+            "ORDER BY id DESC LIMIT 1",
+            (f"{now_date_str}%", f"{now_date_str}%", f"{now_date_str}%")
+        )
+        matched = cursor.fetchone()
+        if matched:
+            target_id = matched[0]
+        else:
+            cursor = _DB_CONN.execute("SELECT id, date_suggestions, date_weather, date_news FROM daily_suggestions ORDER BY id DESC LIMIT 1")
+            latest = cursor.fetchone()
+            if latest:
+                latest_id, d_sugg, d_weath, d_news = latest
+                for ts in (d_sugg, d_weath, d_news):
+                    if ts and str(ts).strip().startswith(now_date_str):
+                        target_id = latest_id
+                        break
 
     # If still None, insert a new record for today
     if target_id is None:
@@ -1508,16 +1556,24 @@ def update_suggestion_completion(index: int, completed: bool, record_id: Optiona
 
     target_id: Optional[int] = record_id
     if target_id is None:
-        cursor = _DB_CONN.execute("SELECT id, completed FROM daily_suggestions ORDER BY id DESC LIMIT 1")
-        latest = cursor.fetchone()
-        if not latest:
-            cursor = _DB_CONN.execute("INSERT INTO daily_suggestions DEFAULT VALUES")
-            target_id = cursor.lastrowid
-            _DB_CONN.commit()
-            current_completed_raw = ""
+        cursor = _DB_CONN.execute(
+            "SELECT id, completed FROM daily_suggestions WHERE date_suggestions IS NOT NULL AND date_suggestions != '' ORDER BY id DESC LIMIT 1"
+        )
+        row_with_sugg = cursor.fetchone()
+        if row_with_sugg:
+            target_id = row_with_sugg[0]
+            current_completed_raw = row_with_sugg[1]
         else:
-            target_id = latest[0]
-            current_completed_raw = latest[1]
+            cursor = _DB_CONN.execute("SELECT id, completed FROM daily_suggestions ORDER BY id DESC LIMIT 1")
+            latest = cursor.fetchone()
+            if not latest:
+                cursor = _DB_CONN.execute("INSERT INTO daily_suggestions DEFAULT VALUES")
+                target_id = cursor.lastrowid
+                _DB_CONN.commit()
+                current_completed_raw = ""
+            else:
+                target_id = latest[0]
+                current_completed_raw = latest[1]
     else:
         cursor = _DB_CONN.execute("SELECT completed FROM daily_suggestions WHERE id = ?", (target_id,))
         row = cursor.fetchone()

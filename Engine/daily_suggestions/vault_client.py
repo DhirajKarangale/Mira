@@ -21,6 +21,26 @@ def _get_direct_storage():
     return config_storage
 
 
+def fetch_today_daily_suggestions(user_date_str: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    vault_base = get_vault_base_url()
+    try:
+        params = {"date_str": user_date_str} if user_date_str else {}
+        resp = requests.get(f"{vault_base}/daily_suggestions/today", params=params, timeout=3.0)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data and data.get("id"):
+                return data
+    except Exception as e:
+        logger.debug(f"[DailySuggestions] Vault API fetch today failed, trying direct storage: {e}")
+
+    try:
+        cs = _get_direct_storage()
+        return cs.find_daily_suggestions_entry_for_today(date_str=user_date_str)
+    except Exception as e:
+        log_error(f"[DailySuggestions] Direct storage fetch today failed: {e}")
+        return None
+
+
 def fetch_latest_daily_suggestions() -> Optional[Dict[str, Any]]:
     vault_base = get_vault_base_url()
     try:

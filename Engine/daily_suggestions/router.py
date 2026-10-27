@@ -12,6 +12,8 @@ from .vault_client import (
     fetch_previous_daily_suggestions,
     save_suggestion_completion,
 )
+from .suggestions_section import check_entry_has_suggestions_for_today
+from config import get_user_profile
 from chat.websocket import ws_manager
 from vault_logger import log, log_error
 
@@ -36,6 +38,8 @@ async def get_daily_suggestions_page_data():
     Returns today's data, previous data fallback, and scheduler refresh statuses.
     """
     try:
+        user_profile = await asyncio.to_thread(get_user_profile) or {}
+        today_entry = await check_entry_has_suggestions_for_today(user_profile)
         latest = await asyncio.to_thread(fetch_latest_daily_suggestions)
         previous = await asyncio.to_thread(fetch_previous_daily_suggestions, skip_today=True)
         scheduler_status = get_daily_suggestions_status()
@@ -44,19 +48,29 @@ async def get_daily_suggestions_page_data():
         has_llm = CONFIG.has_any_llm_key(force_refresh=True)
         has_gnews = CONFIG.has_gnews_key(force_refresh=True)
 
+        today_payload = dict(latest) if latest else {
+            "id": None,
+            "suggestions": [],
+            "completed": [],
+            "weather": {},
+            "news": [],
+            "music": [],
+            "entertainment": [],
+        }
+
+        # If latest row is missing suggestions but today's suggestions entry exists in table, merge them
+        if today_entry and (not today_payload.get("suggestions") or len(today_payload.get("suggestions", [])) == 0):
+            today_payload["suggestions"] = today_entry.get("suggestions") or []
+            today_payload["date_suggestions"] = today_entry.get("date_suggestions")
+            today_payload["completed"] = today_entry.get("completed") or []
+            if not today_payload.get("id"):
+                today_payload["id"] = today_entry.get("id")
+
         return {
             "status": "success",
             "has_llm_keys": has_llm,
             "has_gnews_keys": has_gnews,
-            "today": latest or {
-                "id": None,
-                "suggestions": [],
-                "completed": [],
-                "weather": {},
-                "news": [],
-                "music": [],
-                "entertainment": [],
-            },
+            "today": today_payload,
             "previous": previous or {},
             "scheduler": scheduler_status,
         }
