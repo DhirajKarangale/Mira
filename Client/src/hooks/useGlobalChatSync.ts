@@ -7,6 +7,7 @@ import {
   type WebSocketChatResponse,
 } from "@/services/engine.service";
 import { useChatStore } from "@/store/useChatStore";
+import { recordTranscription } from "@/utils/transcribe";
 
 export function useGlobalChatSync() {
   const location = useLocation();
@@ -139,6 +140,9 @@ export function useGlobalChatSync() {
               if (targetSid) {
                 const userPrompt = store.sendingSessions[targetSid]?.userPrompt;
                 store.resolveAiMessage(targetSid, job_id, user_message, ai_message);
+                if (ai_message?.content) {
+                  recordTranscription(`Assistant: ${ai_message.content}`, new Date().toISOString(), "chat").catch(() => {});
+                }
                 notifyIfInactive(
                   targetSid,
                   ai_message?.content,

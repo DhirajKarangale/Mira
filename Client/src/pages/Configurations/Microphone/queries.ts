@@ -7,7 +7,8 @@ export function useMicrophoneStatusQuery() {
   return useQuery<MicrophoneStatusResponse>({
     queryKey: QUERY_KEYS.operator.microphoneStatus,
     queryFn: () => operatorService.getMicrophoneStatus(),
-    staleTime: 10 * 1000,
+    staleTime: 1000,
+    refetchInterval: 2000,
     refetchOnMount: true,
   });
 }

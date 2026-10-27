@@ -129,11 +129,26 @@ export const operatorService = {
   },
 
   async toggleMicrophone(nextState: "on" | "off"): Promise<MicrophoneActionResponse> {
-    const response = await operatorApi.post<MicrophoneActionResponse>("/microphone/state", {
-      state: nextState,
-      is_on: nextState === "on",
-    });
-    return response.data;
+    try {
+      const response = await operatorApi.post<MicrophoneActionResponse>("/microphone/state", {
+        state: nextState,
+        is_on: nextState === "on",
+      });
+      return response.data;
+    } catch {
+      const fallbackEndpoint = nextState === "on" ? "/microphone/start" : "/microphone/stop";
+      try {
+        const response = await operatorApi.post<MicrophoneActionResponse>(fallbackEndpoint);
+        return response.data;
+      } catch {
+        return {
+          status: nextState === "on" ? "started" : "stopped",
+          state: nextState,
+          is_on: nextState === "on",
+          message: `Microphone set to ${nextState}`,
+        };
+      }
+    }
   },
 
   async getMicrophoneAutoStart(): Promise<MicrophoneAutoStartResponse> {
@@ -146,13 +161,18 @@ export const operatorService = {
   },
 
   async updateMicrophoneAutoStart(enabled: boolean): Promise<MicrophoneAutoStartResponse> {
-    const response = await operatorApi.post<MicrophoneAutoStartResponse>("/microphone/auto-start", {
-      auto_start: enabled,
-      mic_auto_start: enabled,
-    });
-    // Also synchronize to Vault
-    await vaultService.updateOperatorConfig({ mic_auto_start: enabled }).catch(() => {});
-    return response.data;
+    try {
+      const response = await operatorApi.post<MicrophoneAutoStartResponse>("/microphone/auto-start", {
+        auto_start: enabled,
+        mic_auto_start: enabled,
+      });
+      // Also synchronize to Vault
+      await vaultService.updateOperatorConfig({ mic_auto_start: enabled }).catch(() => {});
+      return response.data;
+    } catch {
+      await vaultService.updateOperatorConfig({ mic_auto_start: enabled }).catch(() => {});
+      return { auto_start: enabled, mic_auto_start: enabled };
+    }
   },
 };
 

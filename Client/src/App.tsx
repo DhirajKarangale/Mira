@@ -8,6 +8,7 @@ import {
   AboutPage,
 } from "@/pages";
 import { useGlobalChatSync } from "@/hooks/useGlobalChatSync";
+import { useMiraWakeWord } from "@/hooks/useMiraWakeWord";
 
 function ActivityRedirect() {
   const { "*": rest } = useParams();
@@ -32,6 +33,7 @@ function AiConfigsRedirect() {
 
 export function App() {
   useGlobalChatSync();
+  useMiraWakeWord();
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#080c14] text-zinc-100 select-none border border-white/[0.06]">

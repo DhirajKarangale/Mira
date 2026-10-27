@@ -8,10 +8,9 @@
       "openai/gpt-oss-120b"
     ],
     "gemini": [
-      "gemini-3.8-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-flash-latest",
-      "gemini-3.5-flash"
+      "gemini-3.5-flash-lite",
+      "gemini-3.5-flash",
+      "gemini-3.8-flash"
     ]
   },
   "chat": {
@@ -23,10 +22,9 @@
       "openai/gpt-oss-120b"
     ],
     "gemini": [
-      "gemini-3.8-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-flash-latest",
-      "gemini-3.5-flash"
+      "gemini-3.5-flash-lite",
+      "gemini-3.5-flash",
+      "gemini-3.8-flash"
     ]
   },
   "extraction": {
@@ -38,10 +36,9 @@
       "openai/gpt-oss-120b"
     ],
     "gemini": [
-      "gemini-3.8-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-flash-latest",
-      "gemini-3.5-flash"
+      "gemini-3.5-flash-lite",
+      "gemini-3.5-flash",
+      "gemini-3.8-flash"
     ]
   },
   "general": {
@@ -53,10 +50,9 @@
       "openai/gpt-oss-120b"
     ],
     "gemini": [
-      "gemini-3.8-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-flash-latest",
-      "gemini-3.5-flash"
+      "gemini-3.5-flash-lite",
+      "gemini-3.5-flash",
+      "gemini-3.8-flash"
     ]
   },
   "decision": {
@@ -68,10 +64,9 @@
       "openai/gpt-oss-120b"
     ],
     "gemini": [
-      "gemini-3.8-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-flash-latest",
-      "gemini-3.5-flash"
+      "gemini-3.5-flash-lite",
+      "gemini-3.5-flash",
+      "gemini-3.8-flash"
     ]
   },
   "activity_retrieval": {
@@ -83,10 +78,9 @@
       "openai/gpt-oss-120b"
     ],
     "gemini": [
-      "gemini-3.8-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-flash-latest",
-      "gemini-3.5-flash"
+      "gemini-3.5-flash-lite",
+      "gemini-3.5-flash",
+      "gemini-3.8-flash"
     ]
   },
   "synthesis": {
@@ -98,10 +92,9 @@
       "openai/gpt-oss-120b"
     ],
     "gemini": [
-      "gemini-3.8-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-flash-latest",
-      "gemini-3.5-flash"
+      "gemini-3.5-flash-lite",
+      "gemini-3.5-flash",
+      "gemini-3.8-flash"
     ]
   }
 }

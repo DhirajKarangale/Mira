@@ -1,4 +1,4 @@
-import { useMemo, type FC } from "react";
+import { useState, useEffect, type FC } from "react";
 import {
   useMicrophoneStatusQuery,
   useToggleMicrophoneMutation,
@@ -7,6 +7,9 @@ import {
 import { MicrophoneStatusHeader } from "./components/MicrophoneStatusHeader";
 import { MicrophonePrivacyCard } from "./components/MicrophonePrivacyCard";
 import { MicrophoneDeviceCard } from "./components/MicrophoneDeviceCard";
+import { MicrophoneTranscriptionsCard } from "./components/MicrophoneTranscriptionsCard";
+import { ElevenLabsVoiceCard } from "./components/ElevenLabsVoiceCard";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { toast } from "@/components";
 
 export const MicrophonePage: FC = () => {
@@ -18,48 +21,74 @@ export const MicrophonePage: FC = () => {
 
   const toggleMicMutation = useToggleMicrophoneMutation();
   const updateAutoStartMutation = useUpdateMicrophoneAutoStartMutation();
+  const { isMicOn: isOn, toggleListening } = useSpeechRecognition(true);
 
-  const isOn = useMemo(() => {
-    if (!micStatus) return false;
-    return Boolean(
-      micStatus.is_on ||
-      (typeof micStatus.state === "string" && micStatus.state.toLowerCase() === "on")
-    );
+  const [autoStart, setAutoStart] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("mira_mic_auto_start");
+      if (stored !== null) return stored === "true";
+    }
+    return Boolean(micStatus?.auto_start || micStatus?.mic_auto_start);
+  });
+
+  useEffect(() => {
+    if (micStatus?.auto_start !== undefined || micStatus?.mic_auto_start !== undefined) {
+      const serverVal = Boolean(micStatus.auto_start || micStatus.mic_auto_start);
+      if (typeof window !== "undefined") {
+        const stored = localStorage.getItem("mira_mic_auto_start");
+        if (stored !== null) {
+          setAutoStart(stored === "true");
+          return;
+        }
+      }
+      setAutoStart(serverVal);
+    }
   }, [micStatus]);
 
-  const autoStart = Boolean(micStatus?.auto_start || micStatus?.mic_auto_start);
-
-  const handleToggleStatus = async () => {
-    if (toggleMicMutation.isPending) return;
-    const nextState = isOn ? "off" : "on";
-    try {
-      await toggleMicMutation.mutateAsync(nextState);
-      toast.success(
-        nextState === "on"
-          ? "Microphone turned on. Wake word listening active ('Mira')."
-          : "Microphone turned off. Voice input paused.",
-        { title: "Microphone Control" }
-      );
-    } catch (err: unknown) {
-      const msg = (err as Error)?.message || "Failed to toggle microphone state.";
-      toast.error(msg, { title: "Microphone Error" });
-    }
+  const handleToggleStatus = () => {
+    toggleListening();
+    toast.success(
+      !isOn
+        ? "Microphone turned on. Wake word listening active ('Mira')."
+        : "Microphone turned off. Voice input paused.",
+      { title: "Microphone Control" }
+    );
   };
 
   const handleToggleAutoStart = async () => {
-    if (updateAutoStartMutation.isPending) return;
     const nextVal = !autoStart;
+    setAutoStart(nextVal);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("mira_mic_auto_start", String(nextVal));
+      window.dispatchEvent(
+        new CustomEvent("mira-auto-start-change", { detail: { autoStart: nextVal } })
+      );
+    }
     try {
       await updateAutoStartMutation.mutateAsync(nextVal);
       toast.success(
         nextVal
-          ? "Microphone Auto-Start enabled (activates on Operator boot)."
+          ? "Microphone Auto-Start enabled (activates on startup)."
           : "Microphone Auto-Start disabled.",
         { title: "Auto-Start Setting" }
       );
-    } catch (err: unknown) {
-      const msg = (err as Error)?.message || "Failed to update microphone auto-start.";
-      toast.error(msg, { title: "Configuration Error" });
+    } catch {
+      toast.success(
+        nextVal
+          ? "Microphone Auto-Start enabled locally."
+          : "Microphone Auto-Start disabled locally.",
+        { title: "Auto-Start Setting" }
+      );
+    }
+  };
+
+  const handleRefreshAll = async () => {
+    try {
+      await refetchStatus();
+      window.dispatchEvent(new CustomEvent("mira:refresh-transcriptions"));
+      toast.success("Microphone status & transcriptions refreshed");
+    } catch {
+      toast.error("Failed to refresh status");
     }
   };
 
@@ -76,16 +105,18 @@ export const MicrophonePage: FC = () => {
           autoStartLoading={updateAutoStartMutation.isPending}
           onToggleStatus={handleToggleStatus}
           onToggleAutoStart={handleToggleAutoStart}
-          onRefresh={() => refetchStatus()}
+          onRefresh={handleRefreshAll}
           refreshing={statusFetching}
         />
 
         <MicrophoneDeviceCard isOn={isOn} autoStart={autoStart} />
 
+        <ElevenLabsVoiceCard />
+
         <MicrophonePrivacyCard />
+
+        <MicrophoneTranscriptionsCard isOn={isOn} />
       </div>
     </div>
   );
 };
-
-export default MicrophonePage;
