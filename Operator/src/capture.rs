@@ -430,14 +430,14 @@ pub fn get_target_display() -> TargetDisplay {
 #[cfg(not(windows))]
 pub fn get_target_display() -> TargetDisplay {
     if let Ok(monitors) = xcap::Monitor::all() {
-        if let Some(m) = monitors.iter().find(|m| m.is_primary()).or_else(|| monitors.first()) {
+        if let Some(m) = monitors.iter().find(|m| m.is_primary().unwrap_or(false)).or_else(|| monitors.first()) {
             return TargetDisplay {
                 name: m.name().unwrap_or_else(|_| "Display".to_string()),
-                x: m.x(),
-                y: m.y(),
-                width: m.width(),
-                height: m.height(),
-                is_primary: m.is_primary(),
+                x: m.x().unwrap_or(0),
+                y: m.y().unwrap_or(0),
+                width: m.width().unwrap_or(1920),
+                height: m.height().unwrap_or(1080),
+                is_primary: m.is_primary().unwrap_or(false),
             };
         }
     }
@@ -560,15 +560,15 @@ fn capture_screen_xcap(target: Option<&TargetDisplay>) -> Result<image::RgbaImag
     let monitor = if let Some(t) = target {
         monitors
             .iter()
-            .find(|m| m.name() == t.name)
-            .or_else(|| monitors.iter().find(|m| m.x() == t.x && m.y() == t.y))
-            .or_else(|| monitors.iter().find(|m| m.is_primary()))
+            .find(|m| m.name().as_ref().map(|n| n == &t.name).unwrap_or(false))
+            .or_else(|| monitors.iter().find(|m| m.x().map(|x| x == t.x).unwrap_or(false) && m.y().map(|y| y == t.y).unwrap_or(false)))
+            .or_else(|| monitors.iter().find(|m| m.is_primary().unwrap_or(false)))
             .unwrap_or(&monitors[0])
 
     } else {
         monitors
             .iter()
-            .find(|m| m.is_primary())
+            .find(|m| m.is_primary().unwrap_or(false))
             .unwrap_or(&monitors[0])
     };
 
