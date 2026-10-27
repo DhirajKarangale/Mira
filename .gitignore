@@ -36,6 +36,8 @@ lerna-debug.log*
 # Operator Runtime State & Screenshots
 operator_state.json
 **/operator_state.json
+microphone_state.json
+**/microphone_state.json
 screenshots/
 **/screenshots/
 **/screenshots/**
