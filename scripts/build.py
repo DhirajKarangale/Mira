@@ -1,22 +1,3 @@
-#!/usr/bin/env python3
-"""
-MIRA - Unified Cross-Platform Application Packaging Pipeline
-=============================================================
-Single master builder that compiles, stages, and bundles MIRA for:
-  • Windows (NSIS .exe installer)
-  • macOS (.dmg disk image & .app bundle)
-  • Linux (.deb package & .AppImage)
-
-Usage:
-    python scripts/build.py                 # Auto-detects OS and builds full package
-    python scripts/build.py --skip-operator # Reuse existing Operator binary
-    python scripts/build.py --skip-client   # Reuse existing Client/dist frontend
-    python scripts/build.py --stage-only    # Prepare bundle resources without Tauri build
-    python scripts/build.py --bundle nsis   # Force specific bundle target
-    python scripts/build.py --get-version   # Read current synchronized project version
-    python scripts/build.py --set-version 0.2.0 # Update version across all components
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -29,7 +10,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import List, Optional, Set
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -117,7 +98,7 @@ def find_redis_server() -> Optional[Path]:
         for c in candidates:
             if c.exists():
                 return c
-    else:  # Linux
+    else:
         candidates = [
             Path("/usr/bin/redis-server"),
             Path("/usr/local/bin/redis-server"),
@@ -134,8 +115,7 @@ def find_redis_server() -> Optional[Path]:
     return None
 
 class UnifiedPackager:
-    def __init__(self, args: argparse.Namespace) -> None:
-        self.args = args
+    def __init__(self) -> None:
         self.is_windows = sys.platform == "win32"
         self.is_macos = sys.platform == "darwin"
         self.is_linux = sys.platform.startswith("linux")
@@ -144,28 +124,25 @@ class UnifiedPackager:
             self.os_name = "Windows"
             self.op_bin_name = "operator.exe"
             self.npm_cmd = "npm.cmd"
-            self.default_bundle = "nsis"
+            self.bundle_target = "nsis"
         elif self.is_macos:
             self.os_name = "macOS"
             self.op_bin_name = "operator"
             self.npm_cmd = "npm"
-            self.default_bundle = "dmg"
+            self.bundle_target = "dmg"
         else:
             self.os_name = "Linux"
             self.op_bin_name = "operator"
             self.npm_cmd = "npm"
-            self.default_bundle = "deb,appimage"
+            self.bundle_target = "deb,appimage"
 
-        self.bundle_target = args.bundle or self.default_bundle
-        self.total_steps = 5 if args.stage_only else 6
+        self.total_steps = 6
 
     def check_prerequisites(self) -> None:
         log_step(1, self.total_steps, f"Verifying Tools & Prerequisites ({self.os_name})")
 
-        # 1. Python interpreter
         log_info(f"Python interpreter: {sys.executable} ({sys.version.split()[0]})")
 
-        # 2. Rust & Cargo
         cargo_bin = shutil.which("cargo")
         if not cargo_bin:
             log_err("Rust compiler 'cargo' not found in PATH. Install Rust from https://rustup.rs")
@@ -173,14 +150,12 @@ class UnifiedPackager:
         cargo_ver = subprocess.check_output([cargo_bin, "--version"], text=True).strip()
         log_ok(f"Rust Cargo: {cargo_ver}")
 
-        # 3. Node & NPM
         if not shutil.which(self.npm_cmd):
             log_err(f"'{self.npm_cmd}' not found in PATH. Install Node.js from https://nodejs.org")
             sys.exit(1)
         node_ver = subprocess.check_output(["node", "--version"], text=True).strip()
         log_ok(f"Node.js: {node_ver}")
 
-        # 4. Redis server
         redis_path = find_redis_server()
         if redis_path:
             log_ok(f"Found Redis server: {redis_path}")
@@ -190,11 +165,6 @@ class UnifiedPackager:
     def build_operator(self) -> None:
         log_step(2, self.total_steps, f"Compiling Rust Operator Service ({self.op_bin_name})")
         operator_bin = OPERATOR_DIR / "target" / "release" / self.op_bin_name
-
-        if self.args.skip_operator and operator_bin.exists():
-            log_ok(f"Using pre-built Operator binary: {operator_bin} ({get_file_size_mb(operator_bin):.1f} MB)")
-            return
-
         run_command(["cargo", "build", "--release"], OPERATOR_DIR, "Operator release compilation")
         if not operator_bin.exists():
             log_err(f"Expected binary not found at {operator_bin}")
@@ -204,11 +174,6 @@ class UnifiedPackager:
     def build_client(self) -> None:
         log_step(3, self.total_steps, "Building Client Web Assets (Vite + React)")
         client_dist_index = CLIENT_DIR / "dist" / "index.html"
-
-        if self.args.skip_client and client_dist_index.exists():
-            log_ok(f"Using pre-built Client web assets: {CLIENT_DIR / 'dist'}")
-            return
-
         run_command([self.npm_cmd, "run", "build"], CLIENT_DIR, "Client web build (tsc & vite)")
         if not client_dist_index.exists():
             log_err(f"Client build failed to produce {client_dist_index}")
@@ -221,7 +186,6 @@ class UnifiedPackager:
         RESOURCES_BIN_DIR.mkdir(parents=True, exist_ok=True)
         RESOURCES_BACKEND_DIR.mkdir(parents=True, exist_ok=True)
 
-        # 1. Copy Operator binary
         operator_src = OPERATOR_DIR / "target" / "release" / self.op_bin_name
         operator_dst = RESOURCES_BIN_DIR / self.op_bin_name
         if operator_src.exists():
@@ -230,7 +194,6 @@ class UnifiedPackager:
                 operator_dst.chmod(0o755)
             log_ok(f"Staged Operator binary -> {operator_dst.name} ({get_file_size_mb(operator_dst):.1f} MB)")
 
-        # 2. Copy Redis executable if found on Windows
         if self.is_windows:
             redis_src = find_redis_server()
             if redis_src and redis_src.exists():
@@ -242,7 +205,6 @@ class UnifiedPackager:
                 except Exception as e:
                     log_warn(f"Could not copy Redis binary: {e}")
 
-        # 3. Copy Backend services
         modules_to_copy = ["Vault", "Message_Broker", "Memory", "Engine"]
 
         def backend_ignore(directory: str, files: List[str]) -> Set[str]:
@@ -267,7 +229,6 @@ class UnifiedPackager:
                 shutil.copytree(src_dir, dst_dir, ignore=backend_ignore)
                 log_info(f"Staged {mod_name} service module")
 
-        # 4. Copy start.py & services.json
         start_src = SCRIPT_DIR / "start.py"
         shutil.copy2(start_src, RESOURCES_BACKEND_DIR / "start.py")
 
@@ -288,7 +249,6 @@ class UnifiedPackager:
                 json.dump(default_services, f, indent=2)
         log_ok("Staged start.py orchestrator & services.json")
 
-        # 5. Windows: Stage WebView2Loader.dll for NSIS bundle
         if self.is_windows:
             windows_hooks_dir = TAURI_DIR / "windows"
             windows_hooks_dir.mkdir(parents=True, exist_ok=True)
@@ -311,7 +271,6 @@ class UnifiedPackager:
         bundle = conf.setdefault("bundle", {})
         dirty = False
 
-        # Set bundle targets
         if self.is_windows:
             desired_targets = "nsis"
         elif self.is_macos:
@@ -321,22 +280,17 @@ class UnifiedPackager:
         else:
             desired_targets = "all"
 
-        if self.args.bundle:
-            desired_targets = self.args.bundle
-
         if bundle.get("targets") != desired_targets:
             bundle["targets"] = desired_targets
             dirty = True
             log_info(f"Configured bundle.targets -> {desired_targets}")
 
-        # Ensure resources bundle pattern
         resources = bundle.setdefault("resources", [])
         if "resources/**/*" not in resources:
             resources.append("resources/**/*")
             dirty = True
             log_info("Added 'resources/**/*' to bundle.resources")
 
-        # Platform specific checks
         if self.is_windows:
             windows_conf = bundle.setdefault("windows", {})
             nsis_conf = windows_conf.setdefault("nsis", {})
@@ -356,7 +310,6 @@ class UnifiedPackager:
                 nsis_conf["headerImage"] = "icons/installer-header.bmp"
                 dirty = True
 
-            # Generate NSIS bitmaps if missing
             icon_png = TAURI_DIR / "icons" / "icon.png"
             sidebar_bmp = TAURI_DIR / "icons" / "installer-sidebar.bmp"
             header_bmp = TAURI_DIR / "icons" / "installer-header.bmp"
@@ -426,17 +379,11 @@ class UnifiedPackager:
             log_ok("Tauri bundle configuration is verified and ready")
 
     def build_installer(self) -> None:
-        if self.args.stage_only:
-            log_info("Stage-only mode specified. Skipping installer build.")
-            return
-
         log_step(6, self.total_steps, f"Building {self.os_name} Application Package ({self.bundle_target})")
         if self.is_linux:
             os.environ["APPIMAGE_EXTRACT_AND_RUN"] = "1"
         tauri_cmd = [self.npm_cmd, "run", "tauri", "build"]
-        if self.args.bundle:
-            tauri_cmd.extend(["--", "--bundles", self.args.bundle])
-        elif self.is_linux:
+        if self.is_linux:
             tauri_cmd.extend(["--", "--bundles", "deb,appimage"])
         elif self.is_macos:
             tauri_cmd.extend(["--", "--bundles", "dmg"])
@@ -504,7 +451,6 @@ class UnifiedPackager:
         self.build_installer()
 
 def get_project_version() -> str:
-    """Retrieve the current project version from configuration files."""
     tauri_conf_path = TAURI_DIR / "tauri.conf.json"
     if tauri_conf_path.exists():
         try:
@@ -537,59 +483,10 @@ def get_project_version() -> str:
 
     return "0.0.0"
 
-def check_project_versions() -> None:
-    """Check and display version consistency across all project config files."""
-    tauri_conf_path = TAURI_DIR / "tauri.conf.json"
-    client_pkg_path = CLIENT_DIR / "package.json"
-    tauri_cargo_path = TAURI_DIR / "Cargo.toml"
-    op_cargo_path = OPERATOR_DIR / "Cargo.toml"
-
-    versions = {}
-    if tauri_conf_path.exists():
-        try:
-            with open(tauri_conf_path, "r", encoding="utf-8") as f:
-                versions["Client/src-tauri/tauri.conf.json"] = json.load(f).get("version", "N/A")
-        except Exception as e:
-            versions["Client/src-tauri/tauri.conf.json"] = f"Error: {e}"
-
-    if client_pkg_path.exists():
-        try:
-            with open(client_pkg_path, "r", encoding="utf-8") as f:
-                versions["Client/package.json"] = json.load(f).get("version", "N/A")
-        except Exception as e:
-            versions["Client/package.json"] = f"Error: {e}"
-
-    if tauri_cargo_path.exists():
-        try:
-            m = re.search(r'(?m)^version\s*=\s*"([^"]+)"', tauri_cargo_path.read_text(encoding="utf-8"))
-            versions["Client/src-tauri/Cargo.toml"] = m.group(1) if m else "N/A"
-        except Exception as e:
-            versions["Client/src-tauri/Cargo.toml"] = f"Error: {e}"
-
-    if op_cargo_path.exists():
-        try:
-            m = re.search(r'(?m)^version\s*=\s*"([^"]+)"', op_cargo_path.read_text(encoding="utf-8"))
-            versions["Operator/Cargo.toml"] = m.group(1) if m else "N/A"
-        except Exception as e:
-            versions["Operator/Cargo.toml"] = f"Error: {e}"
-
-    print(f"\n{BOLD}{CYAN}MIRA Component Versions:{WHITE}")
-    val_set = set(v for v in versions.values() if not str(v).startswith("Error"))
-    all_same = len(val_set) <= 1
-    for path_name, ver in versions.items():
-        status = color("✔", GREEN) if all_same else color("▲", YELLOW)
-        print(f"  {status} {path_name:<36} : {BOLD}{ver}{WHITE}")
-
-    if all_same and val_set:
-        print(f"\n  {GREEN}✔ All components are synchronized on version {next(iter(val_set))}{WHITE}\n")
-    else:
-        print(f"\n  {YELLOW}▲ Versions are out of sync! Run: python scripts/build.py --set-version <VERSION>{WHITE}\n")
-
 def set_project_version(new_version: str) -> None:
     new_version = new_version.lstrip("v").strip()
     print(f"\n{BOLD}{CYAN}Updating MIRA project version to:{WHITE} {new_version}\n")
 
-    # 1. Client/src-tauri/tauri.conf.json
     tauri_conf_path = TAURI_DIR / "tauri.conf.json"
     if tauri_conf_path.exists():
         with open(tauri_conf_path, "r", encoding="utf-8") as f:
@@ -599,7 +496,6 @@ def set_project_version(new_version: str) -> None:
             json.dump(data, f, indent=2)
         log_ok(f"Updated {tauri_conf_path.relative_to(ROOT_DIR)} -> \"{new_version}\"")
 
-    # 2. Client/package.json
     client_pkg_path = CLIENT_DIR / "package.json"
     if client_pkg_path.exists():
         with open(client_pkg_path, "r", encoding="utf-8") as f:
@@ -609,7 +505,6 @@ def set_project_version(new_version: str) -> None:
             json.dump(data, f, indent=2)
         log_ok(f"Updated {client_pkg_path.relative_to(ROOT_DIR)} -> \"{new_version}\"")
 
-    # 3. Client/src-tauri/Cargo.toml
     tauri_cargo_path = TAURI_DIR / "Cargo.toml"
     if tauri_cargo_path.exists():
         content = tauri_cargo_path.read_text(encoding="utf-8")
@@ -617,7 +512,6 @@ def set_project_version(new_version: str) -> None:
         tauri_cargo_path.write_text(updated, encoding="utf-8")
         log_ok(f"Updated {tauri_cargo_path.relative_to(ROOT_DIR)} -> \"{new_version}\"")
 
-    # 4. Operator/Cargo.toml
     op_cargo_path = OPERATOR_DIR / "Cargo.toml"
     if op_cargo_path.exists():
         content = op_cargo_path.read_text(encoding="utf-8")
@@ -628,56 +522,29 @@ def set_project_version(new_version: str) -> None:
     print(f"\n{BOLD}{GREEN}★ Version updated to {new_version} across all build configurations! ★{WHITE}\n")
 
 def main() -> None:
-    # Direct short-circuit commands for fast scripting and shell evaluation
-    if len(sys.argv) == 2 and sys.argv[1].lower() in ("get-version", "version", "check-versions", "check-version"):
-        if "check" in sys.argv[1].lower():
-            check_project_versions()
-        else:
-            print(get_project_version())
-        return
-
-    parser = argparse.ArgumentParser(
-        description="MIRA Unified Cross-Platform Builder (Windows, macOS, Linux)",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  python scripts/build.py                     # Full build for current OS
-  python scripts/build.py --get-version       # Print current version (e.g. 0.1.2)
-  python scripts/build.py --set-version 0.2.0 # Bump version across all configs
-  python scripts/build.py --check-versions    # Verify sync across all component files
-  python scripts/build.py --stage-only        # Stage resources without packaging
-  python scripts/build.py --skip-operator     # Reuse existing operator binary
-  python scripts/build.py --bundle dmg        # Target specific bundle on macOS
-"""
-    )
-    parser.add_argument(
-        "--get-version", "--version", "-V",
-        action="store_true",
-        dest="get_version",
-        help="Print current project version and exit",
-    )
-    parser.add_argument("--set-version", type=str, default="", help="Bump version across tauri.conf.json, package.json, and Cargo.toml")
-    parser.add_argument("--check-versions", action="store_true", help="Check and display versions across all component config files")
-    parser.add_argument("--skip-operator", action="store_true", help="Skip Operator cargo compilation")
-    parser.add_argument("--skip-client", action="store_true", help="Skip Frontend Vite build")
-    parser.add_argument("--stage-only", action="store_true", help="Stage all resources without running tauri build")
-    parser.add_argument("--bundle", type=str, default="", help="Specific Tauri bundle target (e.g. nsis, dmg, app, deb, appimage, all)")
-
-    args = parser.parse_args()
-
-    if args.get_version:
+    if len(sys.argv) == 2 and sys.argv[1].lower() in ("-v", "--version", "--get-version", "get-version", "version"):
         print(get_project_version())
         return
 
-    if args.check_versions:
-        check_project_versions()
+    if len(sys.argv) >= 2 and sys.argv[1] in ("set-version", "--set-version"):
+        if len(sys.argv) > 2:
+            set_project_version(sys.argv[2])
+        return
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-v", "--version", "--get-version", action="store_true", dest="get_version")
+    parser.add_argument("--set-version", type=str, default="")
+    args, _ = parser.parse_known_args()
+
+    if args.get_version:
+        print(get_project_version())
         return
 
     if args.set_version:
         set_project_version(args.set_version)
         return
 
-    packager = UnifiedPackager(args)
+    packager = UnifiedPackager()
     packager.run()
 
 if __name__ == "__main__":

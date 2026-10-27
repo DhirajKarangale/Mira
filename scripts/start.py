@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import signal
 import socket
 import subprocess
@@ -21,7 +22,6 @@ if (SCRIPT_DIR.parent / "Vault").exists() and (SCRIPT_DIR.parent / "Client").exi
 else:
     ROOT_DIR = SCRIPT_DIR
 
-# Ensure valid stdout and stderr in headless/windowless GUI environments (e.g. spawned by Tauri with CREATE_NO_WINDOW)
 if sys.stdout is None or not hasattr(sys.stdout, "write"):
     try:
         sys.stdout = open(ROOT_DIR / "mira_backend.log", "a", encoding="utf-8", buffering=1)
@@ -218,7 +218,6 @@ def resolve_module_port(module: Dict[str, Any], allocated_ports: Set[int]) -> Tu
 
     allocated_ports.add(port)
     if module.get("id") == "client":
-
         allocated_ports.add(port + 1)
     return port, was_incremented
 
@@ -643,157 +642,17 @@ class ProcessRunner:
         time.sleep(1.0)
         log_sys(f"{color('All MIRA services stopped cleanly. Goodbye!', GREEN)}")
 
-def kill_processes_on_ports(ports: List[int]) -> None:
-    log_sys(f"Checking for lingering processes on ports: {ports}...")
-    killed_count = 0
-
-    if os.name == "nt":
-        for port in ports:
-            try:
-                out = subprocess.check_output(
-                    f"netstat -ano | findstr :{port}",
-                    shell=True,
-                    text=True,
-                    stderr=subprocess.DEVNULL
-                )
-                pids = set()
-                for line in out.strip().splitlines():
-                    parts = line.strip().split()
-                    if len(parts) >= 5 and "LISTENING" in line:
-                        pid = parts[-1]
-                        if pid.isdigit() and pid != "0":
-                            pids.add(pid)
-
-                for pid in pids:
-                    log_sys(f"Terminating PID {pid} holding port {port}...")
-                    subprocess.run(
-                        ["taskkill", "/F", "/PID", pid],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                        check=False
-                    )
-                    killed_count += 1
-            except Exception:
-                pass
-    else:
-        for port in ports:
-            try:
-                out = subprocess.check_output(f"lsof -ti:{port}", shell=True, text=True).strip()
-                if out:
-                    for pid in out.split():
-                        log_sys(f"Terminating PID {pid} holding port {port}...")
-                        subprocess.run(["kill", "-9", pid], check=False)
-                        killed_count += 1
-            except Exception:
-                pass
-
-    if killed_count > 0:
-        log_sys(f"{color('Successfully terminated', GREEN)} {killed_count} process(es) holding default ports.")
-    else:
-        log_sys(f"{color('No lingering processes found on target ports.', GREEN)}")
-
-def check_system_status() -> None:
-    print_banner()
-    log_sys("Checking live status of all MIRA services...")
-    services = load_services_json()
-
-    print("\n" + "=" * 78)
-    print(f"{'Module':<18} {'Configured URL':<30} {'Port':<8} {'Status':<15}")
-    print("=" * 78)
-
-    for mod in MODULE_REGISTRY:
-        mod_id = mod["id"]
-        default_url = f"http://{mod['default_host']}:{mod['default_port']}"
-        configured_url = services.get(mod_id, default_url)
-        clean = configured_url.replace("http://", "").replace("https://", "").rstrip("/")
-        port = clean.split(":")[1] if ":" in clean else str(mod["default_port"])
-
-        health_url = f"{configured_url.rstrip('/')}{mod['health_path']}"
-        is_healthy = check_service_health(health_url)
-
-        if is_healthy:
-            status_text = color("● ONLINE", GREEN)
-        else:
-            in_use = is_port_in_use(mod["default_host"], int(port))
-            if in_use:
-                status_text = color("▲ OCCUPIED", YELLOW)
-            else:
-                status_text = color("○ OFFLINE", RED)
-
-        print(f"{mod['name']:<18} {configured_url:<30} {port:<8} {status_text:<15}")
-
-    print("=" * 78 + "\n")
-
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="MIRA Unified Multi-Service Starter",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    parser.add_argument(
-        "--modules",
-        type=str,
-        default="",
-        help="Comma-separated list of module IDs to start (e.g. 'vault,message_broker,operator,client')"
-    )
-    parser.add_argument(
-        "--no-client",
-        action="store_true",
-        help="Skip starting the frontend Client module"
-    )
-    parser.add_argument(
-        "--no-open",
-        action="store_true",
-        help="Do not automatically open the Client UI in the default browser"
-    )
-    parser.add_argument(
-        "--check",
-        action="store_true",
-        help="Check port availability and print allocation plan without launching"
-    )
-    parser.add_argument(
-        "--status",
-        action="store_true",
-        help="Check health and connectivity status of currently running modules"
-    )
-    parser.add_argument(
-        "--kill-ports",
-        action="store_true",
-        help="Forcefully terminate any existing processes holding the default ports"
-    )
-    parser.add_argument(
-        "--prod",
-        action="store_true",
-        help="Run services in production mode (no reload, precompiled binaries)"
-    )
-    parser.add_argument(
-        "--headless",
-        action="store_true",
-        help="Run in headless non-interactive mode without opening browser"
-    )
-
-    args = parser.parse_args()
-
-    if args.status:
-        check_system_status()
-        return
-
-    if args.kill_ports:
-        print_banner()
-        default_ports = [m["default_port"] for m in MODULE_REGISTRY]
-        kill_processes_on_ports(default_ports)
-        return
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--no-client", action="store_true")
+    parser.add_argument("--prod", action="store_true")
+    parser.add_argument("--headless", action="store_true")
+    args, _ = parser.parse_known_args()
 
     if not args.headless:
         print_banner()
 
     target_modules = list(MODULE_REGISTRY)
-    if args.modules:
-        requested = [m.strip().lower() for m in args.modules.split(",") if m.strip()]
-        target_modules = [m for m in target_modules if m["id"] in requested]
-        if not target_modules:
-            log_sys(f"{color('ERROR:', RED)} No matching modules found for: '{args.modules}'")
-            sys.exit(1)
-
     if args.no_client:
         target_modules = [m for m in target_modules if m["id"] != "client"]
 
@@ -846,10 +705,6 @@ def main() -> None:
 
         print("=" * 82 + "\n")
 
-    if args.check:
-        log_sys(f"{color('Port availability inspection complete.', GREEN)} Exiting (--check mode).")
-        return
-
     log_sys("Updating services.json with resolved module base URLs...")
     update_services_json(url_map)
 
@@ -891,7 +746,7 @@ def main() -> None:
     print("=" * 82 + "\n")
 
     client_url = url_map.get("client")
-    if client_url and not args.no_client and not args.no_open and not args.headless:
+    if client_url and not args.no_client and not args.headless:
         log_sys(f"Auto-launching Client UI in default browser -> {color(client_url, CYAN)}")
         try:
             webbrowser.open(client_url)

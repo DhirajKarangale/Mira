@@ -12,7 +12,7 @@ This directory houses the unified orchestration, service discovery, build pipeli
 2. [File Manifest](#file-manifest)
 3. [Service Discovery (`services.json`)](#1-service-discovery-servicesjson)
 4. [Multi-Service Lifecycle Starter (`start.py`)](#2-multi-service-lifecycle-starter-startpy)
-5. [Unified Cross-Platform Builder (`build.py` / `buid.py`)](#3-unified-cross-platform-builder-buildpy--buidpy)
+5. [Unified Cross-Platform Builder (`build.py`)](#3-unified-cross-platform-builder-buildpy)
 6. [How to Run the Project](#how-to-run-the-project)
 7. [How to Build the Project](#how-to-build-the-project)
 8. [How to Get Project Version](#how-to-get-project-version)
@@ -64,7 +64,6 @@ This directory houses the unified orchestration, service discovery, build pipeli
 | [`services.json`](file:///e:/FullStack/Mira/scripts/services.json) | Central Service Discovery Registry defining active base URLs and ports for all services. |
 | [`start.py`](file:///e:/FullStack/Mira/scripts/start.py) | Master multi-module orchestrator. Handles port conflict resolution, health checks, Redis management, process supervision, and graceful shutdown. |
 | [`build.py`](file:///e:/FullStack/Mira/scripts/build.py) | Master packaging & compilation pipeline for Windows, macOS, and Linux installers. Also serves as the single source of truth for version querying and updating. |
-| [`buid.py`](file:///e:/FullStack/Mira/scripts/buid.py) | Forwarding alias wrapper for `build.py` to ensure compatibility and prevent typographical execution errors. |
 
 ---
 
@@ -94,7 +93,7 @@ This directory houses the unified orchestration, service discovery, build pipeli
 | **Engine** | `9007` | FastAPI (Python) | LLM inference coordinator, LangGraph orchestration, proactive suggestions. |
 | **Operator** | `9003` | Actix-web (Rust) | Native OS automation, screen capture, window tracking, system hooks. |
 | **Memory** | `9006` | FastAPI (Python) | OCR processing, vector retrieval, contextual semantic recall. |
-| **Client** | `9004` | Tauri v2 + React 19 + Vite | Desktop desktop window and responsive UI presentation layer. |
+| **Client** | `9004` | Tauri v2 + React 19 + Vite | Desktop window and responsive UI presentation layer. |
 
 ### Dynamic Conflict Resolution
 When `start.py` launches, it tests if any default port is in use by another application. If a conflict occurs, `start.py` automatically increments the port to the next free socket (e.g., `9001` -> `9005`), writes the updated URLs to `scripts/services.json` and `Client/.env.local`, and launches the services with the resolved ports.
@@ -111,27 +110,22 @@ When `start.py` launches, it tests if any default port is in use by another appl
 - **Environment Synchronization:** Dynamically writes `.env.local` for the Vite frontend and updates `tauri.conf.json` dev URLs.
 - **Dependency-Ordered Startup:** Starts services in logical dependency order (`Vault` -> `Message Broker` -> `Engine` -> `Operator` -> `Memory` -> `Client`) and polls each service's `/health` endpoint before starting dependent modules.
 - **Multiplexed Logging:** Tags stdout and stderr with color-coded service prefixes (`[VAULT]`, `[MESSAGE_BROKER]`, etc.).
-- **Graceful Teardown:** Listens for `SIGINT` (`Ctrl+C`) and `SIGTERM`, killing all child process trees cleanly (via `taskkill /T /F` on Windows) to prevent orphan processes.
+- **Graceful Teardown:** Listens for `SIGINT` (`Ctrl+C`) and `SIGTERM`, killing all child process trees cleanly to prevent orphan processes.
 
 ### Command-Line Arguments
 
 | Flag | Description |
 | :--- | :--- |
 | *(none)* | Start all services and launch the Client UI in your default browser. |
-| `--check` | Inspect socket availability and print the port allocation plan without launching any services. |
-| `--status` | Ping health endpoints of currently running services and print an active status report. |
-| `--kill-ports` | Forcefully kill any lingering processes occupying default ports (`9001`-`9007`). |
-| `--no-client` | Start all backend microservices without launching the frontend Client. |
-| `--no-open` | Start everything but do not auto-open the browser tab. |
-| `--headless` | Run in non-interactive background mode (suppresses banners and browser launching). |
-| `--modules <list>` | Start only specific services by ID, comma-separated (e.g. `--modules vault,message_broker`). |
+| `--no-client` | Start all backend microservices without launching the frontend Client (used by Tauri desktop runtime). |
 | `--prod` | Launch backend services in production mode (disables FastAPI auto-reload). |
+| `--headless` | Run in non-interactive background mode (suppresses banners and browser auto-launch). |
 
 ---
 
-## 3. Unified Cross-Platform Builder (`build.py` / `buid.py`)
+## 3. Unified Cross-Platform Builder (`build.py`)
 
-`build.py` (with `buid.py` alias) packages MIRA into native installers and binaries for Windows, macOS, and Linux.
+`build.py` packages MIRA into native installers and binaries for Windows, macOS, and Linux.
 
 ### The 6-Step Build Pipeline
 1. **Prerequisite Check:** Validates Python 3.10+, Rust Cargo, Node.js, and Redis binaries.
@@ -149,13 +143,8 @@ When `start.py` launches, it tests if any default port is in use by another appl
 | Flag | Description |
 | :--- | :--- |
 | *(none)* | Automatically detect operating system and perform full build + packaging. |
-| `--get-version`, `-V` | Output current project version string and exit immediately. |
-| `--check-versions` | Check and compare versions across all 4 configuration files. |
+| `-v`, `--version`, `--get-version` | Output current project version string and exit immediately. |
 | `--set-version <VER>` | Atomically update version number across all 4 component configuration files. |
-| `--skip-operator` | Skip compiling the Rust Operator (reuses existing release binary). |
-| `--skip-client` | Skip rebuilding frontend web assets (reuses existing `Client/dist/`). |
-| `--stage-only` | Stage all microservices and binaries into Tauri resources without compiling the installer. |
-| `--bundle <target>` | Target specific bundle format (e.g., `nsis`, `dmg`, `deb`, `appimage`, `all`). |
 
 ---
 
@@ -163,76 +152,26 @@ When `start.py` launches, it tests if any default port is in use by another appl
 
 Ensure you are in the **project root directory**:
 
-### 1. Quick Start (All Services + Web UI)
-Starts all backend services, Redis, and Client UI, then automatically opens your browser:
+### 1. Start the Project
+Starts all backend microservices, Redis, and Client UI, then opens your browser:
 ```powershell
 python scripts/start.py
 ```
 
-### 2. Pre-Flight Check (Verify Ports)
-Check which ports will be assigned without starting any services:
-```powershell
-python scripts/start.py --check
-```
-
-### 3. Backend Only (Headless / API Mode)
-Start all microservices without the frontend:
+### 2. Backend Only (Headless / API Mode)
+Start backend microservices without launching the frontend client:
 ```powershell
 python scripts/start.py --no-client
-```
-
-### 4. Specific Microservices Only
-Run only selected services (e.g., Vault and Message Broker):
-```powershell
-python scripts/start.py --modules vault,message_broker
-```
-
-### 5. Check Health of Running Services
-Verify health endpoints while services are running:
-```powershell
-python scripts/start.py --status
-```
-
-### 6. Free Blocked Ports
-If a previous session crashed and left ports occupied:
-```powershell
-python scripts/start.py --kill-ports
 ```
 
 ---
 
 ## How to Build the Project
 
-### 1. Full Production Build (Current OS)
+### Full Production Build (Current OS)
 Builds the complete desktop installer for your current platform:
 ```powershell
 python scripts/build.py
-```
-*(You can also use `python scripts/buid.py`)*
-
-### 2. Fast Incremental Build (Skip Recompiling Rust)
-If you only modified frontend or backend code and don't need to recompile the Operator:
-```powershell
-python scripts/build.py --skip-operator
-```
-
-### 3. Stage Resources Only
-Prepare all backend services and binaries for Tauri without triggering the full installer package:
-```powershell
-python scripts/build.py --stage-only
-```
-
-### 4. Build Specific Format
-Force a specific target bundle:
-```powershell
-# Windows NSIS Installer:
-python scripts/build.py --bundle nsis
-
-# macOS DMG:
-python scripts/build.py --bundle dmg
-
-# Linux Debian package:
-python scripts/build.py --bundle deb
 ```
 
 ### Installer Output Locations
@@ -244,32 +183,13 @@ python scripts/build.py --bundle deb
 
 ## How to Get Project Version
 
-### 1. Print Version Directly
-Prints the active synchronized version string:
+Print the active synchronized project version:
 ```powershell
-python scripts/build.py --get-version
+python scripts/build.py -v
 ```
 *Output example:*
 ```
 0.1.2
-```
-
-*(Shortcuts also supported: `python scripts/build.py get-version` or `python scripts/buid.py --get-version`)*
-
-### 2. Verify Consistency Across All Component Files
-Checks and prints whether all configuration files are in sync:
-```powershell
-python scripts/build.py --check-versions
-```
-*Output example:*
-```
-MIRA Component Versions:
-  ✔ Client/src-tauri/tauri.conf.json     : 0.1.2
-  ✔ Client/package.json                  : 0.1.2
-  ✔ Client/src-tauri/Cargo.toml          : 0.1.2
-  ✔ Operator/Cargo.toml                  : 0.1.2
-
-  ✔ All components are synchronized on version 0.1.2
 ```
 
 ---
@@ -307,5 +227,5 @@ Updating MIRA project version to: 0.2.0
 
 #### Verify the Update:
 ```powershell
-python scripts/build.py --check-versions
+python scripts/build.py -v
 ```

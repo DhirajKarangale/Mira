@@ -47,6 +47,7 @@ screenshots/
 
 # Service Discovery Registry (runtime overrides only)
 *.services.local.json
+scripts/services.json
 
 # Centralized Logs (preserve Client/src/**/Logs React components)
 logs/
