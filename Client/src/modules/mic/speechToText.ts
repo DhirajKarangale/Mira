@@ -12,6 +12,7 @@ import type { TranscriptionResult, MicError } from "./types";
 
 export const DEFAULT_STT_MODEL_ID = "scribe_v1";
 export const DEFAULT_STT_LANGUAGE_CODE = "en"; // Strictly consider language as English only
+export const LOCAL_STT_ENDPOINT = "http://127.0.0.1:9007/voice/stt/transcribe";
 export const ELEVENLABS_STT_ENDPOINT = "https://api.elevenlabs.io/v1/speech-to-text";
 
 export interface STTOptions {
@@ -43,13 +44,64 @@ export class ElevenLabsSTT {
       };
     }
 
+    const startTime = Date.now();
+    this.isTranscribing = true;
+
+    // 1. Primary: Native On-Device Neural STT (Faster-Whisper on Engine)
+    // 100% offline, zero API keys, no quota exhaustion
+    try {
+      const localFormData = new FormData();
+      const ext = audioBlob.type.includes("webm")
+        ? "webm"
+        : audioBlob.type.includes("mp4")
+        ? "mp4"
+        : audioBlob.type.includes("ogg")
+        ? "ogg"
+        : "wav";
+      localFormData.append("file", audioBlob, `audio.${ext}`);
+
+      const localRes = await fetch(LOCAL_STT_ENDPOINT, {
+        method: "POST",
+        body: localFormData,
+        signal: AbortSignal.timeout(8000),
+      });
+
+      if (localRes.ok) {
+        const localData = await localRes.json();
+        const text = (localData.text || "")
+          .replace(/\[.*?\]/g, "")
+          .replace(/\s+/g, " ")
+          .trim();
+
+        console.log(
+          `[Local Neural STT] Transcribed on-device (${localData.duration_ms || 0}ms, model: ${
+            localData.model || "faster-whisper"
+          }): "${text}" (0 API keys used)`
+        );
+
+        return {
+          text,
+          languageCode: localData.language || "en",
+          words: localData.words || [],
+          durationMs: localData.duration_ms || Date.now() - startTime,
+          timestamp: Date.now(),
+        };
+      }
+    } catch (localErr) {
+      console.debug(
+        "[Local Neural STT] Local endpoint offline/unreachable; trying ElevenLabs fallback:",
+        localErr
+      );
+    }
+
+    // 2. Fallback: ElevenLabs STT with round-robin key rotation
     const voiceStore = useVoiceStore.getState();
     const keys = voiceStore.keys.map((k) => k?.trim()).filter(Boolean);
 
     if (keys.length === 0) {
       throw this.createMicError(
         "auth_error",
-        "No ElevenLabs API keys configured. Please add an API key in Configurations > Voice & Mic."
+        "Local STT unreachable and no ElevenLabs API keys configured. Please start Engine service or add an ElevenLabs key."
       );
     }
 
@@ -61,8 +113,6 @@ export class ElevenLabsSTT {
 
     let currentAttempt = 0;
     const totalKeys = keys.length;
-    const startTime = Date.now();
-    this.isTranscribing = true;
 
     try {
       while (currentAttempt < totalKeys) {

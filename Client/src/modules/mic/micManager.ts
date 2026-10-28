@@ -69,6 +69,74 @@ export class MicManager {
 
     this.bindListenerEvents();
     this.initStoreSubscription();
+    this.initNativeMicWebSocket();
+  }
+
+  private nativeMicWs: WebSocket | null = null;
+
+  /**
+   * Subscribes to the host OS microphone event stream in MIRA Engine.
+   * Receives real-time wake word detections and commands from the soundcard.
+   */
+  private initNativeMicWebSocket(): void {
+    if (typeof window === "undefined") return;
+    try {
+      const ws = new WebSocket("ws://127.0.0.1:9007/voice/stt/events");
+      this.nativeMicWs = ws;
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "wake_word_detected") {
+            this.setState("collecting_command");
+            this.playActivationChime();
+            toast.info("Wake word detected on host OS microphone! Listening...", {
+              title: "Mira Activated (Native)",
+              color: MessageBarColor.Cyan,
+              duration: 3500,
+            });
+          } else if (data.type === "stop_playback") {
+            voiceQueueManager.stopAll();
+            audioPlayer.stop();
+            audioPlayer.restoreVolume();
+            this.wakeWord.reset();
+            this.processor.clear();
+            toast.info("Playback stopped", {
+              title: "Voice Stopped",
+              color: MessageBarColor.Gray,
+              duration: 3000,
+            });
+          } else if (data.type === "command_submitted" && data.command) {
+            audioPlayer.restoreVolume();
+            toast.show({
+              title: "Voice Command Received (Native OS)",
+              message: `"${data.command}"`,
+              type: "info",
+              color: MessageBarColor.Cyan,
+              duration: 3500,
+            });
+            this.router.submitCommand(data.command).catch((e) => {
+              console.error("[MicManager] Error routing native OS voice command:", e);
+            });
+          }
+        } catch {}
+      };
+
+      ws.onclose = () => {
+        this.nativeMicWs = null;
+        setTimeout(() => {
+          if (this.state !== "disabled") {
+            this.initNativeMicWebSocket();
+          }
+        }, 5000);
+      };
+
+      ws.onerror = () => {
+        try {
+          ws.close();
+        } catch {}
+      };
+    } catch {}
   }
 
   public getState(): MicState {
@@ -212,6 +280,9 @@ export class MicManager {
     this.lastSpeechTime = Date.now();
     this.setState("listening");
 
+    // Activate native OS microphone on the host machine via MIRA Engine
+    fetch("http://127.0.0.1:9007/voice/stt/mic/start", { method: "POST" }).catch(() => {});
+
     const hasSpeechRecognition =
       typeof window !== "undefined" &&
       Boolean(
@@ -238,6 +309,9 @@ export class MicManager {
    * Halts microphone listening and releases all resources.
    */
   public stop = (): void => {
+    // Deactivate native OS microphone on the host machine via MIRA Engine
+    fetch("http://127.0.0.1:9007/voice/stt/mic/stop", { method: "POST" }).catch(() => {});
+
     try {
       this.listener?.stop();
     } catch {}
@@ -746,6 +820,12 @@ export class MicManager {
 
   public dispose(): void {
     this.stop();
+    if (this.nativeMicWs) {
+      try {
+        this.nativeMicWs.close();
+      } catch {}
+      this.nativeMicWs = null;
+    }
     if (this.storeUnsubscribe) {
       this.storeUnsubscribe();
       this.storeUnsubscribe = null;

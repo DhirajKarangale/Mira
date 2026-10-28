@@ -16,6 +16,7 @@ from daily_suggestions import (
     stop_daily_suggestions,
     get_daily_suggestions_status,
 )
+from voice_stt import voice_stt_router, initialize_voice_stt, stop_native_mic
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -46,12 +47,21 @@ async def lifespan(app: FastAPI):
             await start_daily_suggestions()
         except Exception as e:
             log_error(f'Failed to start Daily Suggestions module: {e}')
+        try:
+            log("Initializing native on-device Voice STT in background...")
+            await asyncio.to_thread(initialize_voice_stt)
+        except Exception as e:
+            log_error(f"Failed to initialize native Voice STT: {e}")
 
     bg_task = asyncio.create_task(_async_background_init())
 
     yield
     log('Engine service shutting down cleanly...')
     bg_task.cancel()
+    try:
+        stop_native_mic()
+    except Exception as e:
+        log_error(f"Error stopping native microphone: {e}")
     try:
         await stop_daily_suggestions()
     except Exception as e:
@@ -76,6 +86,7 @@ app.add_middleware(
 )
 app.include_router(chat_router)
 app.include_router(daily_suggestions_router)
+app.include_router(voice_stt_router)
 
 
 
