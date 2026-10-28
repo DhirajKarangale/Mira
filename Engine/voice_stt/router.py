@@ -155,3 +155,4 @@ async def websocket_stt_events(websocket: WebSocket):
     except Exception as e:
         logger.debug(f"[NativeSTT] WebSocket error: {e}")
         broadcaster.disconnect(websocket)
+

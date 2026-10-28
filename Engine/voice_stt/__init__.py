@@ -34,3 +34,4 @@ __all__ = [
     "start_native_mic_if_enabled",
     "stop_native_mic",
 ]
+

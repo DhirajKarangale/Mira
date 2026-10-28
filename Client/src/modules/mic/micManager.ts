@@ -119,7 +119,7 @@ export class MicManager {
               console.error("[MicManager] Error routing native OS voice command:", e);
             });
           }
-        } catch {}
+        } catch { }
       };
 
       ws.onclose = () => {
@@ -134,9 +134,9 @@ export class MicManager {
       ws.onerror = () => {
         try {
           ws.close();
-        } catch {}
+        } catch { }
       };
-    } catch {}
+    } catch { }
   }
 
   public getState(): MicState {
@@ -206,7 +206,7 @@ export class MicManager {
       setTimeout(() => {
         try {
           ctx.close();
-        } catch {}
+        } catch { }
       }, 300);
     } catch (e) {
       console.debug("[MicManager] Chime error:", e);
@@ -260,7 +260,7 @@ export class MicManager {
 
     // Check initial state on creation
     if (useVoiceStore.getState().isMicOn) {
-      this.start().catch(() => {});
+      this.start().catch(() => { });
     }
   }
 
@@ -281,7 +281,7 @@ export class MicManager {
     this.setState("listening");
 
     // Activate native OS microphone on the host machine via MIRA Engine
-    fetch("http://127.0.0.1:9007/voice/stt/mic/start", { method: "POST" }).catch(() => {});
+    fetch("http://127.0.0.1:9007/voice/stt/mic/start", { method: "POST" }).catch(() => { });
 
     const hasSpeechRecognition =
       typeof window !== "undefined" &&
@@ -310,21 +310,21 @@ export class MicManager {
    */
   public stop = (): void => {
     // Deactivate native OS microphone on the host machine via MIRA Engine
-    fetch("http://127.0.0.1:9007/voice/stt/mic/stop", { method: "POST" }).catch(() => {});
+    fetch("http://127.0.0.1:9007/voice/stt/mic/stop", { method: "POST" }).catch(() => { });
 
     try {
       this.listener?.stop();
-    } catch {}
+    } catch { }
     try {
       if (typeof this.stopBrowserRecognition === "function") {
         this.stopBrowserRecognition();
       }
-    } catch {}
+    } catch { }
     try {
       if (typeof this.stopSilenceMonitoringLoop === "function") {
         this.stopSilenceMonitoringLoop();
       }
-    } catch {}
+    } catch { }
     this.wakeWord.reset();
     this.processor.clear();
     this.isFinalizingCommand = false;
@@ -638,7 +638,7 @@ export class MicManager {
         if (this.state === "listening" || this.state === "collecting_command") {
           try {
             this.browserRecognition?.start();
-          } catch {}
+          } catch { }
         }
       };
 
@@ -658,7 +658,7 @@ export class MicManager {
         this.browserRecognition.onerror = null;
         this.browserRecognition.onresult = null;
         this.browserRecognition.stop();
-      } catch {}
+      } catch { }
       this.browserRecognition = null;
     }
   };
@@ -782,15 +782,6 @@ export class MicManager {
 
     this.setState("submitting");
 
-    // Notify in MessageBar that command is being sent to chat
-    toast.show({
-      title: "Sending Voice Command to Chat...",
-      message: `"${validation.command}"`,
-      type: "info",
-      color: MessageBarColor.Cyan,
-      duration: 3500,
-    });
-
     try {
       await this.router.submitCommand(validation.command);
     } catch (err) {
@@ -833,7 +824,7 @@ export class MicManager {
     if (this.nativeMicWs) {
       try {
         this.nativeMicWs.close();
-      } catch {}
+      } catch { }
       this.nativeMicWs = null;
     }
     if (this.storeUnsubscribe) {
@@ -849,7 +840,7 @@ if (typeof (MicManager.prototype as any).stopBrowserRecognition !== "function") 
   (MicManager.prototype as any).stopBrowserRecognition = function () {
     try {
       (this as any).browserRecognition?.stop();
-    } catch {}
+    } catch { }
     (this as any).browserRecognition = null;
   };
 }

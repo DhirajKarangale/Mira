@@ -136,3 +136,4 @@ class LocalSTTService:
             raise
 
 stt_service = LocalSTTService.get_instance()
+
