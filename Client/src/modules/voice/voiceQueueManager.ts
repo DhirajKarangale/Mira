@@ -18,6 +18,7 @@ class VoiceQueueManager {
 
   private playbackAbortController: AbortController | null = null;
   private generationAbortControllers: Map<string, AbortController> = new Map();
+  private lastSpokenTexts: { text: string; timestamp: number }[] = [];
 
   // Subscribers for reactive UI updates
   private listeners: Set<() => void> = new Set();
@@ -234,6 +235,7 @@ class VoiceQueueManager {
             chunk.state = "playing";
             this.notify();
             try {
+              this.recordSpokenText(chunk.text);
               await audioPlayer.speakBrowserText(chunk.text, signal);
               chunk.state = "completed";
               this.notify();
@@ -257,6 +259,7 @@ class VoiceQueueManager {
         this.notify();
 
         try {
+          this.recordSpokenText(chunk.text);
           await audioPlayer.playAudioUrl(chunk.audioUrl, signal);
           chunk.state = "completed";
           this.notify();
@@ -281,6 +284,7 @@ class VoiceQueueManager {
         console.warn("[VoiceQueueManager] Voice response failed:", nextResponse.error);
       }
       nextResponse.finishedAt = Date.now();
+      this.recordSpokenText(nextResponse.cleanText);
     } catch (err) {
       if (!signal.aborted) {
         nextResponse.state = "failed";
@@ -439,6 +443,102 @@ class VoiceQueueManager {
    */
   getInterResponseDelay(): number {
     return this.interResponseDelayMs;
+  }
+
+  /**
+   * Records spoken AI text to prevent acoustic feedback / self-echo loopback into the microphone.
+   */
+  public recordSpokenText(text: string): void {
+    if (!text) return;
+    const clean = text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!clean) return;
+    this.lastSpokenTexts.push({ text: clean, timestamp: Date.now() });
+    // Keep last 30 seconds of speech
+    const cutoff = Date.now() - 30000;
+    this.lastSpokenTexts = this.lastSpokenTexts.filter((item) => item.timestamp > cutoff);
+  }
+
+  /**
+   * Returns recent spoken text entries from the last 30 seconds.
+   */
+  public getLastSpokenTexts(): string[] {
+    const cutoff = Date.now() - 30000;
+    return this.lastSpokenTexts
+      .filter((item) => item.timestamp > cutoff)
+      .map((item) => item.text);
+  }
+
+  /**
+   * Determines whether an incoming transcribed speech phrase is self-echo from Mira's own speakers.
+   * Compares against recently synthesized and played AI speech.
+   */
+  public isSelfEcho(incoming: string): boolean {
+    if (!incoming) return false;
+    const cleanIncoming = incoming
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!cleanIncoming) return false;
+
+    // Never suppress explicit interrupt / stop commands
+    const isStop = [
+      "stop",
+      "quiet",
+      "quite",
+      "mute",
+      "silence",
+      "be quiet",
+      "stop talking",
+      "stop speaking",
+      "shut up",
+      "shush",
+      "pause",
+      "cancel",
+      "mira stop",
+    ].includes(cleanIncoming);
+    if (isStop) return false;
+
+    const incomingWords = cleanIncoming.split(/\s+/).filter(Boolean);
+    if (incomingWords.length === 0) return false;
+
+    const cutoff = Date.now() - 30000;
+    this.lastSpokenTexts = this.lastSpokenTexts.filter((item) => item.timestamp > cutoff);
+
+    for (const item of this.lastSpokenTexts) {
+      // 1. Direct substring match
+      if (item.text.includes(cleanIncoming)) {
+        return true;
+      }
+
+      // 2. 3-word n-gram phrase match
+      if (incomingWords.length >= 3) {
+        for (let i = 0; i <= incomingWords.length - 3; i++) {
+          const phrase = incomingWords.slice(i, i + 3).join(" ");
+          if (item.text.includes(phrase)) {
+            return true;
+          }
+        }
+      }
+
+      // 3. Significant word overlap (>= 60% of incoming words are in spoken text)
+      if (incomingWords.length >= 2) {
+        const spokenWordSet = new Set(item.text.split(/\s+/).filter(Boolean));
+        let matches = 0;
+        for (const w of incomingWords) {
+          if (spokenWordSet.has(w)) matches++;
+        }
+        if (matches / incomingWords.length >= 0.6) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 }
 

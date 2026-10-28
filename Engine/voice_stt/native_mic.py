@@ -285,15 +285,14 @@ class NativeMicWorker:
 
         logger.info(f"[NativeMic] Confirmed valid command from native OS mic: \"{full_command}\"")
 
-        # Broadcast event to Client UI
+        # Broadcast event to Client UI via WebSocket
         self._broadcast_event({
             "type": "command_submitted",
             "command": full_command,
             "timestamp": time.time(),
         })
 
-        # Submit to Chat Engine asynchronously if available
-        self._submit_to_chat_engine(full_command)
+        # Note: Command routing to active chat session is managed centrally by the Client's ChatRouter
 
         # Reset command collector
         self.is_collecting_command = False

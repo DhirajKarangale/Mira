@@ -13,6 +13,7 @@ export class AudioPlayer {
   private isWebAudioReady = false;
   private currentPromiseReject: ((reason?: unknown) => void) | null = null;
   private isPlayingAudio = false;
+  private lastPlaybackEndTime = 0;
   private volumeLevel = 1.0;
   private isMutedState = false;
   private isDuckedState = false;
@@ -112,6 +113,14 @@ export class AudioPlayer {
    */
   get isPlaying(): boolean {
     return this.isPlayingAudio;
+  }
+
+  /**
+   * Returns timestamp (ms) when playback last finished or was stopped.
+   * Used for acoustic echo cancellation and trailing reverberation suppression.
+   */
+  get lastPlaybackEnd(): number {
+    return this.lastPlaybackEndTime;
   }
 
   /**
@@ -277,6 +286,7 @@ export class AudioPlayer {
 
       audio.onended = () => {
         cleanup();
+        this.lastPlaybackEndTime = Date.now();
         resolve();
       };
 
@@ -376,6 +386,7 @@ export class AudioPlayer {
 
       utterance.onend = () => {
         this.isPlayingAudio = false;
+        this.lastPlaybackEndTime = Date.now();
         if (signal) signal.removeEventListener("abort", onAbort);
         resolve();
       };
@@ -405,6 +416,7 @@ export class AudioPlayer {
   stop(): void {
     this.isDuckedState = false;
     this.isPlayingAudio = false;
+    this.lastPlaybackEndTime = Date.now();
 
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       try {

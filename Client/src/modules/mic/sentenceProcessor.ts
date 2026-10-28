@@ -186,38 +186,58 @@ export class SentenceProcessor {
     return this.segments.length > 0 && this.getRawText().trim().length > 0;
   }
 
+  private cleanTokenString(s: string): string {
+    return (s || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
   /**
    * Adds a new transcription segment to the aggregated command text.
-   * Handles deduplication, prefix replacement, and smooth joins across partial segments.
+   * Handles deduplication, progressive prefix replacement, and smooth joins across partial segments.
    */
   public addSegment(segmentText: string): void {
     const trimmed = (segmentText || "").trim();
     if (!trimmed) return;
 
+    const trimmedNorm = this.cleanTokenString(trimmed);
+    if (!trimmedNorm) return;
+
     if (this.segments.length > 0) {
       const lastIndex = this.segments.length - 1;
       const last = this.segments[lastIndex];
+      const lastNorm = this.cleanTokenString(last);
 
-      // 1. Identical segment: skip duplicate
-      if (last.toLowerCase() === trimmed.toLowerCase()) {
+      // 1. Identical segment (normalized): skip duplicate
+      if (lastNorm === trimmedNorm) {
         return;
       }
 
-      // 2. Extension / superstring of last segment:
+      // 2. Entire command extension: if new segment begins with all accumulated text,
+      // it is a revised full transcript from the engine (e.g. streaming update). Replace everything!
+      const currentRawNorm = this.cleanTokenString(this.getRawText());
+      if (currentRawNorm && trimmedNorm.startsWith(currentRawNorm)) {
+        this.segments = [trimmed];
+        return;
+      }
+
+      // 3. Extension / superstring of last segment:
       // E.g., last was "can you tell me" and new is "can you tell me who is the CEO of Google"
       // Replace last with the full new segment instead of appending duplicates!
-      if (trimmed.toLowerCase().startsWith(last.toLowerCase())) {
+      if (lastNorm && trimmedNorm.startsWith(lastNorm)) {
         this.segments[lastIndex] = trimmed;
         return;
       }
 
-      // 3. Substring of last segment:
+      // 4. Substring of last segment or accumulated text:
       // E.g., last was "can you tell me who is the CEO of Google" and new is "CEO of Google"
-      if (last.toLowerCase().includes(trimmed.toLowerCase())) {
+      if (currentRawNorm && currentRawNorm.includes(trimmedNorm)) {
         return;
       }
 
-      // 4. Overlap check across full length
+      // 5. Overlap check across full length
       const lastWords = last.split(/\s+/);
       const newWords = trimmed.split(/\s+/);
       const overlapLen = this.findOverlapWords(lastWords, newWords);
@@ -226,12 +246,6 @@ export class SentenceProcessor {
         if (nonOverlapping.trim()) {
           this.segments.push(nonOverlapping.trim());
         }
-        return;
-      }
-
-      // 5. If new segment is already included anywhere in accumulated raw text, drop it
-      const currentRaw = this.getRawText().toLowerCase();
-      if (currentRaw.includes(trimmed.toLowerCase())) {
         return;
       }
     }

@@ -45,9 +45,6 @@ export class MicManager {
   private lastSpeechTime = 0;
   private silenceCheckTimer: ReturnType<typeof setInterval> | null = null;
   private hasShownQuotaWarning = false;
-  // Browser SpeechRecognition engine (native zero-latency streaming)
-  private browserRecognition: any = null;
-  private isBrowserRecognitionActive = false;
 
   constructor(
     listener = micListener,
@@ -70,79 +67,11 @@ export class MicManager {
 
     this.bindListenerEvents();
     this.initStoreSubscription();
-    this.initNativeMicWebSocket();
 
     // Subscribe to decoupled Voice-to-Text providers
     voiceToTextService.onText((result: VoiceToTextResult) => {
       this.handleSpeechInput(result);
     });
-  }
-
-  private nativeMicWs: WebSocket | null = null;
-
-  /**
-   * Subscribes to the host OS microphone event stream in MIRA Engine.
-   * Receives real-time wake word detections and commands from the soundcard.
-   */
-  private initNativeMicWebSocket(): void {
-    if (typeof window === "undefined") return;
-    try {
-      const ws = new WebSocket("ws://127.0.0.1:9007/voice/stt/events");
-      this.nativeMicWs = ws;
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === "wake_word_detected") {
-            this.setState("collecting_command");
-            this.playActivationChime();
-            toast.info("Wake word detected on host OS microphone! Listening...", {
-              title: "Mira Activated (Native)",
-              color: MessageBarColor.Cyan,
-              duration: 3500,
-            });
-          } else if (data.type === "stop_playback") {
-            voiceQueueManager.stopAll();
-            audioPlayer.stop();
-            audioPlayer.restoreVolume();
-            this.wakeWord.reset();
-            this.processor.clear();
-            toast.info("Playback stopped", {
-              title: "Voice Stopped",
-              color: MessageBarColor.Gray,
-              duration: 3000,
-            });
-          } else if (data.type === "command_submitted" && data.command) {
-            audioPlayer.restoreVolume();
-            toast.show({
-              title: "Voice Command Received (Native OS)",
-              message: `"${data.command}"`,
-              type: "info",
-              color: MessageBarColor.Cyan,
-              duration: 3500,
-            });
-            this.router.submitCommand(data.command).catch((e) => {
-              console.error("[MicManager] Error routing native OS voice command:", e);
-            });
-          }
-        } catch { }
-      };
-
-      ws.onclose = () => {
-        this.nativeMicWs = null;
-        setTimeout(() => {
-          if (this.state !== "disabled") {
-            this.initNativeMicWebSocket();
-          }
-        }, 5000);
-      };
-
-      ws.onerror = () => {
-        try {
-          ws.close();
-        } catch { }
-      };
-    } catch { }
   }
 
   public getState(): MicState {
@@ -445,12 +374,22 @@ export class MicManager {
       return;
     }
 
-    // Duck volume during user speech if voice is currently playing
-    if (isVoicePlaying) {
-      audioPlayer.duckVolume(0.2);
+    // 2. Acoustic Echo & System Audio Suppression Gate:
+    // If Mira is actively speaking through the speakers, OR playback just ended (< 1200ms echo hangover window),
+    // OR the incoming text matches recently spoken AI audio (self-echo):
+    // DISCARD IMMEDIATELY! Do NOT detect wake words, do NOT append segments, do NOT submit to chat.
+    const timeSincePlayback = Date.now() - audioPlayer.lastPlaybackEnd;
+    const isInEchoHangover = timeSincePlayback < 1200;
+    const isEcho = voiceQueueManager.isSelfEcho(clean);
+
+    if (isVoicePlaying || isInEchoHangover || isEcho) {
+      console.log(
+        `[MicManager] Discarding speech (self-echo / system audio suppression: playing=${isVoicePlaying}, echoHangover=${isInEchoHangover}, isEcho=${isEcho}): "${clean}"`
+      );
+      return;
     }
 
-    // 2. Wake Word Detection (Mira, Mirror, Meera, Mera, Amira, etc.)
+    // 3. Wake Word Detection (Mira, Mirror, Meera, Mera, Amira, etc.)
     if (!this.wakeWord.getIsCollecting()) {
       let detectedWake = false;
       for (const candidate of candidates) {
@@ -480,18 +419,13 @@ export class MicManager {
         console.log(`[MicManager] Speech ignored (waiting for "Mira"): "${clean}"`);
       }
     } else {
-      // 3. Collecting command: ONLY commit FINAL results to SentenceProcessor!
+      // 4. Collecting command: ONLY commit FINAL results to SentenceProcessor!
       // Interim results represent live in-progress speech, do NOT append them repeatedly.
       if (result.isFinal) {
         const processed = this.wakeWord.processTranscription(clean);
         const segmentToAdd = processed.commandPart || clean;
         if (segmentToAdd) {
           this.processor.addSegment(segmentToAdd);
-          toast.info(`"${segmentToAdd}"`, {
-            title: "Speech Captured",
-            color: MessageBarColor.Blue,
-            duration: 3500,
-          });
           console.log(
             `[MicManager] Collected final segment: "${segmentToAdd}". Current command: "${this.processor.getRawText()}"`
           );
@@ -526,103 +460,18 @@ export class MicManager {
   }
 
   /**
-   * Starts native streaming SpeechRecognition with interimResults and multi-alternative candidate evaluation.
+   * Activates browser SpeechRecognition provider via central VoiceToTextService.
    */
   private startBrowserRecognition(): void {
-    if (typeof window === "undefined" || this.isBrowserRecognitionActive) return;
-
-    const SpeechRecClass =
-      (window as unknown as { SpeechRecognition?: any }).SpeechRecognition ||
-      (window as unknown as { webkitSpeechRecognition?: any }).webkitSpeechRecognition;
-
-    if (!SpeechRecClass) return;
-
     try {
-      this.browserRecognition = new SpeechRecClass();
-      this.browserRecognition.continuous = true;
-      this.browserRecognition.interimResults = true;
-      this.browserRecognition.maxAlternatives = 3;
-      this.browserRecognition.lang = "en-US";
-
-      this.browserRecognition.onstart = () => {
-        this.isBrowserRecognitionActive = true;
-        this.lastSpeechTime = Date.now();
-        console.log("[MicManager] Real-time browser SpeechRecognition active (en-US).");
-      };
-
-      this.browserRecognition.onspeechstart = () => {
-        this.lastSpeechTime = Date.now();
-        if (audioPlayer.isPlaying) {
-          audioPlayer.duckVolume(0.2);
-        }
-      };
-
-      this.browserRecognition.onresult = (event: any) => {
-        const now = Date.now();
-        this.lastSpeechTime = now;
-
-        if (audioPlayer.isPlaying) {
-          audioPlayer.duckVolume(0.2);
-        }
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const result = event.results[i];
-          if (!result) continue;
-
-          // Collect all candidate alternatives
-          const alternatives: string[] = [];
-          for (let a = 0; a < result.length; a++) {
-            if (result[a]?.transcript) {
-              alternatives.push(result[a].transcript.trim());
-            }
-          }
-          const primary = alternatives[0] || "";
-          if (!primary) continue;
-
-          // Forward to universal speech handler
-          this.handleSpeechInput({
-            text: primary,
-            isFinal: Boolean(result.isFinal),
-            provider: "browser",
-            alternatives,
-          });
-        }
-      };
-
-      this.browserRecognition.onerror = (e: any) => {
-        if (e?.error === "no-speech") {
-          return; // Common during silence; silently continue
-        }
-        if (e?.error === "not-allowed" || e?.error === "permission-denied") {
-          toast.error(
-            "Microphone access was denied. Please allow microphone permissions in system settings.",
-            {
-              title: "Microphone Access Denied",
-              color: MessageBarColor.Red,
-              duration: 6000,
-            }
-          );
-          this.setState("idle");
-          return;
-        }
-        console.debug("[MicManager] Browser SpeechRecognition event warning:", e?.error);
-      };
-
-      this.browserRecognition.onend = () => {
-        this.isBrowserRecognitionActive = false;
-        // Automatically restart continuous recognition if still in listening state
-        if (this.state === "listening" || this.state === "collecting_command") {
-          try {
-            this.browserRecognition?.start();
-          } catch { }
-        }
-      };
-
-      this.browserRecognition.start();
-      this.isBrowserRecognitionActive = true;
+      voiceToTextService.setActiveProvider("browser_speech");
+      if (this.state === "listening" || this.state === "collecting_command") {
+        voiceToTextService.start().catch((err) => {
+          console.debug("[MicManager] Failed to start browser speech provider:", err);
+        });
+      }
     } catch (e) {
-      console.warn("[MicManager] Failed to start browser SpeechRecognition:", e);
-      this.isBrowserRecognitionActive = false;
+      console.warn("[MicManager] Error activating browser speech provider:", e);
     }
   }
 
@@ -630,16 +479,6 @@ export class MicManager {
     try {
       voiceToTextService.getProvider("browser_speech")?.stop();
     } catch {}
-    if (this.browserRecognition) {
-      this.isBrowserRecognitionActive = false;
-      try {
-        this.browserRecognition.onend = null;
-        this.browserRecognition.onerror = null;
-        this.browserRecognition.onresult = null;
-        this.browserRecognition.stop();
-      } catch { }
-      this.browserRecognition = null;
-    }
   }
 
   public stopBrowserRecognitionFallback(): void {
@@ -770,7 +609,7 @@ export class MicManager {
       this.wakeWord.reset();
       this.processor.clear();
       this.lastSpeechTime = Date.now();
-      if (this.isBrowserRecognitionActive || this.listener.getIsListening()) {
+      if (voiceToTextService.getActiveProvider()?.getIsRunning?.() || this.listener.getIsListening()) {
         this.setState("listening");
       } else {
         this.setState("idle");
@@ -800,12 +639,6 @@ export class MicManager {
 
   public dispose(): void {
     this.stop();
-    if (this.nativeMicWs) {
-      try {
-        this.nativeMicWs.close();
-      } catch { }
-      this.nativeMicWs = null;
-    }
     if (this.storeUnsubscribe) {
       this.storeUnsubscribe();
       this.storeUnsubscribe = null;
