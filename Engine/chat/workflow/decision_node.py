@@ -78,14 +78,23 @@ def _fast_route_heuristic(query: str, chat_history: List[Dict[str, Any]]) -> Opt
     if not is_activity_query and any(n in q for n in news_terms):
         return "news", "Fast heuristic: News query", {}
 
-    # 4. Unambiguous general technical / coding / explanation query
-    general_starters = (
-        "write a python", "write code", "how to write", "how do i write",
-        "explain how", "what is the capital", "difference between", "which is better",
-        "compare ", "calculate ", "solve "
+    # 4. Unambiguous general technical / coding / comparison query
+    coding_pattern = r'\b(write|create|implement|give me|show me|how to)\s+(a\s+)?([a-z]+\s+)?(python|javascript|typescript|c\+\+|java|go|rust|sql|html|css|code|function|script|algorithm|regex|query|program|implement|build)\b'
+    comp_pattern = r'\b(which\s+(?:llm|model|framework|language|tool|one)?\s*(?:is|are)\s+better|difference\s+between|compare\s+|versus|\bvs\b)'
+    if not is_activity_query and not chat_history:
+        if re.search(coding_pattern, q) or re.search(comp_pattern, q):
+            return "general_llm", "Fast heuristic: Technical / coding / comparison query", {}
+
+    # 5. Explanatory / informational questions (e.g. "can you tell me about X and why Y", "explain why X happened")
+    # when not explicitly asking for news headlines or live articles
+    has_news_kw = any(k in q for k in ("news", "headline", "headlines", "breaking", "article", "articles"))
+    explanation_starters = (
+        "can you tell me about", "tell me about", "explain why", "why did", "why do",
+        "what is the reason", "how come", "what happened to", "what happened with",
+        "explain how", "what is the capital", "calculate ", "solve "
     )
-    if not is_activity_query and not chat_history and any(q.startswith(s) for s in general_starters):
-        return "general_llm", "Fast heuristic: Coding / general explanation query", {}
+    if not is_activity_query and not has_news_kw and not chat_history and any(q.startswith(p) for p in explanation_starters):
+        return "general_llm", "Fast heuristic: General explanation / informational query", {}
 
     return None
 
@@ -164,8 +173,8 @@ Instructions:
    - "history_answer": The query is a follow-up, clarification, reformatting, or question whose answer is ALREADY present in the conversation history above (e.g. asking which browser was used when already listed, asking to summarize or reformat previous reply, asking about an entity already explained).
    - "user_activity": The user is asking about their personal activities, screen time, applications used, documents opened, or work history that REQUIRES querying the personal screen activity database.
    - "weather": The user is asking about current weather, weather forecasts, temperature, rain/precipitation, snowfall, humidity, wind speed, or meteorological conditions for today or upcoming days.
-   - "news": The user is asking about current or latest news, breaking news, headlines, top stories, country or city news, category news (tech, business, sports, entertainment, health, science, world), specific news topics, or news from date ranges.
-   - "general_llm": General knowledge, coding help, definitions, reasoning, greeting, or chit-chat that does not query personal screen logs, weather, or news.
+   - "news": The user is specifically asking for recent, breaking, or current news articles, headlines, or live journalistic updates (e.g. "latest tech news", "breaking news today", "what are the headlines", "news about Tesla").
+   - "general_llm": General knowledge, coding help, historical/analytical explanations (e.g. "tell me about Microsoft and why companies do layoffs", "explain quantum computing", "how does an engine work"), definitions, reasoning, greeting, or chit-chat that does not query personal screen logs, weather, or news.
 2. Follow-Up & Context Resolution:
    - "is_follow_up": true if the query refers to, continues, or relies on previous messages in this session.
    - "can_answer_from_history": true if the conversation history above already contains enough information to answer the question without querying Qdrant/vector store.
@@ -185,7 +194,7 @@ Instructions:
    - If route is "news":
      - "news_plan":
        - "operation": "top_headlines" for trending, breaking, or category headlines; OR "search" for specific topics, entities, companies, people, events, cities/regions, or date ranges.
-       - "q": Search keywords or topic query (max 200 chars), or null for broad headlines.
+       - "q": Pure alphanumeric search keywords or topic (e.g. "Microsoft layoffs", "Apple earnings", "AI chip breakthrough"). IMPORTANT: Do NOT include commas, question marks, punctuation, or special characters in "q".
        - "category": Category string if applicable ("general", "world", "nation", "business", "technology", "entertainment", "sports", "science", "health"), or null.
        - "country": 2-letter ISO country code if specific country requested (e.g. "us", "in", "gb"), or null.
        - "location": Specific city or region name if mentioned (e.g. "Chicago", "Tokyo", "London"), or null.

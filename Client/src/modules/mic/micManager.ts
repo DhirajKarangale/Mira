@@ -345,6 +345,11 @@ export class MicManager {
       voiceQueueManager.getCurrentPlaying() !== null ||
       voiceQueueManager.getSnapshot().totalInQueue > 0;
 
+    // Instantly duck volume during active speech so microphone can hear user without shouting
+    if (isVoicePlaying) {
+      audioPlayer.duckVolume(0.15);
+    }
+
     const stopMatch =
       candidates.find((t) => isVoiceStopCommand(t, isVoicePlaying)) ||
       (isVoiceStopCommand(clean, isVoicePlaying) ? clean : null);

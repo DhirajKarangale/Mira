@@ -62,7 +62,7 @@ export class AudioPlayer {
 
       this.audioContext = new AudioCtxClass();
       this.gainNode = this.audioContext.createGain();
-      const targetGain = this.isMutedState ? 0 : Math.max(0, this.volumeLevel) * 2.5;
+      const targetGain = this.isMutedState ? 0 : Math.max(0, this.volumeLevel);
       this.gainNode.gain.value = targetGain;
       try {
         this.gainNode.gain.setValueAtTime(
@@ -72,9 +72,9 @@ export class AudioPlayer {
       } catch {}
 
       this.compressorNode = this.audioContext.createDynamicsCompressor();
-      this.compressorNode.threshold.value = -18;
-      this.compressorNode.knee.value = 16;
-      this.compressorNode.ratio.value = 6;
+      this.compressorNode.threshold.value = -12;
+      this.compressorNode.knee.value = 12;
+      this.compressorNode.ratio.value = 2.5;
       this.compressorNode.attack.value = 0.003;
       this.compressorNode.release.value = 0.20;
 
@@ -85,7 +85,7 @@ export class AudioPlayer {
       this.gainNode.connect(this.compressorNode);
       this.compressorNode.connect(this.audioContext.destination);
       this.isWebAudioReady = true;
-      console.log("[AudioPlayer] Web Audio booster active: Super Volume (2.5x Gain + Dynamic Compressor)");
+      console.log("[AudioPlayer] Web Audio pipeline active (Natural Balance + Anti-Clipping Compressor)");
     } catch (err) {
       console.warn(
         "[AudioPlayer] Web Audio booster init failed; using direct HTML5 audio output:",
@@ -152,7 +152,7 @@ export class AudioPlayer {
   /**
    * Ducks (lowers) volume temporarily when the user speaks while voice playback is going on.
    */
-  duckVolume(duckRatio = 0.2): void {
+  duckVolume(duckRatio = 0.15): void {
     if (this.isDuckedState || !this.isPlayingAudio) return;
     this.preDuckVolume = this.volumeLevel;
     this.isDuckedState = true;
@@ -176,13 +176,8 @@ export class AudioPlayer {
   private applyVolume(clamped: number): void {
     if (this.audioElement) {
       try {
-        // HTMLMediaElement.volume strictly requires values in [0.0, 1.0].
-        // Setting volume > 1.0 throws IndexSizeError DOMException in all browsers.
-        // Extra boost above 100% (>1.0) is cleanly amplified via Web Audio GainNode.
         const safeVolume = this.isMutedState
           ? 0
-          : this.isWebAudioReady
-          ? 1.0
           : Math.min(1.0, Math.max(0, clamped));
         this.audioElement.volume = safeVolume;
         this.audioElement.muted = this.isMutedState;
@@ -193,7 +188,7 @@ export class AudioPlayer {
 
     if (this.gainNode && this.audioContext) {
       try {
-        const targetGain = this.isMutedState ? 0 : Math.max(0, clamped) * 2.5;
+        const targetGain = this.isMutedState ? 0 : Math.max(0, clamped);
         this.gainNode.gain.value = targetGain;
         try {
           this.gainNode.gain.setValueAtTime(

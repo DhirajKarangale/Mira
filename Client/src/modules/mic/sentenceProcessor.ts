@@ -13,8 +13,12 @@ export const DEFAULT_SILENCE_THRESHOLD_MS = 1800; // 1.8-second natural conversa
 
 const STOP_PATTERNS = [
   /\bstop\b/i,
+  /\bstops\b/i,
+  /\bstopped\b/i,
+  /\bstopping\b/i,
   /\bquiet\b/i,
   /\bquite\b/i, // common homophone / mis-transcription of quiet
+  /\bquit\b/i,  // quit talking, quit it
   /\bmute\b/i,
   /\bshut\s*up\b/i,
   /\bbe\s+quiet\b/i,
@@ -25,11 +29,17 @@ const STOP_PATTERNS = [
   /\bpause\b/i,
   /\bcancel\b/i,
   /\benough\b/i,
+  /\bwait\b/i,
+  /\bhold\s+on\b/i,
+  /\bhang\s+on\b/i,
   /\bstop\s+talking\b/i,
   /\bstop\s+speaking\b/i,
   /\bstop\s+reading\b/i,
   /\bstop\s+it\b/i,
-  /\bdon'?t\s+talk\b/i,
+  /\b(?:dont|don\s+t)\s+talk\b/i,
+  /\bturn\s+off\b/i,
+  /\bshut\s+down\b/i,
+  /\bcut\s+it\b/i,
 ];
 
 const QUESTION_STARTERS = new Set([
@@ -63,6 +73,17 @@ export function isVoiceStopCommand(text: string, isVoicePlaying = false): boolea
 
   if (!clean) return false;
 
+  const words = clean.split(/\s+/).filter(Boolean);
+
+  // When voice is playing, single words like "top" (soft 'stop' with s clipped by noise suppression) count as stop
+  if (
+    isVoicePlaying &&
+    words.length === 1 &&
+    (words[0] === "top" || words[0] === "step" || words[0] === "stuff")
+  ) {
+    return true;
+  }
+
   // Check if any stop keyword / pattern matches
   const hasStopMatch = STOP_PATTERNS.some((pattern) => pattern.test(clean));
   if (!hasStopMatch) return false;
@@ -73,7 +94,6 @@ export function isVoiceStopCommand(text: string, isVoicePlaying = false): boolea
   }
 
   // If idle / not playing, ensure it's a short command (<= 5 words) and not a question like "where is the bus stop"
-  const words = clean.split(/\s+/).filter(Boolean);
   if (words.length > 5) return false;
   if (words.length > 0 && QUESTION_STARTERS.has(words[0])) return false;
 

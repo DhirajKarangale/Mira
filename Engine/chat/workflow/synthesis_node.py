@@ -36,13 +36,27 @@ def synthesis_node(state: AgentState) -> Dict[str, Any]:
         or ""
     ).strip()
 
+    # Verify that previous answer is not an unhandled third-party API error payload
+    is_raw_error = any(
+        err in previous_answer.lower()
+        for err in (
+            "gnews rejected",
+            "syntax error (see https://docs.gnews.io",
+            "{\"errors\":",
+            "bad request (http 400)",
+            "rate limit exceeded on all configured keys",
+        )
+    )
+
     # Fast Path: All nodes already generate high quality, structured, direct answers.
     # Bypassing redundant second/third LLM calls cuts chat response latency drastically!
-    if executed_node in ("general_llm", "history_answer", "user_activity", "weather", "news") and previous_answer:
+    if executed_node in ("general_llm", "history_answer", "user_activity", "weather", "news") and previous_answer and not is_raw_error:
         log(f"[SynthesisNode] Fast path: node '{executed_node}' already generated complete answer. Bypassing extra synthesis LLM call.")
         return {
             "final_response": previous_answer,
         }
+    elif is_raw_error:
+        log_error(f"[SynthesisNode] Detected raw API error in answer from '{executed_node}'. Bypassing fast path to synthesize graceful AI response.")
 
     # Fallback resolution if previous answer was not set
     if not previous_answer:

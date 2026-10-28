@@ -304,7 +304,7 @@ export class MicListener {
         if (wasSilentBefore) {
           // If MIRA voice playback is currently active, duck volume so user's speech is heard clearly
           if (audioPlayer.isPlaying) {
-            audioPlayer.duckVolume(0.2);
+            audioPlayer.duckVolume(0.15);
           }
           this.onSpeechStartCb?.();
         }

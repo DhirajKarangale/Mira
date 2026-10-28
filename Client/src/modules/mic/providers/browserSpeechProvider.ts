@@ -15,6 +15,7 @@ import type {
   VoiceToTextCallback,
   VoiceToTextErrorCallback,
 } from "./types";
+import { audioPlayer } from "@/modules/voice/audioPlayer";
 
 export class BrowserSpeechProvider implements IVoiceToTextProvider {
   public readonly id = "browser_speech";
@@ -70,6 +71,18 @@ export class BrowserSpeechProvider implements IVoiceToTextProvider {
 
       this.recognition.onstart = () => {
         console.log(`[BrowserSpeechProvider] Real-time recognition started (lang: en-US).`);
+      };
+
+      this.recognition.onspeechstart = () => {
+        if (audioPlayer.isPlaying) {
+          audioPlayer.duckVolume(0.15);
+        }
+      };
+
+      this.recognition.onsoundstart = () => {
+        if (audioPlayer.isPlaying) {
+          audioPlayer.duckVolume(0.15);
+        }
       };
 
       this.recognition.onresult = (event: any) => {

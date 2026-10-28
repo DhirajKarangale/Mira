@@ -263,6 +263,34 @@ def resolve_category(cat_str: Optional[str]) -> Optional[str]:
     """Resolves and validates a category string to GNews supported categories."""
     if not cat_str:
         return None
+
+
+def sanitize_gnews_query(raw_query: Optional[str]) -> str:
+    """
+    Sanitizes and formats search query strings to strictly comply with GNews v4 API
+    query syntax specifications (https://docs.gnews.io/endpoints/search-endpoint#query-syntax),
+    preventing HTTP 400 Bad Request ('The query has a syntax error').
+    """
+    if not raw_query or not str(raw_query).strip():
+        return ""
+
+    q = str(raw_query).strip()
+
+    # 1. Clean number commas (e.g. 60,000 -> 60000)
+    q = re.sub(r'(?<=\d),(?=\d)', '', q)
+
+    # 2. Check for balanced double quotes
+    quote_count = q.count('"')
+    if quote_count % 2 != 0:
+        q = q.replace('"', ' ')
+
+    # 3. Strip special characters that trigger syntax errors in GNews
+    q = re.sub(r'[,;:?!/\\|~@#$%^&*[\]{}()+_<>=\-]', ' ', q)
+
+    # 4. Collapse whitespace
+    q = re.sub(r'\s+', ' ', q).strip()
+
+    return q[:MAX_QUERY_LENGTH].strip()
     cleaned = cat_str.strip().lower()
     if cleaned in GNEWS_CATEGORY_MAP:
         return GNEWS_CATEGORY_MAP[cleaned]
@@ -502,12 +530,11 @@ def plan_news_query(
         final_q = " ".join(q_parts).strip()
         if not final_q:
             final_q = detected_category or "news"
-        # Enforce GNews max 200 characters limit
-        final_q = final_q[:MAX_QUERY_LENGTH].strip()
+        final_q = sanitize_gnews_query(final_q)
     else:
         # In top-headlines, 'q' is optional keywords
         if final_q:
-            final_q = final_q[:MAX_QUERY_LENGTH].strip()
+            final_q = sanitize_gnews_query(final_q)
 
     # Article limit (enforcing free-plan limit of 10)
     max_count = DEFAULT_ARTICLES
@@ -574,7 +601,7 @@ def fetch_news_from_gnews(
     Your personal data is not sent to GNews; only the country information required
     for the news request is used.
     """
-    effective_q = (q or query or "").strip()
+    effective_q = sanitize_gnews_query(q or query or "")
 
     # 1. Resolve candidate API keys from Vault
     keys_to_attempt: List[Tuple[int, str]] = []
@@ -699,10 +726,41 @@ def fetch_news_from_gnews(
                 # Client parameter error (e.g. invalid date format or query)
                 err_text = resp.text
                 log_error(f"[GNews] Bad Request (HTTP 400): {err_text}")
+                # Attempt simplified alphanumeric fallback query if search failed
+                simple_q = re.sub(r'[^a-zA-Z0-9\s]', ' ', effective_q).strip()
+                simple_q = re.sub(r'\s+', ' ', simple_q)[:100].strip()
+                if simple_q and simple_q != effective_q and operation == "search":
+                    log(f"[GNews] Retrying with simplified alphanumeric query: '{simple_q}'")
+                    retry_params = dict(params)
+                    retry_params["q"] = simple_q
+                    retry_params.pop("in", None)
+                    retry_params.pop("from", None)
+                    retry_params.pop("to", None)
+                    try:
+                        retry_resp = requests.get(
+                            endpoint_url,
+                            params=retry_params,
+                            timeout=10,
+                            headers={"User-Agent": "MIRA-Assistant/1.0"}
+                        )
+                        if retry_resp.status_code == 200:
+                            data = retry_resp.json()
+                            articles = data.get("articles", [])
+                            return {
+                                "success": True,
+                                "operation": operation,
+                                "total_articles": data.get("totalArticles", len(articles)),
+                                "country": country_code,
+                                "articles": articles,
+                                "query_params": {k: v for k, v in retry_params.items() if k != "apikey"},
+                            }
+                    except Exception as retry_err:
+                        log_error(f"[GNews] Simplified retry failed: {retry_err}")
+
                 return {
                     "success": False,
                     "error": "invalid_parameters",
-                    "message": f"GNews rejected the request parameters: {err_text}",
+                    "message": "Unable to retrieve news articles matching the specified query.",
                     "articles": [],
                     "total_articles": 0,
                 }
@@ -815,15 +873,35 @@ def news_node(state: AgentState) -> Dict[str, Any]:
 
     # 3. Format response summary
     context_label = plan.get("context_label") or (plan.get("country") or DEFAULT_COUNTRY).upper()
-    if res.get("success"):
-        articles = res.get("articles", [])
+    articles = res.get("articles", [])
+    if res.get("success") and articles:
         summary_text = format_articles_summary(
             articles,
             context_label=context_label,
             operation=plan.get("operation", "top_headlines")
         )
     else:
-        summary_text = res.get("message", "Unable to retrieve news at this time.")
+        # Fallback to LLM knowledge synthesis so user receives a direct, comprehensive answer
+        log(f"[NewsNode] No direct news articles retrieved (success={res.get('success')}). Synthesizing answer via LLM for query: '{user_query}'")
+        fallback_prompt = f"""You are MIRA, an intelligent AI assistant.
+The user asked:
+\"{user_query}\"
+
+Live news article search did not return direct article matches.
+Please provide a clear, accurate, objective, and detailed answer explaining the topic to the user based on your knowledge.
+
+LANGUAGE REQUIREMENT: You MUST respond in English only. Never respond in any other language.
+"""
+        try:
+            from llm import call_llm
+            llm_answer = call_llm(fallback_prompt, work="general")
+            if llm_answer and llm_answer.strip():
+                summary_text = llm_answer.strip()
+            else:
+                summary_text = "No current news articles were found matching your query."
+        except Exception as e:
+            log_error(f"[NewsNode] Fallback LLM generation failed: {e}")
+            summary_text = "No current news articles were found matching your query. Please try broadening your search terms."
 
     current_outputs = dict(state.get("node_outputs") or {})
     current_outputs["news_response"] = summary_text
