@@ -29,10 +29,11 @@ from chat.workflow.graph import run_chat_workflow
 
 
 class TestWeatherToolAndWorkflow(unittest.TestCase):
-    """Test suite verifying weather location extraction, geocoding, concise synthesis, and workflow."""
+    """Test suite verifying weather location extraction, geocoding, natural synthesis, and workflow."""
 
     def test_location_parsing(self):
         cases = [
+            ("What's the weather in Pune?", "Pune"),
             ("Oh Meera, just tell me the current weather and temperature of Pune, Maharashtra.", "Pune, Maharashtra"),
             ("What is the weather in Pune?", "Pune"),
             ("Tell me the temperature in Tokyo tomorrow", "Tokyo"),
@@ -66,7 +67,7 @@ class TestWeatherToolAndWorkflow(unittest.TestCase):
     def test_weather_forecast_with_explicit_location(self):
         result = get_weather_forecast(
             forecast_days=1,
-            location_query="Pune, Maharashtra",
+            location_query="Pune",
         )
         self.assertEqual(result.get("status"), "success")
         structured = result.get("structured_data")
@@ -85,14 +86,14 @@ class TestWeatherToolAndWorkflow(unittest.TestCase):
         self.assertIsNotNone(structured)
         self.assertIn("Shegaon", structured["location"]["name"])
 
-    def test_synthesize_weather_response_concise(self):
+    def test_synthesize_weather_response_natural(self):
         mock_structured = {
             "current": {
-                "condition": "Overcast",
-                "temperature_celsius": 26.6,
-                "apparent_temperature_celsius": 29.0,
-                "relative_humidity_percent": 66,
-                "wind_speed_kmh": 8.4,
+                "condition": "Mainly clear",
+                "temperature_celsius": 26.2,
+                "apparent_temperature_celsius": 26.7,
+                "relative_humidity_percent": 65,
+                "wind_speed_kmh": 8.5,
                 "precipitation_mm": 0.0,
                 "rain_mm": 0.0,
             },
@@ -100,36 +101,35 @@ class TestWeatherToolAndWorkflow(unittest.TestCase):
                 {
                     "date": "2026-10-28",
                     "day": "Wednesday, Oct 28",
-                    "condition": "Overcast",
-                    "temp_max_celsius": 31.4,
-                    "temp_min_celsius": 24.0,
-                    "precipitation_probability_percent": 10,
+                    "condition": "Mainly clear",
+                    "temp_max_celsius": 32.0,
+                    "temp_min_celsius": 20.0,
+                    "precipitation_probability_percent": 2,
                     "rain_sum_mm": 0.0,
                 }
             ]
         }
         answer = synthesize_weather_response(
-            user_query="Oh Meera, just tell me the current weather and temperature of Pune, Maharashtra.",
+            user_query="What's the weather in Pune?",
             structured_data=mock_structured,
-            location_name="Pune, Maharashtra, India",
+            location_name="Pune, Maharashtra",
         )
-        # Verify answer is concise, mentions Pune and temperature
-        self.assertTrue(len(answer) < 300, f"Answer should be short and simple, got length {len(answer)}: {answer}")
+        print(f"\n[Test Result] Natural Weather Response:\n{answer}\n")
+        self.assertTrue(len(answer) < 250, f"Answer should be short and natural, got length {len(answer)}: {answer}")
         self.assertIn("Pune", answer)
-        self.assertIn("26.6", answer)
-        # Verify it does NOT dump coordinates or entire daily lists
+        # Verify it sounds natural and does NOT dump coordinates or entire daily lists
         self.assertNotIn("Coordinates", answer)
         self.assertNotIn("Timezone", answer)
         self.assertNotIn("Upcoming Hourly Outlook", answer)
 
     def test_decision_heuristic_weather_routing(self):
-        query = "Oh Meera, just tell me the current weather and temperature of Pune, Maharashtra."
+        query = "What's the weather in Pune?"
         fast_res = _fast_route_heuristic(query, [])
         self.assertIsNotNone(fast_res)
         self.assertEqual(fast_res[0], "weather")
 
-    def test_e2e_weather_workflow(self):
-        query = "Oh Meera, just tell me the current weather and temperature of Pune, Maharashtra."
+    def test_e2e_weather_workflow_natural(self):
+        query = "What's the weather in Pune?"
         loop = asyncio.new_event_loop()
         try:
             response = loop.run_until_complete(
@@ -139,8 +139,8 @@ class TestWeatherToolAndWorkflow(unittest.TestCase):
                     user_query=query,
                 )
             )
-            print(f"\n[Test Result] Full Workflow Response:\n{response}\n")
-            self.assertTrue(len(response) < 300, f"Response too verbose: {response}")
+            print(f"\n[Test Result] Full Workflow Natural Response:\n{response}\n")
+            self.assertTrue(len(response) < 250, f"Response too verbose: {response}")
             self.assertIn("Pune", response)
             self.assertNotIn("Upcoming Hourly Outlook", response)
             self.assertNotIn("Coordinates:", response)

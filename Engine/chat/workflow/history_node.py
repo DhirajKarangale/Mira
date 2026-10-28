@@ -15,7 +15,7 @@ def history_node(state: AgentState) -> Dict[str, Any]:
     Answers follow-up questions, clarifications, reformattings, or queries
     directly from the current session's conversation history without making
     redundant vector searches or external retrieval calls.
-    Uses LLM work category 'general' (temperature 0.0) in English only.
+    Uses LLM work category 'general' (temperature 0.0) in English only with natural conversational tone.
     """
     user_query = state.get("user_query", "").strip()
     chat_history = state.get("chat_history", [])
@@ -38,12 +38,12 @@ def history_node(state: AgentState) -> Dict[str, Any]:
     history_text = "\n".join(normalized_turns) if normalized_turns else "No prior messages."
 
     detail_instructions = {
-        "overview": "Provide a concise, high-level overview of the relevant information from the conversation.",
-        "detailed": "Provide all relevant details, numbers, timestamps, and information discussed previously.",
+        "overview": "Provide a clean, natural overview of the relevant points discussed previously.",
+        "detailed": "Provide all relevant details, numbers, timestamps, and context discussed previously.",
         "concise": "Answer directly and concisely, addressing only the specific question asked."
     }.get(detail_level, "Answer directly and concisely.")
 
-    prompt = f"""You are MIRA, a helpful and precise desktop AI companion.
+    prompt = f"""You are MIRA, a helpful and natural desktop AI companion.
 The user is asking a follow-up question that can be answered directly from the current conversation history.
 
 User Name: {user_name}
@@ -55,11 +55,12 @@ Conversation History for this session:
 
 Strict Rules:
 1. Answer the user's question using ONLY the facts and data stated in the conversation history above.
-2. {detail_instructions}
-3. Do NOT invent, assume, or add unsupported information.
-4. If the conversation history does not contain the answer, state factually what was discussed and that the specific requested detail was not previously mentioned.
-5. Do NOT include greetings, pleasantries, or trailing questions.
-6. LANGUAGE REQUIREMENT: You MUST respond in English only. Never respond in any other language.
+2. Speak naturally, smoothly, and conversationally like an intelligent companion. Avoid robotic or stiff templates.
+3. {detail_instructions}
+4. Do NOT invent, assume, or add unsupported information.
+5. If the conversation history does not contain the answer, state clearly and naturally that this was not mentioned previously.
+6. Avoid robotic filler at the start and trailing questions at the end.
+7. LANGUAGE REQUIREMENT: You MUST respond in English only. Never respond in any other language.
 """
 
     try:

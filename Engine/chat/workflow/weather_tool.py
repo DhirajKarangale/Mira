@@ -114,7 +114,7 @@ def parse_location_from_query(query: str) -> Optional[str]:
     Infers target city, state, or country from a natural language user query.
     Examples:
       - 'Oh Meera, just tell me the current weather and temperature of Pune, Maharashtra.' -> 'Pune, Maharashtra'
-      - 'What is the weather in Mumbai?' -> 'Mumbai'
+      - 'What is the weather in Pune?' -> 'Pune'
       - 'Weather forecast for Tokyo, Japan' -> 'Tokyo, Japan'
       - 'How hot is it in London right now?' -> 'London'
       - 'Is it raining outside?' -> None (indicates default user profile location)
@@ -523,9 +523,9 @@ def synthesize_weather_response(
     location_name: str,
 ) -> str:
     """
-    Synthesizes a short, simple, accurate, and to-the-point weather answer
+    Synthesizes a short, natural, conversational, and to-the-point weather answer
     tailored strictly to the user's specific query using LLM.
-    Avoids verbose data dumping (no coordinates, no unrequested hourly/daily dumps).
+    Avoids stiff robotic templates and verbose data dumping.
     """
     cur = structured_data.get("current") or {}
     cur_cond = cur.get("condition", "Unknown")
@@ -544,35 +544,41 @@ def synthesize_weather_response(
         )
     daily_summary = "\n".join(daily_lines) if daily_lines else "None available."
 
-    prompt = f"""You are MIRA, a helpful desktop AI assistant.
-Answer the user's weather question accurately, simply, and directly using ONLY the verified weather data provided below.
+    short_loc = location_name.split(",")[0].strip() if location_name else "your area"
 
-User Query: "{user_query}"
-Target Location: {location_name}
+    prompt = f"""You are MIRA, a helpful and natural desktop AI companion.
+Answer the user's weather question naturally and conversationally, like a real person talking, while sticking directly to the point.
 
-Weather Data:
+User Question: "{user_query}"
+Target Location: {location_name} (short: {short_loc})
+
+Verified Weather Data:
 Current Conditions:
 - Weather: {cur_cond}
 - Temperature: {cur_temp}°C (Feels like: {cur_app}°C)
 - Humidity: {cur_hum}%
 - Wind: {cur_wind} km/h
-- Precipitation: {cur_rain} mm
+- Rain: {cur_rain} mm
 
 Daily Forecast:
 {daily_summary}
 
-STRICT INSTRUCTIONS:
-1. Answer ONLY what the user asked. Keep it short, simple, natural, and stick directly to the point.
-2. If the user asks for current weather or temperature:
-   - Provide ONLY the current condition and temperature in 1 concise sentence (e.g. "Currently in Pune, Maharashtra, it's 26.6°C (feels like 29°C) with overcast skies.").
-3. If the user asks about rain/precipitation:
-   - Answer directly whether and when it will rain and the chance of precipitation in 1-2 brief sentences.
-4. If the user asks for a forecast (e.g. tomorrow, 3 days, or weekly):
-   - Provide only the requested days concisely in clean short bullet points. Do not dump unnecessary fields.
-5. Do NOT include raw coordinates, elevation, timezone codes, or hourly data unless specifically asked.
-6. Do NOT include pleasantries, greetings (e.g. "Sure!", "Certainly!", "Hello"), or trailing questions (e.g. "Let me know if you need anything else!").
-7. LANGUAGE REQUIREMENT: You MUST respond in English only.
-"""
+Tone & Style Guidelines:
+1. Speak naturally, smoothly, and conversationally. Avoid stiff or robotic templates like "Currently in [Location], it is [Temp] with [Cond]".
+2. Refer to the location naturally (e.g. "in {short_loc}") without reciting redundant state or country names unless specifically asked.
+3. Answer ONLY what the user asked:
+   - If asked for current weather/temperature: give a single natural sentence about right now (e.g. "It's about 26°C and mainly clear in {short_loc} right now, feeling like 27°C."). Do not mention future days unless asked.
+   - If asked about rain: answer directly and naturally (e.g. "There's a 39% chance of light drizzle tomorrow in {short_loc} with highs near 32°C.").
+   - If asked for a forecast: give a concise, clean summary of the requested days.
+4. Keep temperatures and numbers easy to read (round to nearest whole degree or 1 decimal place).
+5. No robotic intros ("Certainly!", "Sure thing!") and no trailing questions ("Let me know if you need more info!").
+6. English only.
+
+Tone Examples:
+- "What's the weather in Pune?" -> "It's about 26°C and mainly clear in Pune right now, feeling like 27°C."
+- "Will it rain tomorrow in Pune?" -> "There's a 39% chance of light drizzle tomorrow in Pune with highs near 32°C."
+
+Response:"""
     try:
         from llm import call_llm
         resp = call_llm(prompt, work="general").strip()
@@ -581,21 +587,24 @@ STRICT INSTRUCTIONS:
     except Exception as e:
         log_error(f"[WeatherTool] LLM weather synthesis failed: {e}")
 
-    # Deterministic factual fallback
+    # Deterministic natural fallback
     q_low = user_query.lower()
-    app_str = f" (feels like {cur_app}°C)" if cur_app is not None and cur_app != cur_temp else ""
+    cur_t_str = f"{round(cur_temp)}°C" if cur_temp is not None else "--"
+    app_t_str = f", feeling like {round(cur_app)}°C" if cur_app is not None and cur_temp is not None and round(cur_app) != round(cur_temp) else ""
+    cond_str = (cur_cond or "clear").lower()
+
     if any(k in q_low for k in ("tomorrow",)):
         if len(daily) > 1:
             tm = daily[1]
-            return f"Tomorrow in {location_name}: {tm.get('condition', 'clear')}, High: {tm.get('temp_max_celsius')}°C, Low: {tm.get('temp_min_celsius')}°C (Rain chance: {tm.get('precipitation_probability_percent', 0)}%)."
+            return f"Tomorrow in {short_loc}, expect {tm.get('condition', 'clear').lower()} skies with a high of {round(tm.get('temp_max_celsius', 0))}°C and a {tm.get('precipitation_probability_percent', 0)}% chance of rain."
 
     if any(k in q_low for k in ("rain", "raining", "drizzle", "precipitation")):
         p_prob = daily[0].get("precipitation_probability_percent", 0) if daily else 0
         if cur_rain > 0 or p_prob >= 30:
-            return f"Rain is likely in {location_name} today with a {p_prob}% chance of precipitation."
-        return f"No significant rain is expected in {location_name} today (Precipitation chance: {p_prob}%)."
+            return f"Rain is likely in {short_loc} today with about a {p_prob}% chance of precipitation."
+        return f"No significant rain is expected in {short_loc} today (about a {p_prob}% chance)."
 
-    return f"The current weather in {location_name} is {cur_cond} with a temperature of {cur_temp}°C{app_str}."
+    return f"It's about {cur_t_str} and {cond_str} in {short_loc} right now{app_t_str}."
 
 
 def get_weather_forecast(
@@ -745,7 +754,7 @@ def weather_forecast_node(state: AgentState) -> Dict[str, Any]:
     structured = result["structured_data"]
     loc_display = result.get("location_name") or structured.get("location", {}).get("name") or explicit_location or "your area"
 
-    # Synthesize concise response answering ONLY what was asked
+    # Synthesize concise, natural response answering ONLY what was asked
     final_answer = synthesize_weather_response(user_query, structured, loc_display)
 
     current_outputs = dict(state.get("node_outputs") or {})

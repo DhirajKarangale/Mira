@@ -1244,17 +1244,17 @@ export const ChatsPage: FC = () => {
   const handleCopySessionId = (sid: string) => {
     navigator.clipboard.writeText(sid);
     setCopiedSessionId(sid);
-    toast.info("Session ID copied to clipboard", { title: "Copied" });
-    setTimeout(() => setCopiedSessionId(null), 2000);
+    toast.info("Session ID copied to clipboard", { title: "Copied", duration: 700 });
+    setTimeout(() => setCopiedSessionId(null), 700);
   };
 
   const handleCopyMessage = (msgId: string, content: string) => {
     navigator.clipboard.writeText(content);
     setCopiedMessageId(msgId);
-    toast.success("Message copied to clipboard", { title: "Copied" });
+    toast.success("Message copied to clipboard", { title: "Copied", duration: 700 });
     setTimeout(() => {
       setCopiedMessageId((prev) => (prev === msgId ? null : prev));
-    }, 2000);
+    }, 700);
   };
 
   // ============================================================================

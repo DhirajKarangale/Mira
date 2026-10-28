@@ -9,8 +9,8 @@ export const ContactSection: FC = () => {
   const handleCopy = () => {
     navigator.clipboard.writeText(email);
     setCopied(true);
-    toast.success(`Email copied to clipboard: ${email}`, { title: "Clipboard" });
-    setTimeout(() => setCopied(false), 2000);
+    toast.success(`Email copied to clipboard: ${email}`, { title: "Clipboard", duration: 700 });
+    setTimeout(() => setCopied(false), 700);
   };
 
   const categories = [
