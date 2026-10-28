@@ -7,27 +7,27 @@ const dynamicConfig: Record<string, string> =
 
 export const SERVICE_ENDPOINTS: Record<string, string> = {
   messageBroker:
-    import.meta.env.VITE_MESSAGE_BROKER_URL ||
+    import.meta.env?.VITE_MESSAGE_BROKER_URL ||
     dynamicConfig.message_broker ||
     "http://127.0.0.1:9002",
   vault:
-    import.meta.env.VITE_VAULT_URL ||
+    import.meta.env?.VITE_VAULT_URL ||
     dynamicConfig.vault ||
     "http://127.0.0.1:9001",
   operator:
-    import.meta.env.VITE_OPERATOR_URL ||
+    import.meta.env?.VITE_OPERATOR_URL ||
     dynamicConfig.operator ||
     "http://127.0.0.1:9003",
   memory:
-    import.meta.env.VITE_MEMORY_URL ||
+    import.meta.env?.VITE_MEMORY_URL ||
     dynamicConfig.memory ||
     "http://127.0.0.1:9006",
   engine:
-    import.meta.env.VITE_ENGINE_URL ||
+    import.meta.env?.VITE_ENGINE_URL ||
     dynamicConfig.engine ||
     "http://127.0.0.1:9007",
   client:
-    import.meta.env.VITE_CLIENT_URL ||
+    import.meta.env?.VITE_CLIENT_URL ||
     dynamicConfig.client ||
     "http://127.0.0.1:9004",
 };

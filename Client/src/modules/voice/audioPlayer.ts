@@ -15,6 +15,8 @@ export class AudioPlayer {
   private isPlayingAudio = false;
   private volumeLevel = 1.0;
   private isMutedState = false;
+  private isDuckedState = false;
+  private preDuckVolume = 1.0;
 
   constructor() {
     if (typeof window !== "undefined") {
@@ -114,8 +116,37 @@ export class AudioPlayer {
   setVolume(volume: number): void {
     const clamped = Math.max(0, Math.min(2.0, Number.isFinite(volume) ? volume : 1.0));
     this.volumeLevel = clamped;
+    this.preDuckVolume = clamped;
+    this.isDuckedState = false;
     this.isMutedState = clamped === 0;
+    this.applyVolume(clamped);
+  }
 
+  /**
+   * Ducks (lowers) volume temporarily when the user speaks while voice playback is going on.
+   */
+  duckVolume(duckRatio = 0.2): void {
+    if (this.isDuckedState || !this.isPlayingAudio) return;
+    this.preDuckVolume = this.volumeLevel;
+    this.isDuckedState = true;
+    const duckedLevel = Math.max(0.05, this.preDuckVolume * duckRatio);
+    this.applyVolume(duckedLevel);
+  }
+
+  /**
+   * Restores volume to the previous level when user stops speaking or a new voice query is submitted.
+   */
+  restoreVolume(): void {
+    if (!this.isDuckedState) return;
+    this.isDuckedState = false;
+    this.applyVolume(this.preDuckVolume);
+  }
+
+  get isDucked(): boolean {
+    return this.isDuckedState;
+  }
+
+  private applyVolume(clamped: number): void {
     if (this.audioElement) {
       if (this.isWebAudioReady) {
         this.audioElement.volume = this.isMutedState ? 0 : 1.0;
@@ -162,6 +193,7 @@ export class AudioPlayer {
    * Rejects if interrupted or if playback errors out.
    */
   async playAudioUrl(url: string, signal?: AbortSignal): Promise<void> {
+    this.restoreVolume(); // Ensure new audio chunk plays at original volume
     this.stop(); // Stop any currently playing audio
 
     // Ensure Web Audio context is initialized and active
@@ -267,6 +299,7 @@ export class AudioPlayer {
    * Stops playback immediately and resets the audio source.
    */
   stop(): void {
+    this.isDuckedState = false;
     this.isPlayingAudio = false;
     if (this.currentPromiseReject) {
       try {

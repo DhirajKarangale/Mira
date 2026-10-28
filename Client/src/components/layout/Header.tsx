@@ -1,12 +1,15 @@
 import type { FC } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { Mic, MicOff, Sparkles } from "lucide-react";
 import { NavTabs } from "./NavTabs";
 import { WindowControls } from "./WindowControls";
+import { useMicSync } from "@/modules/mic";
 import { cn } from "@/lib/utils";
 
 export const Header: FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { isMicOn, isCollectingCommand, toggle } = useMicSync();
 
   const isMiraActive =
     location.pathname === "/" || location.pathname === "/mira";
@@ -82,7 +85,49 @@ export const Header: FC = () => {
         <NavTabs />
       </div>
 
-      <div className="flex items-center ml-1 sm:ml-2 -mr-2 sm:-mr-3 h-full shrink-0">
+      <div className="flex items-center gap-1.5 ml-1 sm:ml-2 -mr-2 sm:-mr-3 h-full shrink-0">
+        <button
+          type="button"
+          id="btn-header-mic-toggle"
+          onClick={() => toggle()}
+          title={
+            isCollectingCommand
+              ? "Mira is listening to your command... (Click to mute)"
+              : isMicOn
+              ? "Microphone is Active: Say 'Mira' to talk (Click to mute)"
+              : "Microphone is Muted: Click to enable voice listening"
+          }
+          className={cn(
+            "relative flex items-center gap-1.5 h-7 px-2 rounded-md transition-all duration-200 cursor-pointer outline-none border text-xs select-none",
+            isCollectingCommand
+              ? "bg-cyan-500/20 text-cyan-300 border-cyan-400/50 shadow-[0_0_12px_rgba(6,182,212,0.4)] animate-pulse"
+              : isMicOn
+              ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25 shadow-[0_0_8px_rgba(16,185,129,0.2)]"
+              : "bg-zinc-800/60 text-zinc-400 border-white/5 hover:bg-zinc-800 hover:text-zinc-200"
+          )}
+        >
+          {isCollectingCommand ? (
+            <>
+              <Sparkles className="w-3.5 h-3.5 text-cyan-300 animate-spin" />
+              <span className="text-[11px] font-medium hidden sm:inline">Mira Listening...</span>
+            </>
+          ) : isMicOn ? (
+            <>
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+              </span>
+              <Mic className="w-3.5 h-3.5 text-emerald-300" />
+              <span className="text-[11px] font-medium hidden md:inline">Mic On</span>
+            </>
+          ) : (
+            <>
+              <MicOff className="w-3.5 h-3.5 text-zinc-400" />
+              <span className="text-[11px] font-medium hidden md:inline text-zinc-400">Mic Off</span>
+            </>
+          )}
+        </button>
+
         <WindowControls />
       </div>
     </header>

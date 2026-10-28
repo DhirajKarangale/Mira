@@ -253,7 +253,7 @@ export const MicrophonePage: FC = () => {
                 )}
               >
                 <Mic className="w-3.5 h-3.5" />
-                <span>Config</span>
+                <span>Microphone</span>
                 <span
                   className={cn(
                     "ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-mono",

@@ -5,6 +5,7 @@ import {
   Clock,
   Radio,
   Sliders,
+  Languages,
 } from "lucide-react";
 
 interface MicrophoneDeviceCardProps {
@@ -30,12 +31,12 @@ export const MicrophoneDeviceCard: FC<MicrophoneDeviceCardProps> = ({
             Audio Stream & Hardware Configuration
           </h2>
           <p className="text-xs text-zinc-400">
-            Real-time pipeline metrics and operating parameters managed by MIRA Operator
+            Real-time pipeline metrics, English speech recognition, and operating parameters managed by MIRA Operator
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         <div className="p-4 rounded-xl border border-white/[0.06] bg-zinc-950/40 space-y-1.5">
           <div className="flex items-center gap-2 text-zinc-400 text-xs">
             <Radio className="w-3.5 h-3.5 text-violet-400" />
@@ -64,6 +65,19 @@ export const MicrophoneDeviceCard: FC<MicrophoneDeviceCardProps> = ({
           </div>
           <div className="text-[11px] text-zinc-500 font-mono">
             Local acoustic matcher
+          </div>
+        </div>
+
+        <div className="p-4 rounded-xl border border-white/[0.06] bg-zinc-950/40 space-y-1.5">
+          <div className="flex items-center gap-2 text-zinc-400 text-xs">
+            <Languages className="w-3.5 h-3.5 text-sky-400" />
+            <span>Language</span>
+          </div>
+          <div className="text-sm font-semibold text-white">
+            English Only (en)
+          </div>
+          <div className="text-[11px] text-zinc-500 font-mono">
+            Strict recognition constraint
           </div>
         </div>
 

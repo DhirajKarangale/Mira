@@ -11,6 +11,7 @@ import {
 } from "@/pages";
 import { useGlobalChatSync } from "@/hooks/useGlobalChatSync";
 import { useVoiceSync } from "@/hooks/useVoiceSync";
+import { useMicSync } from "@/modules/mic";
 import { chatVoiceBridge, VoicePlaybackOverlay } from "@/modules/voice";
 
 function ActivityRedirect() {
@@ -43,6 +44,7 @@ export function App() {
   const location = useLocation();
   useGlobalChatSync();
   useVoiceSync();
+  useMicSync();
 
   useEffect(() => {
     chatVoiceBridge.handleRouteChange(location.pathname);

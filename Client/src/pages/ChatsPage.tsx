@@ -24,6 +24,8 @@ import {
   AlertTriangle,
   KeyRound,
   ArrowRight,
+  Mic,
+  MicOff,
 } from "lucide-react";
 import { Sidebar, type SidebarItem, type SidebarRenderItemState } from "@/components/Sidebar";
 import { toast, ChatMessageContent } from "@/components";
@@ -35,6 +37,7 @@ import {
 import { useAIConfigsQuery } from "./Configurations/AiConfig/queries";
 import { useChatStore, type SendingSessionDetails } from "@/store/useChatStore";
 import { cn } from "@/lib/utils";
+import { useMicSync } from "@/modules/mic";
 
 const CHAT_LOADING_MESSAGES: readonly string[] = [
   "Reflecting on your query...",
@@ -69,6 +72,7 @@ function generateUUID(): string {
 export const ChatsPage: FC = () => {
   const navigate = useNavigate();
   const { data: aiConfigs, isLoading: isAiConfigsLoading } = useAIConfigsQuery();
+  const { isMicOn, isCollectingCommand, toggle: toggleMic } = useMicSync();
 
   const hasLlmKeys = useMemo(() => {
     if (isAiConfigsLoading && !aiConfigs) return true;
@@ -846,11 +850,31 @@ export const ChatsPage: FC = () => {
       }
     };
 
+    const handleVoiceCommandEvent = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { sessionId, userMessage } = customEvent.detail || {};
+      if (!sessionId || !userMessage) return;
+      setSessions(useChatStore.getState().cachedSessions);
+      if (selectedSessionIdRef.current === sessionId) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === userMessage.id)) return prev;
+          return [...prev, userMessage];
+        });
+        setTimeout(() => {
+          if (isNearBottomRef.current) {
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+          }
+        }, 30);
+      }
+    };
+
     window.addEventListener("mira:chat_rename", handleRenameEvent);
     window.addEventListener("mira:chat_response", handleChatResponseEvent);
+    window.addEventListener("mira:voice_command_submitted", handleVoiceCommandEvent);
     return () => {
       window.removeEventListener("mira:chat_rename", handleRenameEvent);
       window.removeEventListener("mira:chat_response", handleChatResponseEvent);
+      window.removeEventListener("mira:voice_command_submitted", handleVoiceCommandEvent);
     };
   }, []);
 
@@ -2057,6 +2081,36 @@ export const ChatsPage: FC = () => {
                 }
                 className="flex-1 max-h-44 min-h-[38px] bg-transparent resize-none text-xs sm:text-[13px] text-zinc-100 placeholder-zinc-500 focus:outline-none px-2 py-1.5 leading-relaxed overflow-y-auto"
               />
+
+              <button
+                type="button"
+                id="btn-chat-mic-toggle"
+                onClick={() => toggleMic()}
+                title={
+                  isCollectingCommand
+                    ? "Mira is listening to your command... (Click to mute)"
+                    : isMicOn
+                    ? "Microphone is Active: Say 'Mira' to talk (Click to mute)"
+                    : "Microphone is Muted: Click to enable voice input"
+                }
+                aria-label="Toggle microphone"
+                className={cn(
+                  "p-2 rounded-xl font-medium transition-all duration-150 flex items-center justify-center shrink-0 cursor-pointer shadow-md",
+                  isCollectingCommand
+                    ? "bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 shadow-cyan-500/30 animate-pulse"
+                    : isMicOn
+                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30 shadow-emerald-500/20"
+                    : "bg-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/80"
+                )}
+              >
+                {isCollectingCommand ? (
+                  <Sparkles className="w-4 h-4 text-cyan-300 animate-spin" />
+                ) : isMicOn ? (
+                  <Mic className="w-4 h-4 text-emerald-400 animate-pulse" />
+                ) : (
+                  <MicOff className="w-4 h-4 text-zinc-400" />
+                )}
+              </button>
 
               <button
                 type="button"
