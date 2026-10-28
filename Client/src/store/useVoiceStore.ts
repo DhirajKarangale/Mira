@@ -114,14 +114,15 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
         } catch {}
       }
 
+      const micAutoStart = Boolean(
+        snapshot.config.mic_auto_start ?? snapshot.micStatus.auto_start
+      );
+
       const isMicOn = Boolean(
         snapshot.micStatus.is_on ||
           (typeof snapshot.micStatus.state === "string" &&
-            snapshot.micStatus.state.toLowerCase() === "on")
-      );
-
-      const micAutoStart = Boolean(
-        snapshot.config.mic_auto_start ?? snapshot.micStatus.auto_start
+            snapshot.micStatus.state.toLowerCase() === "on") ||
+          micAutoStart
       );
 
       set({

@@ -1,6 +1,8 @@
 use std::process::Command;
 use std::sync::Mutex;
 use tauri::Manager;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -172,6 +174,63 @@ fn kill_backend(pid: u32) {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn is_autostart_registered() -> bool {
+    let output = Command::new("reg")
+        .args(&[
+            "query",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+            "/v",
+            "MIRA",
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+
+    match output {
+        Ok(out) => out.status.success(),
+        Err(_) => false,
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn set_autostart_registered(enable: bool) -> Result<(), String> {
+    if enable {
+        let exe_path = std::env::current_exe().map_err(|e| e.to_string())?;
+        let cmd_val = format!("\"{}\" --autostart", exe_path.to_string_lossy());
+        let status = Command::new("reg")
+            .args(&[
+                "add",
+                r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+                "/v",
+                "MIRA",
+                "/t",
+                "REG_SZ",
+                "/d",
+                &cmd_val,
+                "/f",
+            ])
+            .creation_flags(CREATE_NO_WINDOW)
+            .status()
+            .map_err(|e| e.to_string())?;
+
+        if !status.success() {
+            return Err("Failed to register MIRA in Windows startup registry".to_string());
+        }
+    } else {
+        let _ = Command::new("reg")
+            .args(&[
+                "delete",
+                r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+                "/v",
+                "MIRA",
+                "/f",
+            ])
+            .creation_flags(CREATE_NO_WINDOW)
+            .status();
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn minimize_window(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
@@ -198,9 +257,30 @@ fn toggle_maximize_window(app: tauri::AppHandle) -> Result<bool, String> {
 
 #[tauri::command]
 fn close_window(app: tauri::AppHandle) -> Result<(), String> {
+    // Hide to system tray instead of destroying the window so background operations continue
     if let Some(window) = app.get_webview_window("main") {
-        window.close().map_err(|e| e.to_string())?;
+        window.hide().map_err(|e| e.to_string())?;
     }
+    Ok(())
+}
+
+#[tauri::command]
+fn show_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        window.show().map_err(|e| e.to_string())?;
+        window.unminimize().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn exit_app(app: tauri::AppHandle) -> Result<(), String> {
+    let state = app.state::<BackendProcess>();
+    if let Some(pid) = state.0.lock().unwrap().take() {
+        kill_backend(pid);
+    }
+    app.exit(0);
     Ok(())
 }
 
@@ -213,29 +293,171 @@ fn is_window_maximized(app: tauri::AppHandle) -> Result<bool, String> {
     }
 }
 
+#[tauri::command]
+fn is_autostart_enabled() -> Result<bool, String> {
+    #[cfg(target_os = "windows")]
+    {
+        Ok(is_autostart_registered())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(false)
+    }
+}
+
+#[tauri::command]
+fn set_autostart_enabled(enabled: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        set_autostart_registered(enabled)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = enabled;
+        Ok(())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "windows")]
+    {
+        // Prevent WebView2 from throttling timers or suspending audio/mic when running hidden in tray
+        if std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").is_err() {
+            unsafe {
+                std::env::set_var(
+                    "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+                    "--disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding",
+                );
+            }
+        }
+    }
+
     tauri::Builder::default()
         .manage(BackendProcess(Mutex::new(None)))
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .setup(|app| {
             let pid = spawn_backend(app);
             *app.state::<BackendProcess>().0.lock().unwrap() = pid;
+
+            // Determine if launched with autostart/hidden/background flag
+            let is_autostart = std::env::args().any(|arg| {
+                arg == "--autostart" || arg == "--hidden" || arg == "--background"
+            });
+
+            // If running on Windows, make sure startup registration is maintained
+            #[cfg(target_os = "windows")]
+            {
+                // If not already registered, auto-register for seamless experience
+                if !is_autostart_registered() {
+                    let _ = set_autostart_registered(true);
+                }
+            }
+
+            // Build system tray icon and menu
+            let show_item = MenuItem::with_id(app, "show", "Open MIRA", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Quit MIRA", true, None::<&str>)?;
+            let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+
+            let mut tray_builder = TrayIconBuilder::with_id("mira_tray")
+                .tooltip("MIRA - Personal Digital Assistant")
+                .menu(&tray_menu)
+                .show_menu_on_left_click(false);
+
+            if let Some(icon) = app.default_window_icon() {
+                tray_builder = tray_builder.icon(icon.clone());
+            }
+
+            let _tray = tray_builder
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.unminimize();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    "quit" => {
+                        let state = app.state::<BackendProcess>();
+                        if let Some(pid) = state.0.lock().unwrap().take() {
+                            kill_backend(pid);
+                        }
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| match event {
+                    TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } => {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            if window.is_visible().unwrap_or(false) {
+                                let _ = window.hide();
+                            } else {
+                                let _ = window.show();
+                                let _ = window.unminimize();
+                                let _ = window.set_focus();
+                            }
+                        }
+                    }
+                    TrayIconEvent::DoubleClick {
+                        button: MouseButton::Left,
+                        ..
+                    } => {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.unminimize();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    _ => {}
+                })
+                .build(app)?;
+
+            // Show window if launched normally by user (not started via Windows autostart)
+            if !is_autostart {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
+        .on_window_event(|window, event| match event {
+            // When user clicks 'X' or window close is requested, hide to tray instead of closing
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+            tauri::WindowEvent::Destroyed => {
                 let state = window.state::<BackendProcess>();
                 if let Some(pid) = state.0.lock().unwrap().take() {
                     kill_backend(pid);
                 }
             }
+            _ => {}
         })
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             minimize_window,
             toggle_maximize_window,
             close_window,
-            is_window_maximized
+            show_window,
+            exit_app,
+            is_window_maximized,
+            is_autostart_enabled,
+            set_autostart_enabled
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

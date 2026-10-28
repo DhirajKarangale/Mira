@@ -134,6 +134,7 @@ def init_config_storage(schema_path: Optional[Path]=None, enc_db_path: Optional[
                     _DB_CONN.commit()
                 elif table_name == 'operator':
                     _DB_CONN.execute("UPDATE operator SET KNOWLEDGE_BASE_RETENTION_PERIOD = 'Never auto delete' WHERE KNOWLEDGE_BASE_RETENTION_PERIOD IS NULL")
+                    _DB_CONN.execute("UPDATE operator SET AUTO_START = 1 WHERE AUTO_START IS NULL")
                     _DB_CONN.commit()
             elif table_name == 'app_permissions':
                 _DB_CONN.execute("DELETE FROM app_permissions WHERE app_id IS NULL OR app_id = ''")
