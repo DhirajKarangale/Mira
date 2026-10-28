@@ -25,6 +25,17 @@ export { audioStorage } from "./audioStorage";
 export {
   generateChunkAudio,
   isKeyRotationError,
+  resolveVoiceAndModel,
+  serializeVoiceConfig,
+  isKnownModel,
+  resolveModelId,
+  resolveVoiceIdOrAlias,
+  PREMADE_VOICES,
+  AVAILABLE_MODELS,
+  DEFAULT_VOICE_ID,
+  DEFAULT_MODEL_ID,
+  type PremadeVoice,
+  type VoiceModelOption,
 } from "./elevenlabsClient";
 export {
   keyQuotaManager,

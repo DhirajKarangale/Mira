@@ -136,11 +136,20 @@ def decision_node(state: AgentState) -> Dict[str, Any]:
         target_route, route_reasoning, default_plan = fast_route
         log(f"[DecisionNode] Fast heuristic bypass -> '{target_route}' ({route_reasoning})")
         detail_level = _infer_detail_level(user_query)
+
+        forecast_days = None
+        weather_location = None
+        if target_route == "weather":
+            from .weather_tool import parse_forecast_days_from_query, parse_location_from_query
+            forecast_days = parse_forecast_days_from_query(user_query, default=7)
+            weather_location = parse_location_from_query(user_query)
+
         tool_params = {
             "search_query": None,
             "app_name": None,
             "time_expression": user_query,
-            "forecast_days": 7 if target_route == "weather" else None,
+            "forecast_days": forecast_days,
+            "location": weather_location,
             "news_plan": None,
             "detail_level": detail_level,
             "resolved_query": user_query,
@@ -202,7 +211,7 @@ Instructions:
 4. Retrieval Plan:
    - If route is "user_activity": search_query, app_name, time_expression.
    - If route is "mira_assistant": search_query for MIRA knowledge base, and intent ("INFORMATIONAL" or "MODIFICATION").
-   - If route is "weather": forecast_days (integer 1 to 16).
+   - If route is "weather": forecast_days (integer 1 to 16), location (specific city or place mentioned in query, or null if asking about user's own location).
    - If route is "news": news_plan (operation, q, category, country, location, lang, sortby, max_results).
 
 Return strictly a valid JSON object matching this schema:
@@ -218,6 +227,7 @@ Return strictly a valid JSON object matching this schema:
     "app_name": "<string or null>",
     "time_expression": "<string or null>",
     "forecast_days": <integer or null>,
+    "location": "<string or null>",
     "intent": "<INFORMATIONAL or MODIFICATION>",
     "news_plan": {{
       "operation": "top_headlines" | "search",
@@ -278,12 +288,19 @@ Do not include any extra text outside the JSON object.
     log(f"[DecisionNode] Final decision: route='{route}' (reasoning: {reasoning}, is_follow_up={is_follow_up}, detail={detail_level})")
 
     forecast_days = retrieval_plan.get("forecast_days")
-    if route == "weather" and forecast_days is None:
-        try:
-            from .weather_tool import parse_forecast_days_from_query
-            forecast_days = parse_forecast_days_from_query(user_query)
-        except Exception:
-            forecast_days = 7
+    weather_location = retrieval_plan.get("location")
+    if route == "weather":
+        from .weather_tool import parse_forecast_days_from_query, parse_location_from_query
+        if forecast_days is None:
+            try:
+                forecast_days = parse_forecast_days_from_query(user_query)
+            except Exception:
+                forecast_days = 7
+        if not weather_location:
+            try:
+                weather_location = parse_location_from_query(user_query)
+            except Exception:
+                weather_location = None
 
     news_plan = retrieval_plan.get("news_plan")
     if route == "news":
@@ -298,6 +315,7 @@ Do not include any extra text outside the JSON object.
         "app_name": retrieval_plan.get("app_name"),
         "time_expression": retrieval_plan.get("time_expression") or user_query,
         "forecast_days": forecast_days,
+        "location": weather_location,
         "news_plan": news_plan,
         "detail_level": detail_level,
         "resolved_query": resolved_query,

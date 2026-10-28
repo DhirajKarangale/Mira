@@ -490,8 +490,8 @@ export const ChatsPage: FC = () => {
                 f.chat_name && f.chat_name !== f.session_id
                   ? f.chat_name
                   : existing?.chat_name && existing.chat_name !== existing.session_id
-                  ? existing.chat_name
-                  : f.chat_name || f.session_id;
+                    ? existing.chat_name
+                    : f.chat_name || f.session_id;
 
               if (
                 existing &&
@@ -831,7 +831,7 @@ export const ChatsPage: FC = () => {
           if (user_message) {
             updated = updated.map((m) =>
               m.id.startsWith("temp-") &&
-              (m.content === user_message.content || m.content.trim() === user_message.content.trim())
+                (m.content === user_message.content || m.content.trim() === user_message.content.trim())
                 ? user_message
                 : m
             );
@@ -1359,8 +1359,8 @@ export const ChatsPage: FC = () => {
             isActive
               ? "bg-cyan-950/40 text-cyan-300 border border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.12)] font-semibold"
               : isUnread
-              ? "text-zinc-200 hover:text-white bg-cyan-950/20 hover:bg-cyan-950/35 border border-cyan-500/25 shadow-[0_0_8px_rgba(6,182,212,0.08)]"
-              : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5 border border-transparent"
+                ? "text-zinc-200 hover:text-white bg-cyan-950/20 hover:bg-cyan-950/35 border border-cyan-500/25 shadow-[0_0_8px_rgba(6,182,212,0.08)]"
+                : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5 border border-transparent"
           )}
         >
           {isActive && (
@@ -2084,8 +2084,8 @@ export const ChatsPage: FC = () => {
                   !hasLlmKeys && !isAiConfigsLoading
                     ? "Add LLM keys in Configurations > AI Config to chat with MIRA..."
                     : selectedSessionId
-                    ? "Type your message... (Enter to send, Shift+Enter for new line)"
-                    : "Type a prompt to start a new chat session..."
+                      ? "Type your message... (Enter to send, Shift+Enter for new line)"
+                      : "Type a prompt to start a new chat session..."
                 }
                 className="flex-1 max-h-44 min-h-[38px] bg-transparent resize-none text-xs sm:text-[13px] text-zinc-100 placeholder-zinc-500 focus:outline-none px-2 py-1.5 leading-relaxed overflow-y-auto"
               />
@@ -2098,8 +2098,8 @@ export const ChatsPage: FC = () => {
                   isCollectingCommand
                     ? "Mira is listening to your command... (Click to mute)"
                     : isMicOn
-                    ? "Microphone is Active: Say 'Mira' to talk (Click to mute)"
-                    : "Microphone is Muted: Click to enable voice input"
+                      ? "Microphone is Active: Say 'Mira' to talk (Click to mute)"
+                      : "Microphone is Muted: Click to enable voice input"
                 }
                 aria-label="Toggle microphone"
                 className={cn(
@@ -2107,8 +2107,8 @@ export const ChatsPage: FC = () => {
                   isCollectingCommand
                     ? "bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 shadow-cyan-500/30 animate-pulse"
                     : isMicOn
-                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30 shadow-emerald-500/20"
-                    : "bg-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/80"
+                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30 shadow-emerald-500/20"
+                      : "bg-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/80"
                 )}
               >
                 {isCollectingCommand ? (
@@ -2129,8 +2129,8 @@ export const ChatsPage: FC = () => {
                   !hasLlmKeys && !isAiConfigsLoading
                     ? "LLM API key required to send messages"
                     : isCurrentSessionSending
-                    ? "Waiting for AI response..."
-                    : "Send message (Enter)"
+                      ? "Waiting for AI response..."
+                      : "Send message (Enter)"
                 }
                 aria-label="Send message"
                 className={cn(

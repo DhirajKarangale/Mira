@@ -42,6 +42,9 @@ from .workflow import (
     AgentState,
     weather_forecast_node,
     get_weather_forecast,
+    parse_location_from_query,
+    geocode_location,
+    synthesize_weather_response,
     mira_assistant_node,
 )
 from .mira_assistant import (
@@ -90,6 +93,9 @@ __all__ = [
     "AgentState",
     "weather_forecast_node",
     "get_weather_forecast",
+    "parse_location_from_query",
+    "geocode_location",
+    "synthesize_weather_response",
     "mira_assistant_node",
     "detect_mira_query",
     "detect_mira_intent",

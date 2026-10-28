@@ -13,6 +13,7 @@ from config import get_user_profile
 logger = logging.getLogger("mira.engine.chat.workflow.weather_tool")
 
 OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+OPEN_METEO_GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 MIN_FORECAST_DAYS = 1
 MAX_FORECAST_DAYS = 16
 DEFAULT_FORECAST_DAYS = 7
@@ -75,7 +76,7 @@ def parse_forecast_days_from_query(query: str, default: int = DEFAULT_FORECAST_D
     """
     Infers the requested number of forecast days from natural language user query.
     Examples:
-      - 'weather today' / 'current weather' -> 1
+      - 'weather today' / 'current weather' / 'temperature' -> 1
       - 'tomorrow' -> 2
       - 'next 3 days' / '3 day forecast' -> 3
       - 'this week' / 'weekly forecast' -> 7
@@ -100,12 +101,110 @@ def parse_forecast_days_from_query(query: str, default: int = DEFAULT_FORECAST_D
     if "week" in q or "weekend" in q:
         return 7
 
-    # "today", "current", "now", "tonight", "right now", "currently"
+    # "today", "current", "now", "tonight", "right now", "currently", "temperature"
     single_day_terms = ("today", "current", "currently", "now", "right now", "tonight", "this morning", "this afternoon", "this evening")
     if any(term in q for term in single_day_terms):
         return 1
 
     return default
+
+
+def parse_location_from_query(query: str) -> Optional[str]:
+    """
+    Infers target city, state, or country from a natural language user query.
+    Examples:
+      - 'Oh Meera, just tell me the current weather and temperature of Pune, Maharashtra.' -> 'Pune, Maharashtra'
+      - 'What is the weather in Mumbai?' -> 'Mumbai'
+      - 'Weather forecast for Tokyo, Japan' -> 'Tokyo, Japan'
+      - 'How hot is it in London right now?' -> 'London'
+      - 'Is it raining outside?' -> None (indicates default user profile location)
+    """
+    if not query:
+        return None
+    q = query.strip()
+    q = re.sub(r'[\?\.\!]+$', '', q).strip()
+
+    temporal_stop_words = {
+        'today', 'tomorrow', 'tonight', 'now', 'right now', 'currently',
+        'this week', 'next week', 'this weekend', 'next weekend',
+        'this morning', 'this afternoon', 'this evening', 'please', 'thanks', 'thank you',
+        'next 24 hours', 'the weekend', 'the week', 'the day', 'outside', 'around here', 'nearby'
+    }
+
+    # Match prepositions indicating location: in, of, at, for
+    match = re.search(r'\b(?:in|of|at)\s+([A-Za-z\s,.-]+)$', q, re.IGNORECASE)
+    if not match:
+        match = re.search(r'\b(?:in|of|at)\s+([A-Za-z\s,.-]+?)(?:\s+(?:today|tomorrow|tonight|now|right now|currently|this|next|for|please|right)|\?|$)', q, re.IGNORECASE)
+    if not match:
+        match = re.search(r'\bfor\s+(?!the\s+next|\d+\s*days|tomorrow|today)([A-Za-z\s,.-]+)$', q, re.IGNORECASE)
+
+    if match:
+        candidate = match.group(1).strip(' ,.-')
+        candidate = re.split(r'\b(?:for|during|on|over)\b', candidate, flags=re.IGNORECASE)[0].strip(' ,.-')
+        words = [w for w in candidate.split() if w.lower() not in ('the', 'a', 'an')]
+        cleaned = ' '.join(words).strip(' ,.-')
+        for stop in sorted(temporal_stop_words, key=len, reverse=True):
+            cleaned = re.sub(r'\b' + re.escape(stop) + r'\b', '', cleaned, flags=re.IGNORECASE).strip(' ,.-')
+
+        if cleaned and len(cleaned) >= 2 and cleaned.lower() not in temporal_stop_words:
+            if not re.search(r'\b\d+\s*days?\b', cleaned, re.IGNORECASE):
+                return cleaned
+    return None
+
+
+def geocode_location(location_name: str) -> Optional[Dict[str, Any]]:
+    """
+    Geocodes a location query using Open-Meteo's public geocoding API:
+      https://geocoding-api.open-meteo.com/v1/search
+    Returns:
+      {
+        'name': str,
+        'admin1': str,
+        'country': str,
+        'display_name': str,
+        'latitude': float,
+        'longitude': float,
+        'timezone': str,
+      }
+    or None if not found or on error.
+    """
+    if not location_name or not location_name.strip():
+        return None
+    clean = location_name.strip()
+    candidates = [clean]
+    if ',' in clean:
+        candidates.append(clean.split(',')[0].strip())
+
+    for cand in candidates:
+        if not cand:
+            continue
+        try:
+            resp = requests.get(
+                OPEN_METEO_GEOCODING_URL,
+                params={"name": cand, "count": 1, "language": "en", "format": "json"},
+                timeout=5.0,
+            )
+            if resp.status_code == 200:
+                results = resp.json().get("results")
+                if results and len(results) > 0:
+                    r = results[0]
+                    name = r.get("name", cand)
+                    admin1 = r.get("admin1", "")
+                    country = r.get("country", "")
+                    display_parts = [p for p in (name, admin1, country) if p]
+                    display_name = ", ".join(display_parts) if display_parts else name
+                    return {
+                        "name": name,
+                        "admin1": admin1,
+                        "country": country,
+                        "display_name": display_name,
+                        "latitude": float(r.get("latitude")),
+                        "longitude": float(r.get("longitude")),
+                        "timezone": r.get("timezone", "auto"),
+                    }
+        except Exception as e:
+            log_error(f"[WeatherTool] Geocoding exception for candidate '{cand}': {e}")
+    return None
 
 
 def get_user_coordinates(user_profile: Optional[Dict[str, Any]] = None) -> Tuple[Optional[float], Optional[float], Dict[str, Any]]:
@@ -226,19 +325,24 @@ def format_weather_report(
     api_data: Dict[str, Any],
     user_profile: Dict[str, Any],
     requested_days: int,
+    custom_location_name: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], str]:
     """
     Transforms raw Open-Meteo forecast API response into:
       1. Structured data dictionary (suitable for programmatic/agentic consumption)
       2. Natural, structured text summary (current weather, daily forecasts, hourly highlights)
-         optimized for LLM response synthesis without unnecessary noise.
+         optimized for LLM response synthesis.
     """
-    loc_parts = [
-        user_profile.get("city"),
-        user_profile.get("state"),
-        user_profile.get("country"),
-    ]
-    location_name = ", ".join([str(p).strip() for p in loc_parts if p and str(p).strip()])
+    if custom_location_name and custom_location_name.strip():
+        location_name = custom_location_name.strip()
+    else:
+        loc_parts = [
+            user_profile.get("city"),
+            user_profile.get("state"),
+            user_profile.get("country"),
+        ]
+        location_name = ", ".join([str(p).strip() for p in loc_parts if p and str(p).strip()])
+
     lat = api_data.get("latitude")
     lon = api_data.get("longitude")
     tz = api_data.get("timezone", "auto")
@@ -329,7 +433,7 @@ def format_weather_report(
             f"Precipitation chance: {p_prob}%, Rain: {r_sum} mm, Wind up to {w_max} km/h."
         )
 
-    # 3. Hourly Forecast Highlights (sample key hours or hours with precipitation over the next 24 hours)
+    # 3. Hourly Forecast Highlights
     hourly_raw = api_data.get("hourly") or {}
     h_times = hourly_raw.get("time") or []
     h_temps = hourly_raw.get("temperature_2m") or []
@@ -344,7 +448,6 @@ def format_weather_report(
     hourly_structured: List[Dict[str, Any]] = []
     hourly_lines: List[str] = []
 
-    # Take up to 48 hourly points so full day and upcoming hours are preserved
     limit_hours = min(len(h_times), 48)
     for idx in range(limit_hours):
         t_iso = h_times[idx]
@@ -378,12 +481,10 @@ def format_weather_report(
         }
         hourly_structured.append(item)
 
-        # Include in summary text if interval step (every 3 hours) or significant precipitation
         if idx % 3 == 0 or (prob and prob >= 30) or (rain and rain > 0.0) or (snow and snow > 0.0):
             rain_note = f", Rain: {rain} mm ({prob}%)" if (rain or prob) else ""
             hourly_lines.append(f"  * {hour_str}: {temp}°C (feels {app_temp}°C), {cond}{rain_note}, wind {wind} km/h")
 
-    # Complete structured payload
     structured_data = {
         "location": {
             "name": location_name or "User Location",
@@ -398,7 +499,6 @@ def format_weather_report(
         "hourly_highlights": hourly_structured,
     }
 
-    # Clean textual summary for synthesis
     text_sections = [
         f"**Weather Forecast for {loc_header}** (Coordinates: {lat}°N, {lon}°E, Timezone: {tz}):",
         f"- **Current Weather** ({cur_time}): {cur_condition}, {cur_temp}°C (Feels like {cur_app_temp}°C), "
@@ -417,51 +517,162 @@ def format_weather_report(
     return structured_data, summary_text
 
 
+def synthesize_weather_response(
+    user_query: str,
+    structured_data: Dict[str, Any],
+    location_name: str,
+) -> str:
+    """
+    Synthesizes a short, simple, accurate, and to-the-point weather answer
+    tailored strictly to the user's specific query using LLM.
+    Avoids verbose data dumping (no coordinates, no unrequested hourly/daily dumps).
+    """
+    cur = structured_data.get("current") or {}
+    cur_cond = cur.get("condition", "Unknown")
+    cur_temp = cur.get("temperature_celsius")
+    cur_app = cur.get("apparent_temperature_celsius")
+    cur_hum = cur.get("relative_humidity_percent")
+    cur_wind = cur.get("wind_speed_kmh")
+    cur_rain = cur.get("rain_mm") or cur.get("precipitation_mm", 0.0)
+
+    daily = structured_data.get("daily") or []
+    daily_lines = []
+    for d in daily[:7]:
+        daily_lines.append(
+            f"- {d.get('day', d.get('date'))}: {d.get('condition')}, High: {d.get('temp_max_celsius')}°C, "
+            f"Low: {d.get('temp_min_celsius')}°C, Rain chance: {d.get('precipitation_probability_percent', 0)}%, Rain: {d.get('rain_sum_mm', 0.0)} mm"
+        )
+    daily_summary = "\n".join(daily_lines) if daily_lines else "None available."
+
+    prompt = f"""You are MIRA, a helpful desktop AI assistant.
+Answer the user's weather question accurately, simply, and directly using ONLY the verified weather data provided below.
+
+User Query: "{user_query}"
+Target Location: {location_name}
+
+Weather Data:
+Current Conditions:
+- Weather: {cur_cond}
+- Temperature: {cur_temp}°C (Feels like: {cur_app}°C)
+- Humidity: {cur_hum}%
+- Wind: {cur_wind} km/h
+- Precipitation: {cur_rain} mm
+
+Daily Forecast:
+{daily_summary}
+
+STRICT INSTRUCTIONS:
+1. Answer ONLY what the user asked. Keep it short, simple, natural, and stick directly to the point.
+2. If the user asks for current weather or temperature:
+   - Provide ONLY the current condition and temperature in 1 concise sentence (e.g. "Currently in Pune, Maharashtra, it's 26.6°C (feels like 29°C) with overcast skies.").
+3. If the user asks about rain/precipitation:
+   - Answer directly whether and when it will rain and the chance of precipitation in 1-2 brief sentences.
+4. If the user asks for a forecast (e.g. tomorrow, 3 days, or weekly):
+   - Provide only the requested days concisely in clean short bullet points. Do not dump unnecessary fields.
+5. Do NOT include raw coordinates, elevation, timezone codes, or hourly data unless specifically asked.
+6. Do NOT include pleasantries, greetings (e.g. "Sure!", "Certainly!", "Hello"), or trailing questions (e.g. "Let me know if you need anything else!").
+7. LANGUAGE REQUIREMENT: You MUST respond in English only.
+"""
+    try:
+        from llm import call_llm
+        resp = call_llm(prompt, work="general").strip()
+        if resp and "The AI request could not be completed" not in resp:
+            return resp
+    except Exception as e:
+        log_error(f"[WeatherTool] LLM weather synthesis failed: {e}")
+
+    # Deterministic factual fallback
+    q_low = user_query.lower()
+    app_str = f" (feels like {cur_app}°C)" if cur_app is not None and cur_app != cur_temp else ""
+    if any(k in q_low for k in ("tomorrow",)):
+        if len(daily) > 1:
+            tm = daily[1]
+            return f"Tomorrow in {location_name}: {tm.get('condition', 'clear')}, High: {tm.get('temp_max_celsius')}°C, Low: {tm.get('temp_min_celsius')}°C (Rain chance: {tm.get('precipitation_probability_percent', 0)}%)."
+
+    if any(k in q_low for k in ("rain", "raining", "drizzle", "precipitation")):
+        p_prob = daily[0].get("precipitation_probability_percent", 0) if daily else 0
+        if cur_rain > 0 or p_prob >= 30:
+            return f"Rain is likely in {location_name} today with a {p_prob}% chance of precipitation."
+        return f"No significant rain is expected in {location_name} today (Precipitation chance: {p_prob}%)."
+
+    return f"The current weather in {location_name} is {cur_cond} with a temperature of {cur_temp}°C{app_str}."
+
+
 def get_weather_forecast(
     forecast_days: int = DEFAULT_FORECAST_DAYS,
     latitude: Optional[float] = None,
     longitude: Optional[float] = None,
+    location_query: Optional[str] = None,
     user_profile: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Main Weather Tool function:
     1. Validates requested number of forecast days (clamps to 1-16).
-    2. Dynamically retrieves user latitude and longitude from Vault user table if not provided.
-    3. Calls Open-Meteo Forecast API with coordinates, duration, and timezone=auto.
-    4. Returns structured weather data and human-readable summary.
+    2. Resolves coordinates:
+       - If latitude and longitude provided, uses them directly.
+       - Else if location_query provided, geocodes via Open-Meteo geocoding API.
+       - Else retrieves user coordinates from Vault profile.
+    3. Calls Open-Meteo Forecast API with coordinates, duration, and timezone.
+    4. Returns structured weather data and formatted report.
     """
     clamped_days = validate_forecast_days(forecast_days)
-
-    # Retrieve coordinates from Vault if not explicitly supplied
+    prof = dict(user_profile or {})
     lat = latitude
     lon = longitude
-    prof = dict(user_profile or {})
+    tz = "auto"
+    location_display: Optional[str] = None
 
-    if lat is None or lon is None:
+    # Case A: Explicit coordinates supplied
+    if lat is not None and lon is not None:
+        location_display = prof.get("city") or f"Coordinates ({lat}, {lon})"
+    # Case B: Ad-hoc location query provided (e.g. 'Pune, Maharashtra')
+    elif location_query and location_query.strip():
+        clean_loc = location_query.strip()
+        geocoded = geocode_location(clean_loc)
+        if geocoded:
+            lat = geocoded["latitude"]
+            lon = geocoded["longitude"]
+            tz = geocoded.get("timezone", "auto")
+            location_display = geocoded["display_name"]
+            prof["city"] = geocoded.get("name")
+            prof["state"] = geocoded.get("admin1")
+            prof["country"] = geocoded.get("country")
+        else:
+            msg = f"I couldn't find a location matching '{clean_loc}'. Please check the spelling or specify a nearby city."
+            log_error(f"[WeatherTool] Geocoding failed for requested location: '{clean_loc}'")
+            return {
+                "status": "location_not_found",
+                "message": msg,
+                "structured_data": None,
+                "summary_text": msg,
+            }
+    # Case C: Fallback to user profile in Vault
+    else:
         lat, lon, prof = get_user_coordinates(prof)
-
-    if lat is None or lon is None:
-        user_name = prof.get("user_name", "there")
-        city_hint = prof.get("city")
-        loc_str = f" for '{city_hint}'" if city_hint else ""
-        msg = (
-            f"Location coordinates (latitude and longitude) are not configured in your profile{loc_str}. "
-            "Please update your location details in Settings / User Details so MIRA can fetch accurate weather forecasts."
-        )
-        log_error(f"[WeatherTool] Missing location coordinates in Vault for user '{user_name}'")
-        return {
-            "status": "missing_location",
-            "message": msg,
-            "structured_data": None,
-            "summary_text": msg,
-        }
+        if lat is None or lon is None:
+            user_name = prof.get("user_name", "there")
+            city_hint = prof.get("city")
+            loc_str = f" for '{city_hint}'" if city_hint else ""
+            msg = (
+                f"Location coordinates are not configured in your profile{loc_str}. "
+                "Please specify a city (e.g. 'weather in Pune') or update your location in Settings."
+            )
+            log_error(f"[WeatherTool] Missing location coordinates in Vault for user '{user_name}'")
+            return {
+                "status": "missing_location",
+                "message": msg,
+                "structured_data": None,
+                "summary_text": msg,
+            }
+        loc_parts = [prof.get("city"), prof.get("state"), prof.get("country")]
+        location_display = ", ".join([str(p).strip() for p in loc_parts if p and str(p).strip()])
 
     # Query Open-Meteo API
     raw_api = fetch_open_meteo_forecast(
         latitude=lat,
         longitude=lon,
         forecast_days=clamped_days,
-        timezone="auto",
+        timezone=tz,
     )
 
     if raw_api.get("error"):
@@ -473,13 +684,19 @@ def get_weather_forecast(
             "summary_text": f"Weather forecast could not be retrieved at this time: {error_msg}",
         }
 
-    structured, text = format_weather_report(raw_api, prof, clamped_days)
+    structured, text = format_weather_report(
+        raw_api,
+        prof,
+        clamped_days,
+        custom_location_name=location_display,
+    )
 
     return {
         "status": "success",
         "structured_data": structured,
         "summary_text": text,
         "forecast_days": clamped_days,
+        "location_name": location_display or structured.get("location", {}).get("name") or "your location",
     }
 
 
@@ -487,35 +704,56 @@ def weather_forecast_node(state: AgentState) -> Dict[str, Any]:
     """
     Step 3 (Tool Node): Dynamic Weather Forecast LangGraph Node.
     Invoked when Decision Node routes to 'weather'.
-    Extracts requested forecast days from state parameters or user query,
-    fetches forecast via get_weather_forecast, and populates state.
+    Extracts location and forecast days from query or parameters,
+    fetches live forecast from Open-Meteo, synthesizes a concise, to-the-point
+    response using LLM, and populates state.
     """
     user_query = state.get("user_query", "").strip()
     tool_params = state.get("tool_parameters") or {}
     user_profile = state.get("user_profile") or {}
 
-    # Extract or infer requested forecast days
+    # 1. Extract location
+    explicit_location = tool_params.get("location") or parse_location_from_query(user_query)
+
+    # 2. Extract or infer requested forecast days
     requested_days = tool_params.get("forecast_days")
     if requested_days is None:
         requested_days = parse_forecast_days_from_query(user_query, DEFAULT_FORECAST_DAYS)
     else:
         requested_days = validate_forecast_days(requested_days, DEFAULT_FORECAST_DAYS)
 
-    log(f"[WeatherForecastNode] Executing weather tool: query='{user_query}', days={requested_days}")
+    log(f"[WeatherForecastNode] Executing weather tool: query='{user_query}', loc='{explicit_location}', days={requested_days}")
 
     result = get_weather_forecast(
         forecast_days=requested_days,
+        location_query=explicit_location,
         user_profile=user_profile,
     )
 
-    summary_text = result.get("summary_text") or result.get("message") or "No weather data available."
+    status = result.get("status")
+    if status != "success" or not result.get("structured_data"):
+        msg = result.get("summary_text") or result.get("message") or "Weather data is currently unavailable."
+        current_outputs = dict(state.get("node_outputs") or {})
+        current_outputs["weather_response"] = msg
+        current_outputs["weather_data"] = None
+        current_outputs["executed_node"] = "weather"
+        return {
+            "node_outputs": current_outputs,
+            "final_response": msg,
+        }
+
+    structured = result["structured_data"]
+    loc_display = result.get("location_name") or structured.get("location", {}).get("name") or explicit_location or "your area"
+
+    # Synthesize concise response answering ONLY what was asked
+    final_answer = synthesize_weather_response(user_query, structured, loc_display)
 
     current_outputs = dict(state.get("node_outputs") or {})
-    current_outputs["weather_response"] = summary_text
-    current_outputs["weather_data"] = result.get("structured_data")
+    current_outputs["weather_response"] = final_answer
+    current_outputs["weather_data"] = structured
     current_outputs["executed_node"] = "weather"
 
     return {
         "node_outputs": current_outputs,
-        "final_response": summary_text,
+        "final_response": final_answer,
     }

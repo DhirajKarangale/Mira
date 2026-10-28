@@ -1,4 +1,4 @@
-import { useState, useEffect, type FC } from "react";
+import { useState, useEffect, useMemo, type FC } from "react";
 import {
   Volume2,
   VolumeX,
@@ -12,10 +12,21 @@ import {
   RotateCcw,
   Sparkles,
   Zap,
+  User,
+  Cpu,
+  Layers,
+  Heart,
 } from "lucide-react";
 import type { VoiceConfig, VoiceConfigUpdateRequest } from "@/services";
 import { useVoiceStore } from "@/store/useVoiceStore";
 import { cn } from "@/lib/utils";
+import {
+  PREMADE_VOICES,
+  AVAILABLE_MODELS,
+  resolveVoiceAndModel,
+  serializeVoiceConfig,
+  isKnownModel,
+} from "@/modules/voice";
 
 interface VoiceControlConfigCardProps {
   voiceConfig: VoiceConfig | null | undefined;
@@ -37,55 +48,109 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
   const superBoostVolume = useVoiceStore((s) => s.superBoostVolume);
 
   const serverModelId = voiceConfig?.voice_model_id ?? "";
-  const [modelIdInput, setModelIdInput] = useState(serverModelId);
+  const currentResolved = useMemo(
+    () => resolveVoiceAndModel(serverModelId),
+    [serverModelId]
+  );
+
+  const [selectedVoiceId, setSelectedVoiceId] = useState(currentResolved.voiceId);
+  const [selectedModelId, setSelectedModelId] = useState(currentResolved.modelId);
+  const [customVoiceInput, setCustomVoiceInput] = useState(currentResolved.voiceId);
+  const [voiceGenderTab, setVoiceGenderTab] = useState<"female" | "male" | "custom">("female");
   const [isCopied, setIsCopied] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
-  const [isSavingModelId, setIsSavingModelId] = useState(false);
+  const [isSavingVoice, setIsSavingVoice] = useState(false);
 
   useEffect(() => {
-    setModelIdInput(serverModelId);
+    const res = resolveVoiceAndModel(serverModelId);
+    setSelectedVoiceId(res.voiceId);
+    setSelectedModelId(res.modelId);
+    setCustomVoiceInput(res.voiceId);
   }, [serverModelId]);
 
-  const isDirty = modelIdInput !== serverModelId;
+  const activeVoiceObj = useMemo(() => {
+    return PREMADE_VOICES.find((v) => v.id === selectedVoiceId) || null;
+  }, [selectedVoiceId]);
 
-  const handleSaveModelId = async () => {
-    if (!isDirty || isSavingModelId) return;
-    setIsSavingModelId(true);
+  const activeModelObj = useMemo(() => {
+    return AVAILABLE_MODELS.find((m) => m.id === selectedModelId) || AVAILABLE_MODELS[0];
+  }, [selectedModelId]);
+
+  const femaleVoices = useMemo(
+    () => PREMADE_VOICES.filter((v) => v.gender === "female"),
+    []
+  );
+
+  const maleVoices = useMemo(
+    () => PREMADE_VOICES.filter((v) => v.gender === "male"),
+    []
+  );
+
+  const isCustomVoiceDirty = customVoiceInput.trim() !== selectedVoiceId;
+
+  const handleSelectVoice = async (voiceId: string) => {
+    setSelectedVoiceId(voiceId);
+    setCustomVoiceInput(voiceId);
+    const serialized = serializeVoiceConfig(voiceId, selectedModelId);
+    setIsSavingVoice(true);
     try {
       await onUpdateVoiceConfig({
-        voice_model_id: modelIdInput.trim(),
+        voice_model_id: serialized,
       });
       setJustSaved(true);
       setTimeout(() => setJustSaved(false), 2500);
     } finally {
-      setIsSavingModelId(false);
+      setIsSavingVoice(false);
     }
   };
 
-  const handleSelectPreset = async (presetId: string) => {
-    setModelIdInput(presetId);
-    if (presetId.trim() === serverModelId) return;
-    setIsSavingModelId(true);
+  const handleSelectModel = async (modelId: string) => {
+    setSelectedModelId(modelId);
+    const serialized = serializeVoiceConfig(selectedVoiceId, modelId);
+    setIsSavingVoice(true);
     try {
       await onUpdateVoiceConfig({
-        voice_model_id: presetId.trim(),
+        voice_model_id: serialized,
       });
       setJustSaved(true);
       setTimeout(() => setJustSaved(false), 2500);
     } finally {
-      setIsSavingModelId(false);
+      setIsSavingVoice(false);
+    }
+  };
+
+  const handleSaveCustomVoice = async () => {
+    const clean = customVoiceInput.trim();
+    if (!clean || isSavingVoice) return;
+    const resolved = resolveVoiceAndModel(clean);
+    const targetVoice = resolved.voiceId;
+    const targetModel = isKnownModel(clean) ? resolved.modelId : selectedModelId;
+
+    setSelectedVoiceId(targetVoice);
+    setSelectedModelId(targetModel);
+    const serialized = serializeVoiceConfig(targetVoice, targetModel);
+
+    setIsSavingVoice(true);
+    try {
+      await onUpdateVoiceConfig({
+        voice_model_id: serialized,
+      });
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 2500);
+    } finally {
+      setIsSavingVoice(false);
     }
   };
 
   const handleCopy = () => {
-    if (!modelIdInput) return;
-    navigator.clipboard.writeText(modelIdInput);
+    if (!customVoiceInput) return;
+    navigator.clipboard.writeText(customVoiceInput);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   };
 
-  const handleReset = () => {
-    setModelIdInput(serverModelId);
+  const handleResetCustom = () => {
+    setCustomVoiceInput(selectedVoiceId);
   };
 
   const handleToggleMaster = async () => {
@@ -487,161 +552,387 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
         </div>
       </div>
 
-      {/* Voice Model ID Section */}
-      <div className="relative p-5 sm:p-6 border-t border-white/[0.06] bg-zinc-950/30">
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div className="flex items-center gap-2.5">
-              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-400 shrink-0">
-                <Bot className="w-4 h-4" />
+      {/* Voice & Model Configuration Section */}
+      <div className="relative p-5 sm:p-6 border-t border-white/[0.06] bg-zinc-950/40 space-y-6">
+        {/* Header with Active Summary Badge */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-400 shrink-0">
+              <Bot className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-white tracking-tight">
+                  Voice Persona & AI Engine Model
+                </h3>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.06] text-zinc-400 border border-white/[0.06]">
+                  ElevenLabs TTS
+                </span>
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-semibold text-white tracking-tight">
-                    Voice Model ID
-                  </h3>
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.06] text-zinc-400 border border-white/[0.06]">
-                    voice_config.voice_model_id
-                  </span>
-                </div>
-                <p className="text-xs text-zinc-400 mt-0.5">
-                  Identifier for AI speech synthesis model or custom cloned voice token stored in Vault
-                </p>
-              </div>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Choose natural human voice personas and low-latency speech synthesis models
+              </p>
+            </div>
+          </div>
+
+          {/* Active Summary Pill */}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.06] text-xs font-mono self-start sm:self-auto">
+            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-zinc-400">Active:</span>
+            <span className="text-cyan-300 font-semibold">
+              {activeVoiceObj ? activeVoiceObj.name : "Custom Voice"}
+            </span>
+            <span className="text-zinc-600">•</span>
+            <span className="text-sky-300 font-medium">{activeModelObj.name}</span>
+            {justSaved && (
+              <span className="ml-1 text-[11px] text-emerald-400 flex items-center gap-1 font-sans">
+                <Check className="w-3 h-3" /> Saved!
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* 1. AI Speech Synthesis Model Selection */}
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+              <Cpu className="w-3.5 h-3.5 text-cyan-400" />
+              <span>AI Speech Model</span>
+            </label>
+            <span className="text-[11px] text-zinc-500 font-mono">
+              Affects latency, natural cadence, and credit cost
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+            {AVAILABLE_MODELS.map((model) => {
+              const isSelected = selectedModelId === model.id;
+              return (
+                <button
+                  key={model.id}
+                  type="button"
+                  onClick={() => handleSelectModel(model.id)}
+                  disabled={isSavingVoice}
+                  className={cn(
+                    "relative p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2",
+                    isSelected
+                      ? "bg-cyan-500/10 border-cyan-500/40 shadow-[0_0_15px_rgba(6,182,212,0.15)] ring-1 ring-cyan-500/30"
+                      : "bg-white/[0.02] hover:bg-white/[0.05] border-white/[0.06] text-zinc-400"
+                  )}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span
+                      className={cn(
+                        "text-xs font-semibold",
+                        isSelected ? "text-white" : "text-zinc-300"
+                      )}
+                    >
+                      {model.name}
+                    </span>
+                    <span
+                      className={cn(
+                        "text-[10px] font-mono px-1.5 py-0.5 rounded",
+                        model.recommended
+                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                          : "bg-white/[0.04] text-zinc-400"
+                      )}
+                    >
+                      {model.tag}
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-zinc-400 leading-relaxed line-clamp-2">
+                    {model.description}
+                  </p>
+
+                  <div className="flex items-center justify-between pt-1 border-t border-white/[0.04] text-[10px] font-mono">
+                    <code className="text-zinc-500">{model.id}</code>
+                    {isSelected && (
+                      <span className="text-cyan-400 font-semibold flex items-center gap-1">
+                        <Check className="w-3 h-3" /> Selected
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 2. Voice Persona Selection (Female / Male / Custom) */}
+        <div className="space-y-3 pt-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/[0.06] pb-2">
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-pink-400" />
+                <span>Voice Persona</span>
+              </label>
+              <span className="text-[11px] text-zinc-500">
+                (Verified ElevenLabs premade voices - Free & Paid friendly)
+              </span>
             </div>
 
-            <div className="flex items-center gap-2 self-start sm:self-auto">
-              {modelIdInput && (
-                <button
-                  type="button"
-                  id="btn-copy-voice-model-id"
-                  onClick={handleCopy}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-all cursor-pointer"
-                  title="Copy Voice Model ID"
-                >
-                  {isCopied ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-emerald-400" />
-                      <span className="text-emerald-400 font-mono text-[11px]">Copied</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" />
-                      <span className="font-mono text-[11px]">Copy</span>
-                    </>
-                  )}
-                </button>
-              )}
-
-              {isDirty && (
-                <button
-                  type="button"
-                  id="btn-revert-voice-model-id"
-                  onClick={handleReset}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-all cursor-pointer"
-                  title="Revert changes"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span className="font-mono text-[11px]">Revert</span>
-                </button>
-              )}
+            {/* Gender / Custom Tabs */}
+            <div className="flex items-center gap-1 p-0.5 rounded-lg bg-zinc-950 border border-white/[0.08] self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => setVoiceGenderTab("female")}
+                className={cn(
+                  "px-3 py-1 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5",
+                  voiceGenderTab === "female"
+                    ? "bg-pink-500/20 text-pink-300 font-semibold shadow-sm"
+                    : "text-zinc-400 hover:text-white"
+                )}
+              >
+                <Heart className="w-3 h-3 text-pink-400" />
+                <span>Female Voices ({femaleVoices.length})</span>
+              </button>
 
               <button
                 type="button"
-                id="btn-save-voice-model-id"
-                onClick={handleSaveModelId}
-                disabled={!isDirty || isSavingModelId || isUpdating}
+                onClick={() => setVoiceGenderTab("male")}
                 className={cn(
-                  "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer shadow-sm",
-                  justSaved
-                    ? "bg-emerald-600/30 text-emerald-300 border border-emerald-500/40"
-                    : isDirty
-                    ? "bg-gradient-to-r from-cyan-600 to-sky-600 hover:from-cyan-500 hover:to-sky-500 text-white border border-cyan-400/30 shadow-[0_0_15px_rgba(6,182,212,0.25)]"
-                    : "bg-white/[0.04] text-zinc-500 border border-white/[0.05] cursor-not-allowed"
+                  "px-3 py-1 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5",
+                  voiceGenderTab === "male"
+                    ? "bg-sky-500/20 text-sky-300 font-semibold shadow-sm"
+                    : "text-zinc-400 hover:text-white"
                 )}
               >
-                {isSavingModelId ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Saving...</span>
-                  </>
-                ) : justSaved ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Saved in Vault</span>
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-3.5 h-3.5" />
-                    <span>Save Model ID</span>
-                  </>
+                <User className="w-3 h-3 text-sky-400" />
+                <span>Male Voices ({maleVoices.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setVoiceGenderTab("custom")}
+                className={cn(
+                  "px-3 py-1 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5",
+                  voiceGenderTab === "custom"
+                    ? "bg-cyan-500/20 text-cyan-300 font-semibold shadow-sm"
+                    : "text-zinc-400 hover:text-white"
                 )}
+              >
+                <Layers className="w-3 h-3 text-cyan-400" />
+                <span>Custom Voice ID</span>
               </button>
             </div>
           </div>
 
-          <div className="relative mt-1">
-            <textarea
-              id="input-voice-model-id"
-              value={modelIdInput}
-              onChange={(e) => setModelIdInput(e.target.value)}
-              onKeyDown={(e) => {
-                if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-                  handleSaveModelId();
-                }
-              }}
-              rows={3}
-              placeholder="Enter or paste your voice model ID (e.g. eleven_multilingual_v2, custom voice ID hash, or high-capacity model weights identifier)..."
-              className="w-full px-3.5 py-2.5 rounded-xl text-xs font-mono bg-zinc-950/80 border border-white/[0.08] text-cyan-200 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 transition-all resize-y min-h-[72px]"
-            />
-
-            <div className="flex items-center justify-between mt-1.5 px-1 text-[11px] text-zinc-500 font-mono">
-              <span>
-                Press <kbd className="px-1 py-0.5 rounded bg-white/[0.06] text-zinc-400 border border-white/[0.06]">Ctrl</kbd> + <kbd className="px-1 py-0.5 rounded bg-white/[0.06] text-zinc-400 border border-white/[0.06]">Enter</kbd> to save
-              </span>
-              <span className={cn(modelIdInput.length > 0 ? "text-cyan-400/80" : "text-zinc-600")}>
-                {modelIdInput.length} characters
-              </span>
-            </div>
-
-            {/* Quick preset buttons for verified premade voices */}
-            <div className="mt-3 pt-3 border-t border-white/[0.05] space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-medium text-zinc-400">
-                  Verified Premade Voices (Works with Free & Paid ElevenLabs tiers):
-                </span>
-                <span className="text-[10px] text-zinc-500 font-mono">
-                  Click to select
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  { name: "Sarah (Default Female)", id: "EXAVITQu4vr4xnSDxMaL", desc: "Mature, Reassuring" },
-                  { name: "George (Default Male)", id: "JBFqnCBsd6RMkjVDRZzb", desc: "Warm Storyteller" },
-                  { name: "Alice (Female)", id: "Xb7hH8MSUJpSbSDYk0k2", desc: "Clear Educator" },
-                  { name: "Roger (Male)", id: "CwhRBWXzGAHq8TQ4Fs17", desc: "Laid-Back Casual" },
-                  { name: "Charlie (Male)", id: "IKne3meq5aSn9XLyUdCD", desc: "Deep & Confident" },
-                ].map((preset) => (
+          {/* Female Voices Grid */}
+          {voiceGenderTab === "female" && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+              {femaleVoices.map((voice) => {
+                const isSelected = selectedVoiceId === voice.id;
+                return (
                   <button
-                    key={preset.id}
+                    key={voice.id}
                     type="button"
-                    onClick={() => handleSelectPreset(preset.id)}
+                    onClick={() => handleSelectVoice(voice.id)}
+                    disabled={isSavingVoice}
                     className={cn(
-                      "px-2.5 py-1 rounded-lg text-[11px] font-mono transition-all cursor-pointer border flex items-center gap-1.5",
-                      (serverModelId === preset.id || modelIdInput.trim() === preset.id)
-                        ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-[0_0_10px_rgba(6,182,212,0.15)] font-semibold"
-                        : "bg-white/[0.03] hover:bg-white/[0.08] text-zinc-300 border-white/[0.06]"
+                      "relative p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2",
+                      isSelected
+                        ? "bg-pink-500/10 border-pink-500/40 shadow-[0_0_15px_rgba(236,72,153,0.15)] ring-1 ring-pink-500/30"
+                        : "bg-white/[0.02] hover:bg-white/[0.05] border-white/[0.06] text-zinc-400"
                     )}
-                    title={`Switch to ${preset.name} (${preset.id})`}
                   >
-                    {serverModelId === preset.id && <Check className="w-3 h-3 text-cyan-400" />}
-                    <span>{preset.name}</span>
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={cn(
+                            "text-xs font-semibold",
+                            isSelected ? "text-white" : "text-zinc-200"
+                          )}
+                        >
+                          {voice.name}
+                        </span>
+                        {voice.recommended && (
+                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-pink-500/20 text-pink-300 border border-pink-500/30">
+                            Recommended
+                          </span>
+                        )}
+                      </div>
+
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.04] text-zinc-400">
+                        {voice.accent}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-zinc-400 leading-relaxed line-clamp-2">
+                      {voice.description}
+                    </p>
+
+                    <div className="flex items-center justify-between pt-1 border-t border-white/[0.04] text-[10px] font-mono">
+                      <code className="text-zinc-600 truncate max-w-[120px]">{voice.id}</code>
+                      {isSelected ? (
+                        <span className="text-pink-400 font-semibold flex items-center gap-1">
+                          <Check className="w-3 h-3" /> Active
+                        </span>
+                      ) : (
+                        <span className="text-zinc-500 hover:text-zinc-300">Select</span>
+                      )}
+                    </div>
                   </button>
-                ))}
+                );
+              })}
+            </div>
+          )}
+
+          {/* Male Voices Grid */}
+          {voiceGenderTab === "male" && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+              {maleVoices.map((voice) => {
+                const isSelected = selectedVoiceId === voice.id;
+                return (
+                  <button
+                    key={voice.id}
+                    type="button"
+                    onClick={() => handleSelectVoice(voice.id)}
+                    disabled={isSavingVoice}
+                    className={cn(
+                      "relative p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2",
+                      isSelected
+                        ? "bg-sky-500/10 border-sky-500/40 shadow-[0_0_15px_rgba(14,165,233,0.15)] ring-1 ring-sky-500/30"
+                        : "bg-white/[0.02] hover:bg-white/[0.05] border-white/[0.06] text-zinc-400"
+                    )}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={cn(
+                            "text-xs font-semibold",
+                            isSelected ? "text-white" : "text-zinc-200"
+                          )}
+                        >
+                          {voice.name}
+                        </span>
+                        {voice.recommended && (
+                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                            Recommended
+                          </span>
+                        )}
+                      </div>
+
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.04] text-zinc-400">
+                        {voice.accent}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-zinc-400 leading-relaxed line-clamp-2">
+                      {voice.description}
+                    </p>
+
+                    <div className="flex items-center justify-between pt-1 border-t border-white/[0.04] text-[10px] font-mono">
+                      <code className="text-zinc-600 truncate max-w-[120px]">{voice.id}</code>
+                      {isSelected ? (
+                        <span className="text-sky-400 font-semibold flex items-center gap-1">
+                          <Check className="w-3 h-3" /> Active
+                        </span>
+                      ) : (
+                        <span className="text-zinc-500 hover:text-zinc-300">Select</span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Custom Voice ID Tab */}
+          {voiceGenderTab === "custom" && (
+            <div className="space-y-3 p-4 rounded-xl bg-zinc-950/60 border border-white/[0.06]">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-xs font-semibold text-white">
+                    Enter Custom Voice ID or Cloned Voice Token
+                  </h4>
+                  <p className="text-[11px] text-zinc-400 mt-0.5">
+                    Paste your ElevenLabs Voice ID (e.g. from your ElevenLabs Voice Lab or Voice Library)
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {customVoiceInput && (
+                    <button
+                      type="button"
+                      onClick={handleCopy}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-all cursor-pointer"
+                      title="Copy Custom Voice ID"
+                    >
+                      {isCopied ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-emerald-400 font-mono text-[11px]">Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span className="font-mono text-[11px]">Copy</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+
+                  {isCustomVoiceDirty && (
+                    <button
+                      type="button"
+                      onClick={handleResetCustom}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-all cursor-pointer"
+                      title="Revert to current active voice"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span className="font-mono text-[11px]">Revert</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleSaveCustomVoice}
+                    disabled={!isCustomVoiceDirty || isSavingVoice}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer shadow-sm",
+                      justSaved
+                        ? "bg-emerald-600/30 text-emerald-300 border border-emerald-500/40"
+                        : isCustomVoiceDirty
+                        ? "bg-gradient-to-r from-cyan-600 to-sky-600 hover:from-cyan-500 hover:to-sky-500 text-white border border-cyan-400/30 shadow-[0_0_15px_rgba(6,182,212,0.25)]"
+                        : "bg-white/[0.04] text-zinc-500 border border-white/[0.05] cursor-not-allowed"
+                    )}
+                  >
+                    {isSavingVoice ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Saving...</span>
+                      </>
+                    ) : justSaved ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Saved</span>
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-3.5 h-3.5" />
+                        <span>Save Voice ID</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
 
-              {modelIdInput.trim() === "QTKSa2Iyv0yoxvXY2V8a" && (
-                <div className="mt-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs leading-relaxed space-y-1">
+              <input
+                type="text"
+                value={customVoiceInput}
+                onChange={(e) => setCustomVoiceInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    handleSaveCustomVoice();
+                  }
+                }}
+                placeholder="Paste 20-character Voice ID (e.g. 21m00Tcm4TlvDq8ikWAM, EXAVITQu4vr4xnSDxMaL)..."
+                className="w-full px-3.5 py-2.5 rounded-xl text-xs font-mono bg-zinc-950/80 border border-white/[0.08] text-cyan-200 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 transition-all"
+              />
+
+              {customVoiceInput.trim() === "QTKSa2Iyv0yoxvXY2V8a" && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs leading-relaxed space-y-1">
                   <div className="font-semibold text-amber-300 flex items-center gap-1.5">
                     <span>⚠️ ElevenLabs Free API Restriction Notice:</span>
                   </div>
@@ -649,18 +940,23 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
                     Voice ID <code className="px-1 py-0.5 rounded bg-black/40 font-mono text-amber-200">QTKSa2Iyv0yoxvXY2V8a</code> (Neha P) is an ElevenLabs <strong>Community Library</strong> voice.
                   </p>
                   <p className="text-zinc-300">
-                    ElevenLabs strictly blocks Free Tier API accounts from using Community Library voices (returns <code className="px-1 py-0.5 rounded bg-black/40 font-mono text-rose-300">HTTP 402: Free users cannot use library voices via the API</code>).
+                    ElevenLabs blocks Free Tier API accounts from using Community Library voices (returns <code className="px-1 py-0.5 rounded bg-black/40 font-mono text-rose-300">HTTP 402: Free users cannot use library voices via the API</code>).
                   </p>
                   <p className="text-zinc-400 text-[11px]">
-                    To use Neha P, an ElevenLabs paid subscription (Creator/Starter) is required on your ElevenLabs account. On free accounts, please select one of the Premade voices above (like <strong>Sarah</strong> or <strong>George</strong>), which work freely without restriction!
+                    On free accounts, please select one of our curated Premade voices above (like <strong>Rachel</strong>, <strong>Sarah</strong>, or <strong>Alice</strong>), which work freely without restriction!
                   </p>
                 </div>
               )}
-
-              <p className="text-[11px] text-zinc-500 leading-relaxed">
-                Free ElevenLabs accounts only allow Premade voices via API. Library or cloned voices require a paid ElevenLabs plan. If an unpermitted library voice is entered, MIRA automatically falls back to Sarah so you always hear speech.
-              </p>
             </div>
+          )}
+
+          <div className="pt-2 flex items-center justify-between text-[11px] text-zinc-500 font-mono">
+            <span>
+              Configured voice will use <strong className="text-cyan-400 font-semibold">{activeModelObj.name}</strong> for low-latency generation.
+            </span>
+            <span className="text-zinc-600">
+              Vault key: <code className="text-zinc-500">voice_config.voice_model_id</code>
+            </span>
           </div>
         </div>
       </div>

@@ -3,6 +3,7 @@ import { cleanTextForSpeech, chunkText } from "./textProcessor";
 import { generateChunkAudio } from "./elevenlabsClient";
 import { audioStorage } from "./audioStorage";
 import { audioPlayer } from "./audioPlayer";
+import { toast } from "@/components";
 import type {
   QueuedVoiceResponse,
   QueuedChunk,
@@ -154,6 +155,17 @@ class VoiceQueueManager {
           console.warn(`[VoiceQueueManager] Chunk #${chunk.orderIndex + 1} failed:`, msg);
           chunk.state = "failed";
           chunk.error = msg;
+          if (!response.hasNotifiedError) {
+            response.hasNotifiedError = true;
+            try {
+              toast.warning(
+                `ElevenLabs speech failed: ${msg}. Falling back to browser speech. Check your API key and Voice ID in Configurations.`,
+                { title: "Voice Synthesis Notice" }
+              );
+            } catch {
+              // Ignore toast display error if unmounted
+            }
+          }
           this.notify();
         }
       }

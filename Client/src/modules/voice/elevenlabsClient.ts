@@ -2,12 +2,141 @@ import { useVoiceStore } from "@/store/useVoiceStore";
 import { keyQuotaManager } from "./keyQuotaManager";
 import type { KeyRotationCheckResult, ChunkGenerationOptions } from "./types";
 
+export interface PremadeVoice {
+  id: string;
+  name: string;
+  gender: "female" | "male";
+  accent: string;
+  description: string;
+  recommended?: boolean;
+}
+
+export interface VoiceModelOption {
+  id: string;
+  name: string;
+  description: string;
+  tag: string;
+  recommended?: boolean;
+}
+
 // Verified premade voices available to all ElevenLabs tiers (including Free accounts):
-// Sarah: "EXAVITQu4vr4xnSDxMaL" (Mature, Reassuring)
-// Alice: "Xb7hH8MSUJpSbSDYk0k2" (Clear Educator)
-// George: "JBFqnCBsd6RMkjVDRZzb" (Warm Storyteller)
-export const DEFAULT_VOICE_ID = "EXAVITQu4vr4xnSDxMaL"; // Sarah (Verified premade voice)
-export const DEFAULT_MODEL_ID = "eleven_multilingual_v2";
+export const PREMADE_VOICES: PremadeVoice[] = [
+  // Top-Tier Female Voices
+  {
+    id: "21m00Tcm4TlvDq8ikWAM",
+    name: "Rachel",
+    gender: "female",
+    accent: "American",
+    description: "Calm, articulate, warm, professional (Iconic AI Assistant)",
+    recommended: true,
+  },
+  {
+    id: "EXAVITQu4vr4xnSDxMaL",
+    name: "Sarah",
+    gender: "female",
+    accent: "American",
+    description: "Mature, reassuring, confident conversational tone",
+    recommended: true,
+  },
+  {
+    id: "Xb7hH8MSUJpSbSDYk0k2",
+    name: "Alice",
+    gender: "female",
+    accent: "British / Mid-Atlantic",
+    description: "Clear educator, confident, friendly & bright",
+  },
+  {
+    id: "XB0fDUnXU5powFXDhCwa",
+    name: "Charlotte",
+    gender: "female",
+    accent: "English / Swedish",
+    description: "Seductive, warm, charming & relaxing",
+  },
+  {
+    id: "pFZP5JQG7iQjIQuC4Bku",
+    name: "Lily",
+    gender: "female",
+    accent: "American",
+    description: "Raspy, warm, relaxed, conversational narration",
+  },
+  {
+    id: "cgSgspJ2msm6clMCkdW9",
+    name: "Jessica",
+    gender: "female",
+    accent: "American",
+    description: "Playful, bright, upbeat, youthful & energetic",
+  },
+  {
+    id: "piTKgcLEGmPE4e6mEKli",
+    name: "Nicole",
+    gender: "female",
+    accent: "American",
+    description: "Whispering, soft, soothing & gentle",
+  },
+  {
+    id: "jsCqWAovK2LkecY7zXl4",
+    name: "Freya",
+    gender: "female",
+    accent: "American",
+    description: "Expressive, dynamic, confident & clear",
+  },
+
+  // High Quality Male Voices
+  {
+    id: "JBFqnCBsd6RMkjVDRZzb",
+    name: "George",
+    gender: "male",
+    accent: "British",
+    description: "Warm storyteller, rich, deep & resonant",
+  },
+  {
+    id: "CwhRBWXzGAHq8TQ4Fs17",
+    name: "Roger",
+    gender: "male",
+    accent: "American",
+    description: "Laid-back casual, approachable & conversational",
+  },
+  {
+    id: "IKne3meq5aSn9XLyUdCD",
+    name: "Charlie",
+    gender: "male",
+    accent: "Australian",
+    description: "Deep, calm, confident & natural",
+  },
+  {
+    id: "nPczCjzI2devNBz1zQrb",
+    name: "Brian",
+    gender: "male",
+    accent: "American",
+    description: "Deep, professional, authoritative narrator",
+  },
+];
+
+// Available ElevenLabs Models
+export const AVAILABLE_MODELS: VoiceModelOption[] = [
+  {
+    id: "eleven_flash_v2_5",
+    name: "Eleven Flash v2.5",
+    description: "Ultra-low latency (~75ms), crystal-clear speech, 50% lower credit usage (Recommended)",
+    tag: "Fastest & Recommended",
+    recommended: true,
+  },
+  {
+    id: "eleven_turbo_v2_5",
+    name: "Eleven Turbo v2.5",
+    description: "High quality, low latency, ideal for real-time conversation",
+    tag: "Low Latency",
+  },
+  {
+    id: "eleven_multilingual_v2",
+    name: "Eleven Multilingual v2",
+    description: "Expressive emotional depth across 29+ languages",
+    tag: "Rich & Expressive",
+  },
+];
+
+export const DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"; // Rachel (Iconic premade female voice)
+export const DEFAULT_MODEL_ID = "eleven_flash_v2_5"; // Ultra-low latency conversational model
 
 /**
  * Reusable error-detection function that identifies:
@@ -88,15 +217,119 @@ export function isKeyRotationError(
 }
 
 /**
- * Resolves the appropriate voice ID and model ID based strictly on the configured voice_model_id in Vault.
+ * Checks whether a given string corresponds to a known ElevenLabs model identifier.
  */
-function resolveVoiceAndModel(configuredVoiceModelId?: string): {
+export function isKnownModel(id?: string): boolean {
+  if (!id) return false;
+  const lower = id.trim().toLowerCase();
+  return (
+    lower.startsWith("eleven_") ||
+    AVAILABLE_MODELS.some((m) => m.id.toLowerCase() === lower)
+  );
+}
+
+/**
+ * Resolves a model ID, normalizing aliases or defaulting safely.
+ */
+export function resolveModelId(id?: string): string {
+  if (!id) return DEFAULT_MODEL_ID;
+  const trimmed = id.trim();
+  const matched = AVAILABLE_MODELS.find(
+    (m) => m.id.toLowerCase() === trimmed.toLowerCase()
+  );
+  if (matched) return matched.id;
+  if (trimmed.startsWith("eleven_")) return trimmed;
+  return DEFAULT_MODEL_ID;
+}
+
+/**
+ * Resolves a voice identifier or voice name alias to its valid ElevenLabs Voice ID.
+ */
+export function resolveVoiceIdOrAlias(val?: string): string {
+  if (!val) return DEFAULT_VOICE_ID;
+  const trimmed = val.trim();
+  // Check if matches a preset voice name (case-insensitive)
+  const matchedByName = PREMADE_VOICES.find(
+    (p) => p.name.toLowerCase() === trimmed.toLowerCase()
+  );
+  if (matchedByName) return matchedByName.id;
+  return trimmed;
+}
+
+/**
+ * Serializes voiceId and modelId into a storage-safe JSON string for Vault voice_model_id.
+ */
+export function serializeVoiceConfig(voiceId: string, modelId: string): string {
+  return JSON.stringify({
+    voiceId: voiceId.trim() || DEFAULT_VOICE_ID,
+    modelId: modelId.trim() || DEFAULT_MODEL_ID,
+  });
+}
+
+/**
+ * Resolves the appropriate voice ID and model ID based on the configured voice_model_id in Vault.
+ * Robustly parses:
+ * - JSON string: `{"voiceId": "...", "modelId": "..."}`
+ * - Delimited string: `"voiceId:modelId"` or `"voiceId|modelId"`
+ * - Model ID string: `"eleven_flash_v2_5"` (keeps default voice, assigns chosen model)
+ * - Voice ID or voice alias: `"21m00Tcm4TlvDq8ikWAM"` or `"Rachel"` (assigns voice, uses default flash model)
+ */
+export function resolveVoiceAndModel(configuredVoiceModelId?: string): {
   voiceId: string;
   modelId: string;
 } {
   const trimmed = (configuredVoiceModelId || "").trim();
+  if (!trimmed) {
+    return {
+      voiceId: DEFAULT_VOICE_ID,
+      modelId: DEFAULT_MODEL_ID,
+    };
+  }
+
+  // 1. JSON object parsing
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      const rawVoice = (parsed.voiceId || parsed.voice || "").trim();
+      const rawModel = (parsed.modelId || parsed.model || "").trim();
+      return {
+        voiceId: resolveVoiceIdOrAlias(rawVoice) || DEFAULT_VOICE_ID,
+        modelId: resolveModelId(rawModel),
+      };
+    } catch {
+      // ignore JSON parse error and continue
+    }
+  }
+
+  // 2. Delimited string parsing ("voiceId:modelId" or "voiceId|modelId")
+  if (trimmed.includes(":") || trimmed.includes("|")) {
+    const parts = trimmed.split(/[:|]/).map((s) => s.trim());
+    const p1 = parts[0] || "";
+    const p2 = parts[1] || "";
+
+    if (isKnownModel(p1)) {
+      return {
+        voiceId: resolveVoiceIdOrAlias(p2) || DEFAULT_VOICE_ID,
+        modelId: resolveModelId(p1),
+      };
+    }
+    return {
+      voiceId: resolveVoiceIdOrAlias(p1) || DEFAULT_VOICE_ID,
+      modelId: isKnownModel(p2) ? resolveModelId(p2) : DEFAULT_MODEL_ID,
+    };
+  }
+
+  // 3. If input is solely a model identifier (e.g. eleven_turbo_v2_5, eleven_flash_v2_5)
+  if (isKnownModel(trimmed)) {
+    return {
+      voiceId: DEFAULT_VOICE_ID,
+      modelId: resolveModelId(trimmed),
+    };
+  }
+
+  // 4. Otherwise treat as Voice ID or voice name alias
   return {
-    voiceId: trimmed || DEFAULT_VOICE_ID,
+    voiceId: resolveVoiceIdOrAlias(trimmed) || DEFAULT_VOICE_ID,
     modelId: DEFAULT_MODEL_ID,
   };
 }

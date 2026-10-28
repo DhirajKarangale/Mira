@@ -44,6 +44,7 @@ export interface QueuedVoiceResponse {
   startedAt?: number;
   finishedAt?: number;
   error?: string;
+  hasNotifiedError?: boolean;
 }
 
 export interface VoiceQueueSnapshot {
