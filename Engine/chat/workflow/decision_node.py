@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from .state import AgentState
 from .timezone_helper import resolve_user_timezone
+from ..mira_assistant.detection import detect_mira_query
 from llm import call_llm
 from vault_logger import log, log_error
 
@@ -14,6 +15,11 @@ logger = logging.getLogger("mira.engine.chat.workflow.decision")
 
 # Extensible tool descriptions for routing
 AVAILABLE_ROUTES = {
+    "mira_assistant": (
+        "User is asking questions about MIRA (architecture, modules, Engine, Vault, Memory, Operator, "
+        "Message Broker, Client, scripts, APIs, Redis streams, configuration, implementation, debugging, usage) "
+        "or requesting to make changes, additions, or modifications to the MIRA project directly through chat."
+    ),
     "user_activity": (
         "User is asking about their personal activities, screen time, past work history, "
         "applications opened (e.g. VS Code, Edge, Chrome, WhatsApp, Notepad), documents worked on, "
@@ -44,7 +50,7 @@ AVAILABLE_ROUTES = {
 }
 
 # Active routes supported in current deployment
-ACTIVE_ROUTE_TARGETS = {"user_activity", "history_answer", "general_llm", "weather", "news"}
+ACTIVE_ROUTE_TARGETS = {"user_activity", "history_answer", "general_llm", "weather", "news", "mira_assistant"}
 
 
 def _fast_route_heuristic(query: str, chat_history: List[Dict[str, Any]]) -> Optional[Tuple[str, str, Dict[str, Any]]]:
@@ -55,6 +61,19 @@ def _fast_route_heuristic(query: str, chat_history: List[Dict[str, Any]]) -> Opt
     q = query.strip().lower()
     clean_q = re.sub(r'[^\w\s]', '', q).strip()
 
+    # Check for personal activity terms
+    activity_words = ("what did i", "what was i", "my activity", "my work", "my screen", "screen time", "did i open", "did i use", "was i using")
+    is_activity_query = any(w in q for w in activity_words)
+
+    # 0. Check for MIRA query or project modification request (0ms fast path)
+    if not is_activity_query:
+        try:
+            mira_match = detect_mira_query(query, chat_history)
+            if mira_match is not None:
+                return mira_match
+        except Exception as e:
+            logger.debug(f"[DecisionNode] Fast MIRA heuristic check notice: {e}")
+
     # 1. Pure conversational chit-chat / greetings / farewells / thanks
     greetings = {
         "hello", "hi", "hey", "good morning", "good afternoon", "good evening",
@@ -63,10 +82,6 @@ def _fast_route_heuristic(query: str, chat_history: List[Dict[str, Any]]) -> Opt
     }
     if clean_q in greetings or any(clean_q.startswith(g + " ") for g in ("hello", "hi", "hey")):
         return "general_llm", "Fast heuristic: Conversational greeting/chit-chat", {}
-
-    # Check for personal activity terms
-    activity_words = ("what did i", "what was i", "my activity", "my work", "my screen", "screen time", "did i open", "did i use", "was i using")
-    is_activity_query = any(w in q for w in activity_words)
 
     # 2. Unambiguous weather query (when not asking about past personal activity)
     weather_terms = ("weather", "forecast", "is it raining", "will it rain", "temperature outside", "rain forecast", "how hot is it", "how cold is it")
@@ -85,8 +100,7 @@ def _fast_route_heuristic(query: str, chat_history: List[Dict[str, Any]]) -> Opt
         if re.search(coding_pattern, q) or re.search(comp_pattern, q):
             return "general_llm", "Fast heuristic: Technical / coding / comparison query", {}
 
-    # 5. Explanatory / informational questions (e.g. "can you tell me about X and why Y", "explain why X happened")
-    # when not explicitly asking for news headlines or live articles
+    # 5. Explanatory / informational questions
     has_news_kw = any(k in q for k in ("news", "headline", "headlines", "breaking", "article", "articles"))
     explanation_starters = (
         "can you tell me about", "tell me about", "explain why", "why did", "why do",
@@ -130,13 +144,16 @@ def decision_node(state: AgentState) -> Dict[str, Any]:
             "news_plan": None,
             "detail_level": detail_level,
             "resolved_query": user_query,
-            "is_follow_up": False,
+            "is_follow_up": default_plan.get("is_follow_up", False) if isinstance(default_plan, dict) else False,
             "can_answer_from_history": False,
         }
+        if isinstance(default_plan, dict):
+            tool_params.update(default_plan)
+
         return {
             "next_node": target_route,
             "decision_reasoning": route_reasoning,
-            "is_follow_up": False,
+            "is_follow_up": tool_params.get("is_follow_up", False),
             "can_answer_from_history": False,
             "detail_level": detail_level,
             "resolved_query": user_query,
@@ -170,42 +187,27 @@ User's Latest Query: "{user_query}"
 
 Instructions:
 1. Understand Intent & Route:
-   - "history_answer": The query is a follow-up, clarification, reformatting, or question whose answer is ALREADY present in the conversation history above (e.g. asking which browser was used when already listed, asking to summarize or reformat previous reply, asking about an entity already explained).
+   - "mira_assistant": The user is asking questions about MIRA (architecture, modules, Engine, Vault, Memory, Operator, Message Broker, Client, scripts, APIs, Redis streams, configuration, implementation, debugging, usage) OR asking to make changes, additions, or modifications to the MIRA project directly through chat.
+   - "history_answer": The query is a follow-up, clarification, reformatting, or question whose answer is ALREADY present in the conversation history above.
    - "user_activity": The user is asking about their personal activities, screen time, applications used, documents opened, or work history that REQUIRES querying the personal screen activity database.
-   - "weather": The user is asking about current weather, weather forecasts, temperature, rain/precipitation, snowfall, humidity, wind speed, or meteorological conditions for today or upcoming days.
-   - "news": The user is specifically asking for recent, breaking, or current news articles, headlines, or live journalistic updates (e.g. "latest tech news", "breaking news today", "what are the headlines", "news about Tesla").
-   - "general_llm": General knowledge, coding help, historical/analytical explanations (e.g. "tell me about Microsoft and why companies do layoffs", "explain quantum computing", "how does an engine work"), definitions, reasoning, greeting, or chit-chat that does not query personal screen logs, weather, or news.
+   - "weather": The user is asking about current weather, weather forecasts, temperature, rain/precipitation, snowfall, humidity, wind speed, or meteorological conditions.
+   - "news": The user is specifically asking for recent, breaking, or current news articles, headlines, or live journalistic updates.
+   - "general_llm": General knowledge, coding help, historical/analytical explanations, definitions, reasoning, greeting, or chit-chat that does not query personal screen logs, weather, news, or MIRA.
 2. Follow-Up & Context Resolution:
    - "is_follow_up": true if the query refers to, continues, or relies on previous messages in this session.
-   - "can_answer_from_history": true if the conversation history above already contains enough information to answer the question without querying Qdrant/vector store.
-   - "resolved_query": If the query is a follow-up with ambiguous references (e.g. "what about after that?", "did I use it yesterday?"), rewrite it into a self-contained query with missing context resolved. Otherwise, keep original query.
+   - "can_answer_from_history": true if the conversation history above already contains enough information to answer without external search.
+   - "resolved_query": If the query is a follow-up with ambiguous references, rewrite it into a self-contained query with missing context resolved.
 3. Expected Answer Detail ("detail_level"):
-   - "overview": For general activity questions (e.g. "what did I do today?", "summarize my day", "give me an overview of my morning").
-   - "detailed": When the user explicitly requests full timeline, step-by-step logs, or all details (e.g. "tell me in detail everything I did", "give me the complete timeline", "detailed log of after 2pm").
-   - "concise": For pinpoint/specific questions (e.g. "did I open WhatsApp?", "which file was open?", "how long was I in Edge?").
+   - "overview", "detailed", or "concise".
 4. Retrieval Plan:
-   - If route is "user_activity":
-     - "search_query": Focused keywords for semantic vector search on summarized screen text (e.g. "projects repository code workspace", "WhatsApp chat", "editing code in VS Code", "reading documentation"). Set to null if broad general timeline.
-     - "app_name": Specific desktop application name if requested (e.g. "Microsoft Edge", "Visual Studio Code", "WhatsApp", "Notepad", "Discord"), or null if general.
-     - "time_expression": Specific time period IF mentioned or implied (e.g. "today after 2:00pm", "yesterday", "last 2 hours", "between 9 AM and 5 PM", "last month", "this morning").
-       CRITICAL: If the user is asking broadly about projects, ongoing work, apps used, or work history WITHOUT specifying a date/time (e.g. "give me list of projects I am working on", "what projects am I working on?", "what have I worked on recently?"), set "time_expression" to null so that ALL available Knowledge Bases across all dates are searched.
-   - If route is "weather":
-     - "forecast_days": Integer (1 to 16) indicating number of forecast days requested. Set to 1 for current weather/today, 2 for tomorrow, 7 for a week, or the specific number of days asked. Default to 7 if unspecified.
-   - If route is "news":
-     - "news_plan":
-       - "operation": "top_headlines" for trending, breaking, or category headlines; OR "search" for specific topics, entities, companies, people, events, cities/regions, or date ranges.
-       - "q": Pure alphanumeric search keywords or topic (e.g. "Microsoft layoffs", "Apple earnings", "AI chip breakthrough"). IMPORTANT: Do NOT include commas, question marks, punctuation, or special characters in "q".
-       - "category": Category string if applicable ("general", "world", "nation", "business", "technology", "entertainment", "sports", "science", "health"), or null.
-       - "country": 2-letter ISO country code if specific country requested (e.g. "us", "in", "gb"), or null.
-       - "location": Specific city or region name if mentioned (e.g. "Chicago", "Tokyo", "London"), or null.
-       - "lang": 2-letter language code (default "en").
-       - "sortby": "publishedAt" or "relevance".
-       - "time_expression": Time period if specified (e.g. "yesterday", "past week", "past 24 hours"), or null.
-       - "max_results": Integer 1 to 10 (enforce max 10 for free plan).
+   - If route is "user_activity": search_query, app_name, time_expression.
+   - If route is "mira_assistant": search_query for MIRA knowledge base, and intent ("INFORMATIONAL" or "MODIFICATION").
+   - If route is "weather": forecast_days (integer 1 to 16).
+   - If route is "news": news_plan (operation, q, category, country, location, lang, sortby, max_results).
 
 Return strictly a valid JSON object matching this schema:
 {{
-  "route": "user_activity" | "history_answer" | "weather" | "news" | "general_llm",
+  "route": "mira_assistant" | "user_activity" | "history_answer" | "weather" | "news" | "general_llm",
   "reasoning": "<brief 1-sentence explanation in English>",
   "is_follow_up": <true | false>,
   "can_answer_from_history": <true | false>,
@@ -216,6 +218,7 @@ Return strictly a valid JSON object matching this schema:
     "app_name": "<string or null>",
     "time_expression": "<string or null>",
     "forecast_days": <integer or null>,
+    "intent": "<INFORMATIONAL or MODIFICATION>",
     "news_plan": {{
       "operation": "top_headlines" | "search",
       "q": "<string or null>",
@@ -300,6 +303,7 @@ Do not include any extra text outside the JSON object.
         "resolved_query": resolved_query,
         "is_follow_up": is_follow_up,
         "can_answer_from_history": can_answer_from_history,
+        "intent": retrieval_plan.get("intent", "INFORMATIONAL"),
     }
 
     return {
@@ -340,9 +344,6 @@ def _infer_detail_level(query: str) -> str:
     if any(q.startswith(t) or f" {t} " in f" {q} " for t in concise_terms):
         return "concise"
 
-    if q.startswith("did i ") or q.startswith("was i "):
-        return "concise"
-
     return "overview"
 
 
@@ -380,17 +381,21 @@ def _heuristic_fallback(query: str, chat_history: Optional[List[Dict[str, Any]]]
     q = re.sub(r'\byeste?r[ad]{1,2}y\b', 'yesterday', q)
     q = re.sub(r'\btod[ay]{1,2}\b', 'today', q)
 
-    # Common greetings
+    # 1. Common greetings
     if _is_pure_conversational(q):
         return "general_llm", "Conversational greeting or chit-chat"
 
-    # Follow-up indicators if chat history exists
+    # 2. MIRA indicators
+    if any(w in q for w in ("mira", "vault", "message broker", "operator", "redis stream")):
+        return "mira_assistant", "Heuristic matched MIRA keyword"
+
+    # 3. Follow-up indicators if chat history exists
     if chat_history and len(chat_history) > 0:
         follow_up_phrases = ["which one", "which browser", "what about that", "summarize that", "can you summarize", "in 2 sentences", "what time was that"]
         if any(p in q for p in follow_up_phrases):
             return "history_answer", "Heuristic matched follow-up phrase on existing history"
 
-    # Weather indicators
+    # 4. Weather indicators
     weather_phrases = [
         "weather", "forecast", "temperature outside", "is it raining",
         "will it rain", "is it going to rain", "chance of rain", "how hot is it",
@@ -401,7 +406,7 @@ def _heuristic_fallback(query: str, chat_history: Optional[List[Dict[str, Any]]]
     if any(p in q for p in weather_phrases):
         return "weather", "Heuristic matched weather inquiry phrase"
 
-    # News indicators
+    # 5. News indicators
     news_phrases = [
         "news", "headlines", "headline", "top stories", "breaking news",
         "current events", "latest news", "tech news", "sports news",
@@ -411,7 +416,7 @@ def _heuristic_fallback(query: str, chat_history: Optional[List[Dict[str, Any]]]
     if any(p in q for p in news_phrases):
         return "news", "Heuristic matched news inquiry phrase"
 
-    # Explicit activity phrases
+    # 6. Explicit activity phrases
     activity_phrases = [
         "what did i do", "what was i doing", "what i did", "what i worked on",
         "did i open", "did i use", "was i using", "did i work",
@@ -425,7 +430,7 @@ def _heuristic_fallback(query: str, chat_history: Optional[List[Dict[str, Any]]]
         if phrase in q:
             return "user_activity", f"Heuristic matched activity phrase '{phrase}'"
 
-    # Time indicators with self-reference ('i', 'my', 'me')
+    # 7. Time indicators with self-reference ('i', 'my', 'me')
     words = re.findall(r'\b\w+\b', q)
     has_self = any(w in words for w in ("i", "my", "me", "we"))
     has_time = any(t in q for t in ("yesterday", "today", "morning", "afternoon", "evening", "tonight", "last week", "last month", "past week", "between", "after", "before"))
@@ -433,4 +438,3 @@ def _heuristic_fallback(query: str, chat_history: Optional[List[Dict[str, Any]]]
         return "user_activity", "Heuristic matched self-reference with time expression"
 
     return "general_llm", "Heuristic defaulted to general LLM"
-

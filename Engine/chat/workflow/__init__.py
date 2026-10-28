@@ -20,6 +20,7 @@ from .weather_tool import (
     validate_forecast_days,
 )
 from .timezone_helper import resolve_user_timezone, parse_time_expression, format_timestamp_in_tz
+from ..mira_assistant import mira_assistant_node
 
 __all__ = [
     "AgentState",
@@ -40,4 +41,5 @@ __all__ = [
     "resolve_user_timezone",
     "parse_time_expression",
     "format_timestamp_in_tz",
+    "mira_assistant_node",
 ]

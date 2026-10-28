@@ -14,18 +14,20 @@ from .synthesis_node import synthesis_node
 from .weather_tool import weather_forecast_node
 from .news_tool import news_node
 from .timezone_helper import resolve_user_timezone
+from ..mira_assistant import mira_assistant_node
 from vault_logger import log, log_error
 
 logger = logging.getLogger("mira.engine.chat.workflow.graph")
 
 # Dynamic Tool Node Registry: maps tool name to node function
-# Additional tools (browser automation, weather, news) can be registered dynamically
+# Additional tools (browser automation, weather, news, mira_assistant) can be registered dynamically
 TOOL_REGISTRY: Dict[str, Callable[[AgentState], Dict[str, Any]]] = {
     "user_activity": user_activity_node,
     "history_answer": history_node,
     "general_llm": general_llm_node,
     "weather": weather_forecast_node,
     "news": news_node,
+    "mira_assistant": mira_assistant_node,
 }
 
 _COMPILED_GRAPH: Optional[Any] = None

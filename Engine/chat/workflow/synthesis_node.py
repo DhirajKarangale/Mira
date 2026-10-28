@@ -14,7 +14,7 @@ def synthesis_node(state: AgentState) -> Dict[str, Any]:
     Step 5: Final Response Agent (Synthesis Node).
     The last node in the chat workflow.
     - If previous agent already generated a direct, formatted answer (general_llm, history_answer,
-      user_activity, weather, news), returns it immediately (Fast Path), cutting latency in half.
+      user_activity, weather, news, mira_assistant), returns it immediately (Fast Path), cutting latency in half.
     - If raw records need formatting, rephrases them cleanly into English.
     - Strict English only rule enforced.
     """
@@ -28,6 +28,7 @@ def synthesis_node(state: AgentState) -> Dict[str, Any]:
     # Extract previous agent's answer
     previous_answer = (
         state.get("final_response")
+        or node_outputs.get("mira_assistant_response")
         or node_outputs.get("news_response")
         or node_outputs.get("weather_response")
         or node_outputs.get("activity_response")
@@ -50,7 +51,7 @@ def synthesis_node(state: AgentState) -> Dict[str, Any]:
 
     # Fast Path: All nodes already generate high quality, structured, direct answers.
     # Bypassing redundant second/third LLM calls cuts chat response latency drastically!
-    if executed_node in ("general_llm", "history_answer", "user_activity", "weather", "news") and previous_answer and not is_raw_error:
+    if executed_node in ("general_llm", "history_answer", "user_activity", "weather", "news", "mira_assistant") and previous_answer and not is_raw_error:
         log(f"[SynthesisNode] Fast path: node '{executed_node}' already generated complete answer. Bypassing extra synthesis LLM call.")
         return {
             "final_response": previous_answer,

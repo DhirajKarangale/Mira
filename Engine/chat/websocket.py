@@ -142,6 +142,44 @@ class ChatWebSocketManager:
         log(f"[ChatWebSocket] Broadcasted daily suggestions update (section={section}) to {sent_count} client(s).")
         return sent_count
 
+    async def broadcast_chat_progress(
+        self,
+        job_id: str,
+        session_id: str,
+        status: str,
+        message: str,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """
+        Broadcast progressive execution updates for long-running operations.
+        """
+        payload: Dict[str, Any] = {
+            "type": "chat_progress",
+            "job_id": str(job_id),
+            "session_id": str(session_id),
+            "status": str(status),
+            "message": str(message),
+            "details": details or {},
+        }
+        message_str = json.dumps(payload)
+        sent_count = 0
+        dead_connections: List[WebSocket] = []
+
+        async with self._lock:
+            for connection in self._active_connections:
+                try:
+                    await connection.send_text(message_str)
+                    sent_count += 1
+                except Exception as e:
+                    logger.debug(f"Failed to send progress to client: {e}")
+                    dead_connections.append(connection)
+
+            for dead in dead_connections:
+                if dead in self._active_connections:
+                    self._active_connections.remove(dead)
+
+        return sent_count
+
     def get_connections_count(self) -> int:
         return len(self._active_connections)
 

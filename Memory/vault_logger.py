@@ -1,15 +1,31 @@
 from __future__ import annotations
+import re
 import sys
 import requests
 import config
 import time
+
 MODULE_NAME = 'memory'
 _last_vault_failure: float = 0.0
 _VAULT_RETRY_INTERVAL: float = 5.0
+_KEY_PATTERNS = [
+    re.compile('gsk_[a-zA-Z0-9]{20,}', re.IGNORECASE),
+    re.compile('AQ\\.[a-zA-Z0-9_\\-]{20,}', re.IGNORECASE),
+    re.compile('AIza[a-zA-Z0-9_\\-]{20,}', re.IGNORECASE),
+    re.compile('sk-[a-zA-Z0-9_\\-]{20,}', re.IGNORECASE)
+]
+
+def mask_sensitive(text: str) -> str:
+    if not isinstance(text, str):
+        text = str(text)
+    sanitized = text
+    for pattern in _KEY_PATTERNS:
+        sanitized = pattern.sub('[REDACTED_API_KEY]', sanitized)
+    return sanitized
 
 def log(message: str) -> None:
     global _last_vault_failure
-    log_string = str(message)
+    log_string = mask_sensitive(str(message))
     now = time.time()
     vault_url = config.get_service_url('vault')
     if not vault_url or now - _last_vault_failure < _VAULT_RETRY_INTERVAL:

@@ -42,6 +42,16 @@ from .workflow import (
     AgentState,
     weather_forecast_node,
     get_weather_forecast,
+    mira_assistant_node,
+)
+from .mira_assistant import (
+    detect_mira_query,
+    detect_mira_intent,
+    search_knowledge_base,
+    retrieve_mira_context,
+    plan_and_execute_modification,
+    generate_mira_guidance,
+    is_deletion_command,
 )
 
 __all__ = [
@@ -80,4 +90,12 @@ __all__ = [
     "AgentState",
     "weather_forecast_node",
     "get_weather_forecast",
+    "mira_assistant_node",
+    "detect_mira_query",
+    "detect_mira_intent",
+    "search_knowledge_base",
+    "retrieve_mira_context",
+    "plan_and_execute_modification",
+    "generate_mira_guidance",
+    "is_deletion_command",
 ]
