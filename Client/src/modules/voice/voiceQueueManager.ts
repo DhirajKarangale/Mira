@@ -223,8 +223,33 @@ class VoiceQueueManager {
           break;
         }
 
-        // If chunk failed, skip to next chunk gracefully
+        // If chunk audio generation failed (e.g. ElevenLabs quota exhausted), fall back to browser Web Speech API
         if (chunk.state === "failed" || !chunk.audioUrl) {
+          if (typeof window !== "undefined" && "speechSynthesis" in window) {
+            console.log(
+              `[VoiceQueueManager] ElevenLabs audio unavailable; using browser speech fallback for chunk #${
+                chunk.orderIndex + 1
+              }: "${chunk.text}"`
+            );
+            chunk.state = "playing";
+            this.notify();
+            try {
+              await audioPlayer.speakBrowserText(chunk.text, signal);
+              chunk.state = "completed";
+              this.notify();
+              continue;
+            } catch (err: unknown) {
+              if (signal.aborted) break;
+              console.warn(
+                `[VoiceQueueManager] Browser speech fallback error for chunk #${
+                  chunk.orderIndex + 1
+                }:`,
+                err
+              );
+              chunk.state = "failed";
+              this.notify();
+            }
+          }
           continue;
         }
 

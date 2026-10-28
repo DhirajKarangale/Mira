@@ -28,6 +28,9 @@ export class AudioPlayer {
 
       // Unlock Web Audio context on user gestures
       const unlockAudio = () => {
+        if (!this.isWebAudioReady) {
+          this.initWebAudio();
+        }
         this.resumeAudioContext();
       };
       window.addEventListener("click", unlockAudio, { passive: true });
@@ -58,18 +61,21 @@ export class AudioPlayer {
 
       this.audioContext = new AudioCtxClass();
       this.gainNode = this.audioContext.createGain();
-      // Powerful broadcast studio gain boost (2.5x base gain multiplier)
-      this.gainNode.gain.setValueAtTime(
-        this.isMutedState ? 0 : this.volumeLevel * 2.5,
-        this.audioContext.currentTime
-      );
+      const targetGain = this.isMutedState ? 0 : Math.max(0, this.volumeLevel) * 2.5;
+      this.gainNode.gain.value = targetGain;
+      try {
+        this.gainNode.gain.setValueAtTime(
+          targetGain,
+          this.audioContext.currentTime
+        );
+      } catch {}
 
       this.compressorNode = this.audioContext.createDynamicsCompressor();
-      this.compressorNode.threshold.setValueAtTime(-20, this.audioContext.currentTime);
-      this.compressorNode.knee.setValueAtTime(12, this.audioContext.currentTime);
-      this.compressorNode.ratio.setValueAtTime(8, this.audioContext.currentTime);
-      this.compressorNode.attack.setValueAtTime(0.002, this.audioContext.currentTime);
-      this.compressorNode.release.setValueAtTime(0.18, this.audioContext.currentTime);
+      this.compressorNode.threshold.value = -18;
+      this.compressorNode.knee.value = 16;
+      this.compressorNode.ratio.value = 6;
+      this.compressorNode.attack.value = 0.003;
+      this.compressorNode.release.value = 0.20;
 
       this.mediaSourceNode = this.audioContext.createMediaElementSource(
         this.audioElement
@@ -114,7 +120,10 @@ export class AudioPlayer {
    * Up to 2.0 provides ultra-loud amplified output (up to 5x gain).
    */
   setVolume(volume: number): void {
-    const clamped = Math.max(0, Math.min(2.0, Number.isFinite(volume) ? volume : 1.0));
+    const raw = Number.isFinite(volume) ? volume : 1.0;
+    // Support both 0.0 - 2.0 (float multiplier) and 0 - 200 (percentage integer)
+    const normalized = raw > 2.0 ? raw / 100 : raw;
+    const clamped = Math.max(0, Math.min(2.0, normalized));
     this.volumeLevel = clamped;
     this.preDuckVolume = clamped;
     this.isDuckedState = false;
@@ -148,21 +157,32 @@ export class AudioPlayer {
 
   private applyVolume(clamped: number): void {
     if (this.audioElement) {
-      if (this.isWebAudioReady) {
-        this.audioElement.volume = this.isMutedState ? 0 : 1.0;
-      } else {
-        this.audioElement.volume = Math.min(1.0, clamped);
+      try {
+        // HTMLMediaElement.volume strictly requires values in [0.0, 1.0].
+        // Setting volume > 1.0 throws IndexSizeError DOMException in all browsers.
+        // Extra boost above 100% (>1.0) is cleanly amplified via Web Audio GainNode.
+        const safeVolume = this.isMutedState
+          ? 0
+          : this.isWebAudioReady
+          ? 1.0
+          : Math.min(1.0, Math.max(0, clamped));
+        this.audioElement.volume = safeVolume;
+        this.audioElement.muted = this.isMutedState;
+      } catch (err) {
+        console.warn("[AudioPlayer] Error applying audioElement volume:", err);
       }
-      this.audioElement.muted = this.isMutedState;
     }
 
     if (this.gainNode && this.audioContext) {
       try {
-        const targetGain = this.isMutedState ? 0 : clamped * 2.5;
-        this.gainNode.gain.setValueAtTime(
-          targetGain,
-          this.audioContext.currentTime
-        );
+        const targetGain = this.isMutedState ? 0 : Math.max(0, clamped) * 2.5;
+        this.gainNode.gain.value = targetGain;
+        try {
+          this.gainNode.gain.setValueAtTime(
+            targetGain,
+            this.audioContext.currentTime
+          );
+        } catch {}
       } catch {}
     }
   }
@@ -216,9 +236,17 @@ export class AudioPlayer {
 
       const audio = this.audioElement;
       audio.src = url;
-      audio.volume = this.volumeLevel;
+      // HTMLMediaElement volume MUST strictly be within [0.0, 1.0].
+      // Never set audio.volume > 1.0 as it throws DOMException (IndexSizeError).
+      // Any boost above 100% is safely handled by Web Audio GainNode.
+      audio.volume = this.isMutedState
+        ? 0
+        : this.isWebAudioReady
+        ? 1.0
+        : Math.min(1.0, Math.max(0, this.volumeLevel));
       audio.muted = this.isMutedState;
       audio.defaultMuted = false;
+      this.applyVolume(this.volumeLevel);
       try {
         audio.load();
       } catch {}
@@ -296,11 +324,94 @@ export class AudioPlayer {
   }
 
   /**
+   * Speaks text using browser Web Speech API (fallback when ElevenLabs quotas are exhausted).
+   */
+  async speakBrowserText(text: string, signal?: AbortSignal): Promise<void> {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      throw new Error("Speech synthesis is not supported in this environment.");
+    }
+
+    this.stop();
+    this.restoreVolume();
+
+    return new Promise<void>((resolve, reject) => {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "en-US";
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      utterance.volume = Math.min(1.0, this.volumeLevel);
+
+      // Select high-quality natural English voice if available
+      try {
+        const voices = window.speechSynthesis.getVoices();
+        const preferredVoice =
+          voices.find(
+            (v) =>
+              v.lang.startsWith("en") &&
+              (v.name.includes("Natural") ||
+                v.name.includes("Google") ||
+                v.name.includes("Samantha") ||
+                v.name.includes("Jenny") ||
+                v.name.includes("Zira"))
+          ) || voices.find((v) => v.lang.startsWith("en"));
+
+        if (preferredVoice) {
+          utterance.voice = preferredVoice;
+        }
+      } catch {}
+
+      this.isPlayingAudio = true;
+
+      const onAbort = () => {
+        try {
+          window.speechSynthesis.cancel();
+        } catch {}
+        this.isPlayingAudio = false;
+        reject(new Error("Playback aborted"));
+      };
+
+      if (signal) {
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+
+      utterance.onend = () => {
+        this.isPlayingAudio = false;
+        if (signal) signal.removeEventListener("abort", onAbort);
+        resolve();
+      };
+
+      utterance.onerror = (e) => {
+        this.isPlayingAudio = false;
+        if (signal) signal.removeEventListener("abort", onAbort);
+        if (e.error === "canceled" || e.error === "interrupted") {
+          resolve();
+        } else {
+          reject(new Error(`Speech synthesis error: ${e.error}`));
+        }
+      };
+
+      try {
+        window.speechSynthesis.speak(utterance);
+      } catch (err) {
+        this.isPlayingAudio = false;
+        reject(err);
+      }
+    });
+  }
+
+  /**
    * Stops playback immediately and resets the audio source.
    */
   stop(): void {
     this.isDuckedState = false;
     this.isPlayingAudio = false;
+
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {}
+    }
+
     if (this.currentPromiseReject) {
       try {
         this.currentPromiseReject(new Error("Playback stopped"));

@@ -65,8 +65,8 @@ export class MicListener {
 
   constructor(options?: MicListenerOptions) {
     this.options = {
-      // 1.8 corresponds to ~0.018 RMS amplitude (normal voice conversational level)
-      energyThreshold: options?.energyThreshold ?? 1.8,
+      // 0.8 RMS sensitivity ensures soft speech and whispers are easily captured
+      energyThreshold: options?.energyThreshold ?? 0.8,
       chunkIntervalMs: options?.chunkIntervalMs ?? 3000,
       silenceThresholdMs: options?.silenceThresholdMs ?? 10000,
     };
@@ -125,11 +125,11 @@ export class MicListener {
     try {
       this.selectedMimeType = getSupportedMimeType();
 
-      // Request microphone stream with voice-optimized constraints
+      // Request microphone stream with voice-optimized constraints without clipping soft initial consonants
       this.stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
-          noiseSuppression: true,
+          noiseSuppression: false,
           autoGainControl: true,
         },
       });

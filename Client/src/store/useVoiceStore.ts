@@ -258,9 +258,12 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
 
   /**
    * Sets playback volume (0.0 to 2.0) and updates the audio player.
+   * Supports both decimal multipliers (0.0 to 2.0) and percentages (0 to 200).
    */
   setVolume: (volume: number) => {
-    const clamped = Math.max(0, Math.min(2.0, Number.isFinite(volume) ? volume : 1.0));
+    const raw = Number.isFinite(volume) ? volume : 1.0;
+    const normalized = raw > 2.0 ? raw / 100 : raw;
+    const clamped = Math.max(0, Math.min(2.0, normalized));
     set({ volume: clamped });
     audioPlayer.setVolume(clamped);
   },

@@ -7,8 +7,27 @@
 
 import type { WakeWordDetectionResult, WakeWordOptions } from "./types";
 
-// ElevenLabs Scribe STT frequently outputs phonetic variants "Mira", "Myra", "Meera"
-export const DEFAULT_WAKE_WORDS = ["mira", "myra", "meera", "mera"];
+// Comprehensive phonetic and acoustic variants for "Mira" produced by STT engines (Google Speech, Whisper, Scribe):
+export const DEFAULT_WAKE_WORDS = [
+  "mira",
+  "mirror",
+  "myra",
+  "meera",
+  "mera",
+  "mirra",
+  "miira",
+  "miera",
+  "mirah",
+  "meira",
+  "mayra",
+  "amira",
+  "ameera",
+  "neera",
+  "nira",
+  "mila",
+  "mita",
+  "mida",
+];
 
 export class WakeWordDetector {
   private wakeWords: string[];
@@ -84,9 +103,9 @@ export class WakeWordDetector {
 
     if (!this.isCollecting) {
       // Build regex pattern matching any configured wake word with word boundaries
-      // Handles trailing punctuation like "Mira," "Mira!" "Mira?" "Mira:"
+      // Also matches optional conversational greeting prefixes like "hey mira", "hi mira", "hello mira", "ok mira"
       const pattern = new RegExp(
-        `\\b(${this.wakeWords.map(escapeRegExp).join("|")})\\b`,
+        `(?:\\b(?:hey|hi|hello|ok|okay)\\s+)?\\b(${this.wakeWords.map(escapeRegExp).join("|")})\\b`,
         "i"
       );
 
@@ -158,7 +177,14 @@ export class WakeWordDetector {
         changed = true;
       }
 
-      // 2. Strip any leading wake word
+      // 2. Strip leading conversational greetings: "hey", "hi", "hello", "ok", "okay"
+      const strippedGreeting = result.replace(/^(?:hey|hi|hello|ok|okay)\s+/i, "").trim();
+      if (strippedGreeting !== result) {
+        result = strippedGreeting;
+        changed = true;
+      }
+
+      // 3. Strip any leading wake word
       for (const w of this.wakeWords) {
         const regex = new RegExp(`^${escapeRegExp(w)}\\b`, "i");
         if (regex.test(result)) {
