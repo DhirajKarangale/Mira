@@ -6,6 +6,7 @@ from google.genai import types
 from .config import get_models_for_work, get_temperature, get_provider_config, get_active_key, rotate_key
 from .error_analysis import ErrorType, classify_error, mask_sensitive, AllKeysExhaustedError, AllModelsExhaustedError, ProviderUnavailableError
 from .response_parser import parse_response
+
 logger = logging.getLogger('mira.engine.llm.gemini')
 
 def log(msg: str) -> None:
@@ -28,17 +29,24 @@ def call(prompt: str, work: str) -> str:
         raise AllModelsExhaustedError('gemini')
     temperature = get_temperature(work)
     log(f"[Gemini] Starting request for work='{work}' (temperature={temperature}, models={models}, keys={len(keys)})")
+    english_system_instruction = (
+        "You are MIRA AI. You must ALWAYS communicate and respond strictly in English. "
+        "Never use any other language."
+    )
     for model_idx, model in enumerate(models):
         key_attempts = 0
-        max_key_attempts = max(1, len(keys))
+        max_key_attempts = min(3, len(keys))
         while key_attempts < max_key_attempts:
             active_key = get_active_key('gemini')
             if not active_key:
                 raise ProviderUnavailableError('No active key found for Gemini.')
             try:
                 log(f"[Gemini] Invoking model '{model}' (attempt {key_attempts + 1} with active key index)")
-                client = genai.Client(api_key=active_key, http_options={'timeout': 8})
-                gen_config = types.GenerateContentConfig(temperature=temperature)
+                client = genai.Client(api_key=active_key, http_options={'timeout': 15000})
+                gen_config = types.GenerateContentConfig(
+                    temperature=temperature,
+                    system_instruction=english_system_instruction,
+                )
                 response = client.models.generate_content(model=model, contents=prompt, config=gen_config)
                 parsed_text = parse_response(response)
                 log(f"[Gemini] Successfully generated response with model '{model}'")
@@ -48,8 +56,8 @@ def call(prompt: str, work: str) -> str:
                 log_error(f"[Gemini] Model '{model}' error classified as '{err_type.value}': {mask_sensitive(str(e))}")
                 if err_type == ErrorType.API_KEY_EXPIRED_OR_INVALID:
                     key_attempts += 1
-                    if key_attempts >= len(keys):
-                        log_error(f"[Gemini] All Gemini API keys failed for model '{model}'. Falling back to next configured model...")
+                    if key_attempts >= max_key_attempts:
+                        log_error(f"[Gemini] Max key attempts ({max_key_attempts}) failed for model '{model}'. Falling back to next configured model...")
                         break
                     new_key = rotate_key('gemini')
                     log(f"[Gemini] Rotated key. Retrying model '{model}' with next key...")
@@ -65,5 +73,7 @@ def call(prompt: str, work: str) -> str:
                     break
     log_error('[Gemini] All configured models failed.')
     raise AllModelsExhaustedError('gemini')
+
 call_gemini = call
 generate = call
+

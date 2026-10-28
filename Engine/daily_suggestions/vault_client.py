@@ -15,7 +15,7 @@ def _get_direct_storage():
     from pathlib import Path
     vault_dir = Path(__file__).resolve().parent.parent.parent / "Vault"
     if str(vault_dir) not in sys.path:
-        sys.path.insert(0, str(vault_dir))
+        sys.path.append(str(vault_dir))
     import config_storage
     config_storage.init_config_storage()
     return config_storage

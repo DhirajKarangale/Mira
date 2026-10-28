@@ -80,6 +80,79 @@ export class KeyQuotaManager {
   }
 
   /**
+   * Stores the current active key and index persistently in localStorage.
+   */
+  public setActiveKey(key: string, index?: number): void {
+    if (!key) return;
+    const trimmed = key.trim();
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("mira_elevenlabs_active_key", trimmed);
+        if (index !== undefined && index >= 0) {
+          localStorage.setItem("mira_elevenlabs_active_index", String(index));
+        }
+      } catch {}
+    }
+  }
+
+  /**
+   * Retrieves the current saved active key and index from persistent storage,
+   * matching against the provided key pool. If the stored key is valid and not exhausted,
+   * returns it directly rather than always resetting to index 0.
+   */
+  public getActiveKey(keys: string[]): { key: string; index: number } {
+    if (!keys || keys.length === 0) {
+      return { key: "", index: 0 };
+    }
+
+    const validKeys = this.filterValidKeyList(keys);
+    if (validKeys.length === 0) {
+      return { key: keys[0] || "", index: 0 };
+    }
+
+    if (typeof window !== "undefined") {
+      try {
+        const storedKey = (localStorage.getItem("mira_elevenlabs_active_key") || "").trim();
+        if (storedKey) {
+          const idx = validKeys.indexOf(storedKey);
+          if (idx !== -1) {
+            // If the stored active key is still healthy (not exhausted), use it directly!
+            if (!this.isAboutToExhaust(storedKey, 100)) {
+              return { key: storedKey, index: idx };
+            }
+          }
+        }
+
+        // Try stored index
+        const storedIdxStr = localStorage.getItem("mira_elevenlabs_active_index");
+        if (storedIdxStr !== null) {
+          const storedIdx = parseInt(storedIdxStr, 10);
+          if (storedIdx >= 0 && storedIdx < validKeys.length) {
+            const candidateKey = validKeys[storedIdx];
+            if (candidateKey && !this.isAboutToExhaust(candidateKey, 100)) {
+              return { key: candidateKey, index: storedIdx };
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // Pick first non-exhausted key in pool
+    const firstActiveIdx = validKeys.findIndex((k) => !this.isAboutToExhaust(k, 100));
+    if (firstActiveIdx !== -1) {
+      const active = validKeys[firstActiveIdx];
+      this.setActiveKey(active, firstActiveIdx);
+      return { key: active, index: firstActiveIdx };
+    }
+
+    // If all are marked exhausted, reset statuses and select first
+    this.resetExhaustionIfAllExhausted(validKeys);
+    const fallback = validKeys[0] || keys[0] || "";
+    this.setActiveKey(fallback, 0);
+    return { key: fallback, index: 0 };
+  }
+
+  /**
    * Filters out known dead or revoked keys.
    */
   public filterValidKeyList(keys: string[]): string[] {

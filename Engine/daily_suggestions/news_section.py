@@ -142,8 +142,9 @@ STRICT COUNTRY SELECTION RULES:
 2. Freshness: Strictly prioritize stories published within the last 36 hours.
 3. Impact & Relevance: Choose stories with broad national significance or high public interest in {country_name}.
 4. No Duplicates: Every selected story MUST cover a distinct topic or event (never pick multiple stories about the same event).
-5. Factual Accuracy: For each story, provide a concise 1-2 sentence summary preserving 100% factual accuracy. Do NOT embellish or speculate.
-6. Output Format: Return strictly a valid JSON array of 3 objects:
+5. Language Requirement: All headlines and summaries MUST be strictly in English only.
+6. Factual Accuracy: For each story, provide a concise 1-2 sentence summary preserving 100% factual accuracy. Do NOT embellish or speculate.
+7. Output Format: Return strictly a valid JSON array of 3 objects:
 [
   {{
     "title": "Clean, engaging headline",

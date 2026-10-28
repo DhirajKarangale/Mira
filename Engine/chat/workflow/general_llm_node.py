@@ -15,7 +15,7 @@ def general_llm_node(state: AgentState) -> Dict[str, Any]:
     Executes general-purpose LLM completions using the existing LLM implementation
     and config.json ('general' work configuration, very low temperature 0.0).
     Includes relevant short-term chat history and user profile information.
-    Answers strictly what the user asked with concise, factual responses.
+    Answers strictly what the user asked with concise, factual responses in English only.
     """
     user_query = state.get("user_query", "").strip()
     chat_history = state.get("chat_history", [])
@@ -53,7 +53,8 @@ def general_llm_node(state: AgentState) -> Dict[str, Any]:
         f"1. Answer ONLY what the user asked.\n"
         f"2. Be concise, direct, and factually accurate.\n"
         f"3. Do NOT include unrelated information, additional explanations, suggestions, assumptions, or unnecessary introductions.\n"
-        f"4. AVOID conversational pleasantries, greetings, or trailing follow-up questions."
+        f"4. AVOID conversational pleasantries, greetings, or trailing follow-up questions.\n"
+        f"5. LANGUAGE REQUIREMENT: You MUST respond in English only. Never respond in any other language."
     )
 
     try:

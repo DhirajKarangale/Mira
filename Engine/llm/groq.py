@@ -5,6 +5,7 @@ import groq
 from .config import get_models_for_work, get_temperature, get_provider_config, get_active_key, rotate_key
 from .error_analysis import ErrorType, classify_error, mask_sensitive, AllKeysExhaustedError, AllModelsExhaustedError, ProviderUnavailableError
 from .response_parser import parse_response
+
 logger = logging.getLogger('mira.engine.llm.groq')
 
 def log(msg: str) -> None:
@@ -27,17 +28,26 @@ def call(prompt: str, work: str) -> str:
         raise AllModelsExhaustedError('groq')
     temperature = get_temperature(work)
     log(f"[Groq] Starting request for work='{work}' (temperature={temperature}, models={models}, keys={len(keys)})")
+    system_msg = {
+        'role': 'system',
+        'content': 'You are MIRA AI. You must ALWAYS communicate and respond strictly in English. Never use any other language.'
+    }
+    messages = [system_msg, {'role': 'user', 'content': prompt}]
     for model_idx, model in enumerate(models):
         key_attempts = 0
-        max_key_attempts = max(1, len(keys))
+        max_key_attempts = min(3, len(keys))
         while key_attempts < max_key_attempts:
             active_key = get_active_key('groq')
             if not active_key:
                 raise ProviderUnavailableError('No active key found for Groq.')
             try:
                 log(f"[Groq] Invoking model '{model}' (attempt {key_attempts + 1} with active key index)")
-                client = groq.Groq(api_key=active_key, timeout=15.0)
-                response = client.chat.completions.create(model=model, messages=[{'role': 'user', 'content': prompt}], temperature=temperature)
+                client = groq.Groq(api_key=active_key, timeout=12.0)
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=temperature,
+                )
                 parsed_text = parse_response(response)
                 log(f"[Groq] Successfully generated response with model '{model}'")
                 return parsed_text
@@ -46,8 +56,8 @@ def call(prompt: str, work: str) -> str:
                 log_error(f"[Groq] Model '{model}' error classified as '{err_type.value}': {mask_sensitive(str(e))}")
                 if err_type == ErrorType.API_KEY_EXPIRED_OR_INVALID:
                     key_attempts += 1
-                    if key_attempts >= len(keys):
-                        log_error(f"[Groq] All Groq API keys failed for model '{model}'. Falling back to next configured model...")
+                    if key_attempts >= max_key_attempts:
+                        log_error(f"[Groq] Max key attempts ({max_key_attempts}) failed for model '{model}'. Falling back to next configured model...")
                         break
                     new_key = rotate_key('groq')
                     log(f"[Groq] Rotated key. Retrying model '{model}' with next key...")
@@ -63,5 +73,7 @@ def call(prompt: str, work: str) -> str:
                     break
     log_error('[Groq] All configured models failed.')
     raise AllModelsExhaustedError('groq')
+
 call_groq = call
 generate = call
+

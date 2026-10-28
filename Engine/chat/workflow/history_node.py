@@ -15,7 +15,7 @@ def history_node(state: AgentState) -> Dict[str, Any]:
     Answers follow-up questions, clarifications, reformattings, or queries
     directly from the current session's conversation history without making
     redundant vector searches or external retrieval calls.
-    Uses LLM work category 'general' (temperature 0.0).
+    Uses LLM work category 'general' (temperature 0.0) in English only.
     """
     user_query = state.get("user_query", "").strip()
     chat_history = state.get("chat_history", [])
@@ -59,6 +59,7 @@ Strict Rules:
 3. Do NOT invent, assume, or add unsupported information.
 4. If the conversation history does not contain the answer, state factually what was discussed and that the specific requested detail was not previously mentioned.
 5. Do NOT include greetings, pleasantries, or trailing questions.
+6. LANGUAGE REQUIREMENT: You MUST respond in English only. Never respond in any other language.
 """
 
     try:

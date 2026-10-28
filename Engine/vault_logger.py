@@ -4,10 +4,16 @@ import sys
 import time
 from typing import Optional
 import requests
+
 MODULE_NAME = 'engine'
 _last_vault_failure: float = 0.0
-_VAULT_RETRY_INTERVAL: float = 5.0
-_KEY_PATTERNS = [re.compile('gsk_[a-zA-Z0-9]{20,}', re.IGNORECASE), re.compile('AQ\\.[a-zA-Z0-9_\\-]{20,}', re.IGNORECASE), re.compile('AIza[a-zA-Z0-9_\\-]{20,}', re.IGNORECASE), re.compile('sk-[a-zA-Z0-9_\\-]{20,}', re.IGNORECASE)]
+_VAULT_RETRY_INTERVAL: float = 30.0
+_KEY_PATTERNS = [
+    re.compile('gsk_[a-zA-Z0-9]{20,}', re.IGNORECASE),
+    re.compile('AQ\\.[a-zA-Z0-9_\\-]{20,}', re.IGNORECASE),
+    re.compile('AIza[a-zA-Z0-9_\\-]{20,}', re.IGNORECASE),
+    re.compile('sk-[a-zA-Z0-9_\\-]{20,}', re.IGNORECASE)
+]
 
 def mask_sensitive(text: str) -> str:
     if not isinstance(text, str):
@@ -30,7 +36,7 @@ def log(message: str) -> None:
     endpoint = f"{vault_url.rstrip('/')}/logs"
     payload = {'module_name': MODULE_NAME, 'data': clean_message}
     try:
-        response = requests.post(endpoint, json=payload, timeout=0.5)
+        response = requests.post(endpoint, json=payload, timeout=0.2)
         response.raise_for_status()
     except Exception as e:
         _last_vault_failure = time.time()

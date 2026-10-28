@@ -156,7 +156,7 @@ def _clean_caption_summary(raw_text: str) -> str:
     return (t[0].upper() + t[1:]) if t else raw_text
 
 
-def _build_session_blocks(records: List[Dict[str, Any]], is_project_query: bool = False, max_blocks: int = 35) -> List[Dict[str, Any]]:
+def _build_session_blocks(records: List[Dict[str, Any]], is_project_query: bool = False, max_blocks: int = 20) -> List[Dict[str, Any]]:
     """
     Intelligently clusters continuous activity snapshots into cohesive session blocks
     spanning the entire time window from start to end without randomly dropping any period.
@@ -245,7 +245,7 @@ def _formulate_activity_response(
     is_stage_or_project_query = any(k in user_query.lower() for k in ("stage", "status", "current", "latest", "now", "progress", "project", "projects"))
     
     # Intelligently cluster continuous records into cohesive session blocks spanning the FULL timeframe
-    session_blocks = _build_session_blocks(records, is_project_query=is_stage_or_project_query, max_blocks=35)
+    session_blocks = _build_session_blocks(records, is_project_query=is_stage_or_project_query, max_blocks=20)
 
     direct_lines: List[str] = []
     evidence_items: List[str] = []
@@ -313,6 +313,7 @@ Strict Rules:
    - State the latest confirmed work done for each project clearly.
    - Do NOT output defensive disclaimers like "The specific current stage isn't explicitly detailed". Directly characterize the stage and status based on the confirmed activities.
 9. AVOID greetings, conversational pleasantries, and trailing follow-up questions.
+10. LANGUAGE REQUIREMENT: You MUST respond in English only. Never respond in any other language.
 """
     try:
         raw_ans = call_llm(prompt, work="activity_retrieval").strip()
@@ -338,6 +339,7 @@ def _understand_activity_query(
     """
     current_time_str = now_in_tz.strftime("%Y-%m-%d %I:%M %p (%A)")
     prompt = f"""You are the Activity Retrieval Query Analyzer for MIRA.
+CRITICAL LANGUAGE REQUIREMENT: All outputs, fields, and queries must be strictly in English.
 Analyze the user's question to extract search parameters for querying screen activity history.
 
 Current Reference Time: {current_time_str} (Timezone: {user_tz})

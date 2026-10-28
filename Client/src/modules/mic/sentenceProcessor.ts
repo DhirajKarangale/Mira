@@ -11,48 +11,73 @@ import type { SentenceValidationResult, SentenceProcessorOptions } from "./types
 
 export const DEFAULT_SILENCE_THRESHOLD_MS = 1800; // 1.8-second natural conversational pause
 
-const STOP_COMMAND_PHRASES = new Set([
-  "stop",
-  "quiet",
-  "quite",
-  "mute",
-  "silence",
-  "be quiet",
-  "stop talking",
-  "stop speaking",
-  "shut up",
-  "shush",
-  "pause",
-  "cancel",
-  "mira stop",
-  "mira quiet",
-  "mira quite",
-  "mira mute",
-  "mira be quiet",
-  "mira stop talking",
-  "mira stop speaking",
-]);
+const STOP_PATTERNS = [
+  /\bstop\b/i,
+  /\bquiet\b/i,
+  /\bquite\b/i, // common homophone / mis-transcription of quiet
+  /\bmute\b/i,
+  /\bshut\s*up\b/i,
+  /\bbe\s+quiet\b/i,
+  /\bsilence\b/i,
+  /\bshush\b/i,
+  /\bhush\b/i,
+  /\bhalt\b/i,
+  /\bpause\b/i,
+  /\bcancel\b/i,
+  /\benough\b/i,
+  /\bstop\s+talking\b/i,
+  /\bstop\s+speaking\b/i,
+  /\bstop\s+reading\b/i,
+  /\bstop\s+it\b/i,
+  /\bdon'?t\s+talk\b/i,
+];
 
-const STOP_COMMAND_REGEX =
-  /^(?:mira\s+)?(?:please\s+|just\s+|can\s+you\s+)?(stop|quiet|quite|mute|silence|be\s+quiet|stop\s+talking|stop\s+speaking|shut\s+up|shush|pause|cancel)(?:\s+please|\s+it|\s+now|\s+talking|\s+speaking)?$/i;
+const QUESTION_STARTERS = new Set([
+  "what",
+  "whats",
+  "what's",
+  "where",
+  "wheres",
+  "where's",
+  "how",
+  "hows",
+  "how's",
+  "why",
+  "who",
+  "which",
+]);
 
 /**
  * Checks whether spoken text is an interrupt command to stop active voice playback.
- * Matches phrases like "stop", "quiet", "quite", "mute", "Mira stop", "please stop", "be quiet", etc.
+ * Matches phrases like "stop", "quiet", "quite", "mute", "Mira stop", "please stop", "shut up", "be quiet", etc.
+ * When isVoicePlaying is true, ANY speech containing a stop/mute/quiet keyword is treated as an immediate interrupt.
  */
-export function isVoiceStopCommand(text: string): boolean {
+export function isVoiceStopCommand(text: string, isVoicePlaying = false): boolean {
   if (!text) return false;
   const clean = text
     .toLowerCase()
     .replace(/\[.*?\]/g, "")
-    .replace(/[^a-z\s]/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 
-  if (STOP_COMMAND_PHRASES.has(clean)) {
+  if (!clean) return false;
+
+  // Check if any stop keyword / pattern matches
+  const hasStopMatch = STOP_PATTERNS.some((pattern) => pattern.test(clean));
+  if (!hasStopMatch) return false;
+
+  // If voice is currently playing or queued, ANY match is immediately treated as interrupt!
+  if (isVoicePlaying) {
     return true;
   }
-  return STOP_COMMAND_REGEX.test(clean);
+
+  // If idle / not playing, ensure it's a short command (<= 5 words) and not a question like "where is the bus stop"
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length > 5) return false;
+  if (words.length > 0 && QUESTION_STARTERS.has(words[0])) return false;
+
+  return true;
 }
 
 const STANDALONE_GREETINGS = new Set([

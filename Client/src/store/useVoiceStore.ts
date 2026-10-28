@@ -86,13 +86,33 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
 
     try {
       const snapshot = await voiceService.getVoiceSnapshot();
-      const safeIndex =
-        snapshot.keys.length > 0
-          ? Math.max(0, Math.min(snapshot.currentKeyIndex, snapshot.keys.length - 1))
-          : 0;
+
+      // Retrieve persistently saved active key rather than resetting to start each time
+      let safeIndex = 0;
+      if (snapshot.keys.length > 0) {
+        const storedKey =
+          typeof window !== "undefined"
+            ? (localStorage.getItem("mira_elevenlabs_active_key") || "").trim()
+            : "";
+        if (storedKey && snapshot.keys.includes(storedKey)) {
+          safeIndex = snapshot.keys.indexOf(storedKey);
+        } else {
+          safeIndex = Math.max(
+            0,
+            Math.min(snapshot.currentKeyIndex, snapshot.keys.length - 1)
+          );
+        }
+      }
 
       const activeKey =
         snapshot.keys.length > 0 ? snapshot.keys[safeIndex] || null : null;
+
+      if (activeKey && typeof window !== "undefined") {
+        try {
+          localStorage.setItem("mira_elevenlabs_active_key", activeKey);
+          localStorage.setItem("mira_elevenlabs_active_index", String(safeIndex));
+        } catch {}
+      }
 
       const isMicOn = Boolean(
         snapshot.micStatus.is_on ||
@@ -145,6 +165,13 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
           ? Math.max(0, Math.min(res.current_key, res.keys.length - 1))
           : 0;
       const activeKey = res.keys.length > 0 ? res.keys[safeIndex] || null : null;
+
+      if (activeKey && typeof window !== "undefined") {
+        try {
+          localStorage.setItem("mira_elevenlabs_active_key", activeKey);
+          localStorage.setItem("mira_elevenlabs_active_index", String(safeIndex));
+        } catch {}
+      }
 
       set({
         keys: res.keys,

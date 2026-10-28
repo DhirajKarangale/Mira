@@ -349,13 +349,13 @@ def format_chat_history_for_llm(history: List[Dict[str, Any]], current_query: st
 
     if not normalized:
         return (
-            "You are MIRA, an intelligent, helpful, and friendly AI assistant.\n\n"
+            "You are MIRA, an intelligent, helpful, and friendly AI assistant. You must always communicate and respond strictly in English.\n\n"
             f"User: {trimmed_query}\n"
             "MIRA:"
         )
 
     lines: List[str] = [
-        "You are MIRA, an intelligent, helpful, and friendly AI assistant.",
+        "You are MIRA, an intelligent, helpful, and friendly AI assistant. You must always communicate and respond strictly in English.",
         "Here is the complete conversation history so far with the user:\n",
     ]
     for role, content in normalized:

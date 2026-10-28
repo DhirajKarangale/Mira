@@ -137,7 +137,7 @@ def get_user_coordinates(user_profile: Optional[Dict[str, Any]] = None) -> Tuple
             from pathlib import Path
             vault_dir = Path(__file__).resolve().parent.parent.parent.parent / "Vault"
             if str(vault_dir) not in sys.path:
-                sys.path.insert(0, str(vault_dir))
+                sys.path.append(str(vault_dir))
             import config_storage
             config_storage.init_config_storage()
             u_cfg = config_storage.get_configuration("user_details")

@@ -4,14 +4,13 @@
     "groq": [
       "qwen/qwen3.8-27b",
       "openai/gpt-oss-20b",
-      "allam-2-7b",
       "openai/gpt-oss-120b"
     ],
     "gemini": [
-      "gemini-3.8-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-flash-latest",
-      "gemini-3.5-flash"
+      "gemini-3.5-flash-lite",
+      "gemini-3.1-flash-lite",
+      "gemini-3.5-flash",
+      "gemini-3.8-flash"
     ]
   },
   "chat": {
@@ -19,14 +18,13 @@
     "groq": [
       "qwen/qwen3.8-27b",
       "openai/gpt-oss-20b",
-      "allam-2-7b",
       "openai/gpt-oss-120b"
     ],
     "gemini": [
-      "gemini-3.8-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-flash-latest",
-      "gemini-3.5-flash"
+      "gemini-3.5-flash-lite",
+      "gemini-3.1-flash-lite",
+      "gemini-3.5-flash",
+      "gemini-3.8-flash"
     ]
   },
   "extraction": {
@@ -34,14 +32,13 @@
     "groq": [
       "qwen/qwen3.8-27b",
       "openai/gpt-oss-20b",
-      "allam-2-7b",
       "openai/gpt-oss-120b"
     ],
     "gemini": [
-      "gemini-3.8-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-flash-latest",
-      "gemini-3.5-flash"
+      "gemini-3.5-flash-lite",
+      "gemini-3.1-flash-lite",
+      "gemini-3.5-flash",
+      "gemini-3.8-flash"
     ]
   },
   "general": {
@@ -49,14 +46,13 @@
     "groq": [
       "qwen/qwen3.8-27b",
       "openai/gpt-oss-20b",
-      "allam-2-7b",
       "openai/gpt-oss-120b"
     ],
     "gemini": [
-      "gemini-3.8-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-flash-latest",
-      "gemini-3.5-flash"
+      "gemini-3.5-flash-lite",
+      "gemini-3.1-flash-lite",
+      "gemini-3.5-flash",
+      "gemini-3.8-flash"
     ]
   },
   "decision": {
@@ -64,14 +60,13 @@
     "groq": [
       "qwen/qwen3.8-27b",
       "openai/gpt-oss-20b",
-      "allam-2-7b",
       "openai/gpt-oss-120b"
     ],
     "gemini": [
-      "gemini-3.8-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-flash-latest",
-      "gemini-3.5-flash"
+      "gemini-3.5-flash-lite",
+      "gemini-3.1-flash-lite",
+      "gemini-3.5-flash",
+      "gemini-3.8-flash"
     ]
   },
   "activity_retrieval": {
@@ -79,14 +74,13 @@
     "groq": [
       "qwen/qwen3.8-27b",
       "openai/gpt-oss-20b",
-      "allam-2-7b",
       "openai/gpt-oss-120b"
     ],
     "gemini": [
-      "gemini-3.8-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-flash-latest",
-      "gemini-3.5-flash"
+      "gemini-3.5-flash-lite",
+      "gemini-3.1-flash-lite",
+      "gemini-3.5-flash",
+      "gemini-3.8-flash"
     ]
   },
   "synthesis": {
@@ -94,14 +88,13 @@
     "groq": [
       "qwen/qwen3.8-27b",
       "openai/gpt-oss-20b",
-      "allam-2-7b",
       "openai/gpt-oss-120b"
     ],
     "gemini": [
-      "gemini-3.8-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-flash-latest",
-      "gemini-3.5-flash"
+      "gemini-3.5-flash-lite",
+      "gemini-3.1-flash-lite",
+      "gemini-3.5-flash",
+      "gemini-3.8-flash"
     ]
   }
 }

@@ -693,7 +693,9 @@ CRITICAL SPECIFICITY & VALUE RULES:
    - Deliver each suggestion with MIRA's signature cheeky, slightly roast-like wit (teasing packaging quirks, Windows charmap bugs, or endless tabs), but ensure the underlying task is 100% concrete, useful, and actionable.
 4. ZERO HALLUCINATION:
    - Do NOT invent fake tasks, phantom deadlines, or unverified projects. Ground every suggestion in the verified files and actions above.
-5. LENGTH & FORMAT:
+5. LANGUAGE REQUIREMENT:
+   - All suggestions MUST be strictly in English only. Never output in any other language.
+6. LENGTH & FORMAT:
    - Exactly 1 to 2 short sentences per suggestion (maximum 28 words).
    - Return strictly a valid JSON array of {target_count} strings:
 [

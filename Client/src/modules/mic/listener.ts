@@ -125,25 +125,13 @@ export class MicListener {
     try {
       this.selectedMimeType = getSupportedMimeType();
 
-      // Request microphone stream with hardware Acoustic Echo Cancellation, Noise Suppression,
-      // and system audio playback cancellation (cancels Mira voice, YouTube, Spotify, system sounds)
+      // Request microphone stream with hardware Acoustic Echo Cancellation, Noise Suppression, and AGC
       this.stream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          echoCancellation: { ideal: true },
-          noiseSuppression: { ideal: true },
-          autoGainControl: { ideal: true },
-          suppressLocalAudioPlayback: { ideal: true },
-          channelCount: { ideal: 1 },
-          sampleRate: { ideal: 16000 },
-          // Chromium WebRTC DSP audio processing flags
-          googEchoCancellation: true,
-          googExperimentalEchoCancellation: true,
-          googAutoGainControl: true,
-          googNoiseSuppression: true,
-          googExperimentalNoiseSuppression: true,
-          googHighpassFilter: true,
-          googAudioMirroring: false,
-        } as MediaTrackConstraints,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
       });
 
       // Set up Web Audio Analyser for real-time energy & silence measurement

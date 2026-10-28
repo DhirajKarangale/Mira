@@ -44,7 +44,7 @@ export class MicManager {
   private pendingSTTPromises = 0;
   private lastSpeechTime = 0;
   private silenceCheckTimer: ReturnType<typeof setInterval> | null = null;
-  private hasShownQuotaWarning = false;
+  private lastStopToastTime = 0;
 
   constructor(
     listener = micListener,
@@ -309,17 +309,7 @@ export class MicManager {
           micErrType === "auth_error" ||
           errorMsg.toLowerCase().includes("quota"))
       ) {
-        if (!this.hasShownQuotaWarning) {
-          this.hasShownQuotaWarning = true;
-          toast.warning(
-            "ElevenLabs quota is exhausted on all keys in Vault (0 remaining). Switched to browser speech fallback.",
-            {
-              title: "ElevenLabs Quota Exhausted",
-              color: MessageBarColor.Yellow,
-              duration: 7000,
-            }
-          );
-        }
+        console.warn("[MicManager] ElevenLabs quota exhausted/auth error. Silently switched to browser speech fallback.");
         // Seamlessly enable browser SpeechRecognition fallback so voice commands are never lost
         this.startBrowserRecognition();
         this.startSilenceMonitoringLoop();
@@ -355,9 +345,12 @@ export class MicManager {
       voiceQueueManager.getCurrentPlaying() !== null ||
       voiceQueueManager.getSnapshot().totalInQueue > 0;
 
-    const stopMatch = candidates.find((t) => isVoiceStopCommand(t));
+    const stopMatch =
+      candidates.find((t) => isVoiceStopCommand(t, isVoicePlaying)) ||
+      (isVoiceStopCommand(clean, isVoicePlaying) ? clean : null);
+
     if (stopMatch) {
-      console.log(`[MicManager] Voice stop command detected ("${stopMatch}"). Stopping playback.`);
+      console.log(`[MicManager] Voice stop command detected ("${stopMatch}"). Stopping playback immediately.`);
       voiceQueueManager.stopAll();
       audioPlayer.stop();
       audioPlayer.restoreVolume();
@@ -366,11 +359,16 @@ export class MicManager {
       this.processor.clear();
       this.setState("listening");
 
-      toast.info("Voice playback stopped", {
-        title: "Voice Stopped",
-        color: MessageBarColor.Gray,
-        duration: 3000,
-      });
+      const now = Date.now();
+      // Debounce: ensure the user receives only 1 Voice Stopped notification even when interim and final events arrive
+      if (now - this.lastStopToastTime >= 2000) {
+        this.lastStopToastTime = now;
+        toast.info("Voice playback stopped", {
+          title: "Voice Stopped",
+          color: MessageBarColor.Gray,
+          duration: 3000,
+        });
+      }
       return;
     }
 

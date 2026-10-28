@@ -13,18 +13,17 @@ def synthesis_node(state: AgentState) -> Dict[str, Any]:
     """
     Step 5: Final Response Agent (Synthesis Node).
     The last node in the chat workflow.
-    Only rephrases the previous agent's answer into a friendly, natural response.
-    Must not add, remove, modify, or assume any information.
-    Preserves the original meaning and all factual details.
-    Uses LLM work category 'synthesis' (higher temperature 0.7 from config.json).
-    Answers strictly what the user asked with no unrelated explanations, suggestions, or filler.
+    - If previous agent already generated a direct, formatted answer (general_llm, history_answer,
+      user_activity, weather, news), returns it immediately (Fast Path), cutting latency in half.
+    - If raw records need formatting, rephrases them cleanly into English.
+    - Strict English only rule enforced.
     """
     user_query = state.get("user_query", "").strip()
     node_outputs = state.get("node_outputs") or {}
     retrieved_ctx = state.get("retrieved_context") or {}
     executed_node = node_outputs.get("executed_node") or state.get("next_node")
 
-    log(f"[SynthesisNode] Rephrasing response for node='{executed_node}'")
+    log(f"[SynthesisNode] Evaluating response for node='{executed_node}'")
 
     # Extract previous agent's answer
     previous_answer = (
@@ -37,10 +36,10 @@ def synthesis_node(state: AgentState) -> Dict[str, Any]:
         or ""
     ).strip()
 
-    # Fast Path: If previous node is general_llm or history_answer, it already generated a complete,
-    # natural, formatted answer. Bypassing redundant second LLM call cuts chat response latency in half!
-    if executed_node in ("general_llm", "history_answer") and previous_answer:
-        log(f"[SynthesisNode] Fast path: node '{executed_node}' already generated direct answer. Bypassing extra synthesis LLM call.")
+    # Fast Path: All nodes already generate high quality, structured, direct answers.
+    # Bypassing redundant second/third LLM calls cuts chat response latency drastically!
+    if executed_node in ("general_llm", "history_answer", "user_activity", "weather", "news") and previous_answer:
+        log(f"[SynthesisNode] Fast path: node '{executed_node}' already generated complete answer. Bypassing extra synthesis LLM call.")
         return {
             "final_response": previous_answer,
         }
@@ -54,7 +53,7 @@ def synthesis_node(state: AgentState) -> Dict[str, Any]:
             else:
                 records = retrieved_ctx.get("records") or []
                 lines = []
-                for r in records[:50]:
+                for r in records[:30]:
                     ts = r.get("timestamp_formatted", "")
                     ts_end = r.get("timestamp_end_formatted")
                     time_display = f"{ts} - {ts_end}" if ts_end and ts_end != ts else ts
@@ -73,7 +72,7 @@ Previous Agent's Answer:
 {previous_answer}
 
 Task:
-Rephrase the previous agent's answer into a friendly, natural response.
+Rephrase the previous agent's answer into a friendly, natural response in English.
 
 Strict Rules:
 1. ONLY rephrase the previous agent's answer into a friendly, natural tone.
@@ -84,6 +83,7 @@ Strict Rules:
 6. Do NOT include unsolicited greetings or conversational pleasantries.
 7. CRITICAL INSTRUCTION FOR MISSING DATA: If the previous answer indicates that no records or data were found, Do NOT invent, assume, or hallucinate activities, applications, files, or tasks. State clearly that no records were found.
 8. If the previous answer is a list or timeline of events, keep all items intact and accurate while making the phrasing natural and friendly.
+9. LANGUAGE REQUIREMENT: You MUST respond in English only. Never respond in any other language.
 
 Rephrased Response:"""
 

@@ -6,6 +6,10 @@ from pathlib import Path
 import threading
 from typing import Any, Dict, List, Optional
 import requests
+import sys
+_engine_dir = Path(__file__).resolve().parent
+if str(_engine_dir) not in sys.path:
+    sys.path.insert(0, str(_engine_dir))
 logger = logging.getLogger('mira.engine.config')
 
 def load_services_json() -> Dict[str, str]:
@@ -86,6 +90,7 @@ class EngineMemoryConfig:
         self.active_provider: Optional[str] = 'gemini'
         self.user_profile: Dict[str, Any] = {}
         self._initialized: bool = False
+        self._last_vault_http_failure: float = 0.0
 
     def fetch_from_vault(self, vault_base_url: Optional[str]=None) -> bool:
         vault_url = vault_base_url or VAULT_URL or get_service_url('vault')
@@ -94,56 +99,69 @@ class EngineMemoryConfig:
             return False
         base = vault_url.rstrip('/')
         success = True
-        try:
-            resp = requests.get(f'{base}/engine/workers', timeout=1.5)
-            if resp.status_code == 200:
-                data = resp.json()
-                with self._lock:
-                    self.workers.update(data)
-            else:
-                logger.warning(f'Failed to fetch /engine/workers from Vault: status {resp.status_code}')
-                success = False
-        except Exception as e:
-            logger.warning(f'Error fetching engine workers from Vault: {e}')
-            success = False
+        import time
+        now_t = time.time()
+        http_available = (now_t - self._last_vault_http_failure) > 10.0
+
         fetched_priorities: List[str] = []
-        try:
-            resp = requests.get(f'{base}/ai/priorities', timeout=1.5)
-            if resp.status_code == 200:
-                raw_priorities = resp.json()
-                if isinstance(raw_priorities, list):
-                    fetched_priorities = [str(p).strip().lower() for p in raw_priorities if str(p).strip()]
-        except Exception as e:
-            logger.warning(f'Error fetching AI priorities from Vault: {e}')
-            success = False
         fetched_configs: Dict[str, Dict[str, Any]] = {}
-        try:
-            resp = requests.get(f'{base}/ai/configs', timeout=1.5)
-            if resp.status_code == 200:
-                configs_list = resp.json()
-                if isinstance(configs_list, list):
-                    for item in configs_list:
-                        prov_name = str(item.get('llm_provider', '')).strip().lower()
-                        if not prov_name:
-                            continue
-                        keys = [str(k).strip() for k in item.get('keys', []) if str(k).strip()]
-                        current_key = int(item.get('current_key', 0))
-                        total_keys = int(item.get('total_keys', len(keys)))
-                        fetched_configs[prov_name] = {'provider': prov_name, 'display_name': item.get('llm_provider', prov_name), 'keys': keys, 'current_key': current_key, 'total_keys': total_keys}
-        except Exception as e:
-            logger.warning(f'Error fetching AI configs from Vault HTTP: {e}')
-            success = False
-        # Fetch complete user profile from Vault
-        try:
-            resp = requests.get(f'{base}/user', timeout=1.5)
-            if resp.status_code == 200:
-                u_data = resp.json()
-                if isinstance(u_data, dict):
+
+        if http_available:
+            try:
+                resp = requests.get(f'{base}/engine/workers', timeout=0.8)
+                if resp.status_code == 200:
+                    data = resp.json()
                     with self._lock:
-                        self.user_profile = u_data
-        except Exception as e:
-            logger.warning(f'Error fetching user profile from Vault: {e}')
-            success = False
+                        self.workers.update(data)
+                else:
+                    success = False
+            except Exception as e:
+                self._last_vault_http_failure = now_t
+                http_available = False
+                success = False
+
+        if http_available:
+            try:
+                resp = requests.get(f'{base}/ai/priorities', timeout=0.8)
+                if resp.status_code == 200:
+                    raw_priorities = resp.json()
+                    if isinstance(raw_priorities, list):
+                        fetched_priorities = [str(p).strip().lower() for p in raw_priorities if str(p).strip()]
+            except Exception as e:
+                self._last_vault_http_failure = now_t
+                http_available = False
+                success = False
+
+        if http_available:
+            try:
+                resp = requests.get(f'{base}/ai/configs', timeout=0.8)
+                if resp.status_code == 200:
+                    configs_list = resp.json()
+                    if isinstance(configs_list, list):
+                        for item in configs_list:
+                            prov_name = str(item.get('llm_provider', '')).strip().lower()
+                            if not prov_name:
+                                continue
+                            keys = [str(k).strip() for k in item.get('keys', []) if str(k).strip()]
+                            current_key = int(item.get('current_key', 0))
+                            total_keys = int(item.get('total_keys', len(keys)))
+                            fetched_configs[prov_name] = {'provider': prov_name, 'display_name': item.get('llm_provider', prov_name), 'keys': keys, 'current_key': current_key, 'total_keys': total_keys}
+            except Exception as e:
+                self._last_vault_http_failure = now_t
+                http_available = False
+                success = False
+
+        if http_available:
+            try:
+                resp = requests.get(f'{base}/user', timeout=0.8)
+                if resp.status_code == 200:
+                    u_data = resp.json()
+                    if isinstance(u_data, dict):
+                        with self._lock:
+                            self.user_profile = u_data
+            except Exception as e:
+                self._last_vault_http_failure = now_t
+                success = False
 
         # Fallback to local Vault config_storage if HTTP calls failed or returned empty
         if not fetched_configs or not self.user_profile:
@@ -151,7 +169,7 @@ class EngineMemoryConfig:
                 import sys
                 vault_dir = Path(__file__).resolve().parent.parent / 'Vault'
                 if str(vault_dir) not in sys.path:
-                    sys.path.insert(0, str(vault_dir))
+                    sys.path.append(str(vault_dir))
                 import config_storage
                 config_storage.init_config_storage()
                 if not fetched_priorities:
@@ -200,7 +218,7 @@ class EngineMemoryConfig:
                     import sys
                     vault_dir = Path(__file__).resolve().parent.parent / 'Vault'
                     if str(vault_dir) not in sys.path:
-                        sys.path.insert(0, str(vault_dir))
+                        sys.path.append(str(vault_dir))
                     import config_storage
                     config_storage.init_config_storage()
                     u_cfg = config_storage.get_configuration('user_details')
@@ -333,7 +351,7 @@ class EngineMemoryConfig:
             import sys
             vault_dir = Path(__file__).resolve().parent.parent / 'Vault'
             if str(vault_dir) not in sys.path:
-                sys.path.insert(0, str(vault_dir))
+                sys.path.append(str(vault_dir))
             import config_storage
             config_storage.init_config_storage()
             return config_storage.get_gnews_config()
@@ -345,7 +363,14 @@ class EngineMemoryConfig:
         Checks whether any active, non-empty API keys are configured for any LLM provider.
         Protects backend from making unnecessary LLM calls when no keys are available.
         """
-        if force_refresh or not self._initialized:
+        if self._initialized and not force_refresh:
+            with self._lock:
+                for prov, cfg in self.ai_configs.items():
+                    keys = [k for k in cfg.get('keys', []) if str(k).strip()]
+                    if keys:
+                        return True
+
+        if not self._initialized or force_refresh:
             try:
                 self.fetch_from_vault()
             except Exception:
@@ -362,7 +387,7 @@ class EngineMemoryConfig:
             import sys
             vault_dir = Path(__file__).resolve().parent.parent / 'Vault'
             if str(vault_dir) not in sys.path:
-                sys.path.insert(0, str(vault_dir))
+                sys.path.append(str(vault_dir))
             import config_storage
             config_storage.init_config_storage()
             direct_configs = config_storage.get_all_ai_configs()

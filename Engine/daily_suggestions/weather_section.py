@@ -105,7 +105,7 @@ Current weather report for {city_name}:
 Task:
 Generate a concise, strictly factually accurate short summary of the current weather and forecast for {city_name} (1 to 2 short sentences, max 22 words).
 State current conditions, high/low, rain expectations, and evening trend.
-No conversational fluff, no quotation marks, no markdown asterisks."""
+Must be strictly in English only. No conversational fluff, no quotation marks, no markdown asterisks."""
 
     from config import CONFIG
     if CONFIG.has_any_llm_key():
@@ -264,7 +264,7 @@ Strict Rules:
    Explicitly state that no weather precautions or suggestions are needed, followed by a witty, amusing, cheerful message tailored to {greeting_desc} for {user_name}. (e.g. "No weather precautions needed this afternoon — skies are calm and drama-free. Keep crushing your code in peace, {user_name}!").
 3. Address {user_name} directly in a friendly, conversational tone.
 4. Keep it concise (max 32 words, 1-2 sentences).
-5. Strictly return ONLY the message text without quotation marks or markdown asterisks."""
+5. Strictly return ONLY the message text without quotation marks or markdown asterisks in English only."""
 
     from config import CONFIG
     if CONFIG.has_any_llm_key():

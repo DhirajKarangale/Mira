@@ -271,7 +271,7 @@ async def send_chat_message_endpoint(request: SendChatMessageRequest):
     # 2. Queue job into llm_chat stream
     if role == "user" and request.generate_ai_reply:
         from config import CONFIG
-        if not CONFIG.has_any_llm_key(force_refresh=True):
+        if not CONFIG.has_any_llm_key(force_refresh=False):
             log_error("[ChatRouter] Rejecting chat message: No LLM keys configured.")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

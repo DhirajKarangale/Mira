@@ -1,5 +1,4 @@
 import { useVoiceStore } from "@/store/useVoiceStore";
-import { toast, MessageBarColor } from "@/components";
 import { keyQuotaManager } from "./keyQuotaManager";
 import type { KeyRotationCheckResult, ChunkGenerationOptions } from "./types";
 
@@ -144,10 +143,9 @@ export async function generateChunkAudio(
   const targetVoiceId = options?.voiceId || defaultVoice;
   const targetModelId = options?.modelId || defaultModel;
 
-  const initialKeyIndex = Math.max(
-    0,
-    Math.min(voiceStore.currentKeyIndex, keys.length - 1)
-  );
+  // Retrieve saved active key from keyQuotaManager rather than always starting from index 0
+  const activeKeyInfo = keyQuotaManager.getActiveKey(keys);
+  const initialKeyIndex = activeKeyInfo.index;
 
   let currentAttempt = 0;
   const totalKeys = keys.length;
@@ -197,8 +195,9 @@ export async function generateChunkAudio(
         console.log(
           `[ElevenLabs] Generated audio using voice model ID "${targetVoiceId}" with key #${activeKeyIndex + 1}`
         );
-        // Record character usage
+        // Record character usage and store successful active key
         keyQuotaManager.recordUsage(activeApiKey, cleanChunk.length);
+        keyQuotaManager.setActiveKey(activeApiKey, activeKeyIndex);
 
         if (activeKeyIndex !== voiceStore.currentKeyIndex) {
           useVoiceStore
@@ -247,6 +246,9 @@ export async function generateChunkAudio(
             }). Rotating to next Key #${nextKeyIndex + 1} (${currentAttempt + 1}/${totalKeys}).`
           );
 
+          // Store next active key persistently
+          keyQuotaManager.setActiveKey(keys[nextKeyIndex], nextKeyIndex);
+
           useVoiceStore
             .getState()
             .updateKeyIndex(nextKeyIndex)
@@ -254,17 +256,8 @@ export async function generateChunkAudio(
               console.debug("[ElevenLabs] Failed to persist rotated key index:", err);
             });
 
-          toast.info(
-            `ElevenLabs Key #${activeKeyIndex + 1} unavailable. Switched to Key #${nextKeyIndex + 1}.`,
-            {
-              title: "API Key Rotated",
-              color: MessageBarColor.Cyan,
-              duration: 3500,
-            }
-          );
-
           currentAttempt++;
-          continue; // Try next key
+          continue; // Try next key silently without toast
         } else {
           // Reached full circle!
           console.warn(
@@ -272,14 +265,6 @@ export async function generateChunkAudio(
           );
           keyQuotaManager.resetAllKeyStatuses(keys);
 
-          toast.warning(
-            `All ${totalKeys} ElevenLabs keys cycled. If you still have credits, verify your voice model settings or add a fresh key.`,
-            {
-              title: "ElevenLabs Notice",
-              color: MessageBarColor.Yellow,
-              duration: 6000,
-            }
-          );
           throw new Error(
             `ElevenLabs generation failed after attempting all ${totalKeys} keys. Please check your voice ID or credits.`
           );

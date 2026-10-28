@@ -112,7 +112,16 @@ export class AudioPlayer {
    * Returns whether audio is actively playing.
    */
   get isPlaying(): boolean {
-    return this.isPlayingAudio;
+    const isElemPlaying =
+      this.audioElement &&
+      !this.audioElement.paused &&
+      !this.audioElement.ended &&
+      this.audioElement.currentTime > 0;
+    const isSpeechSpeaking =
+      typeof window !== "undefined" &&
+      "speechSynthesis" in window &&
+      (window.speechSynthesis.speaking || window.speechSynthesis.pending);
+    return this.isPlayingAudio || Boolean(isElemPlaying) || Boolean(isSpeechSpeaking);
   }
 
   /**
@@ -436,6 +445,19 @@ export class AudioPlayer {
         this.audioElement.pause();
         this.audioElement.currentTime = 0;
         this.audioElement.src = "";
+      } catch {}
+    }
+
+    // Stop all audio elements across the document if any rogue audio was playing
+    if (typeof document !== "undefined") {
+      try {
+        const audioElements = document.querySelectorAll("audio");
+        audioElements.forEach((el) => {
+          try {
+            el.pause();
+            el.currentTime = 0;
+          } catch {}
+        });
       } catch {}
     }
   }

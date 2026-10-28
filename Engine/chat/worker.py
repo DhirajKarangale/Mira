@@ -69,7 +69,7 @@ async def process_chat_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
     # Step 2: Execute LangGraph agentic workflow
     ai_response = ""
     from config import CONFIG
-    if not CONFIG.has_any_llm_key(force_refresh=True):
+    if not CONFIG.has_any_llm_key(force_refresh=False):
         log_error(f"[ChatWorker-{worker_id}] No LLM API keys configured. Rejecting workflow execution for job {job_id}.")
         ai_response = (
             "You don't have any LLM API keys configured. You cannot send messages until you add an LLM key "

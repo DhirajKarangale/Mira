@@ -228,7 +228,7 @@ class NativeMicWorker:
         lower = clean.lower()
 
         # Check for stop voice commands
-        if lower in ["stop", "quiet", "quite", "mute", "mira stop", "shut up"]:
+        if re.search(r"\b(stop|quiet|quite|mute|shut\s*up|be\s+quiet|silence|pause|cancel|hush|shush|halt|enough|stop\s+talking)\b", lower):
             logger.info(f"[NativeMic] Voice stop command detected: \"{clean}\"")
             self.is_collecting_command = False
             self.collected_segments.clear()

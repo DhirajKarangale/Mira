@@ -8,12 +8,13 @@ from .error_analysis import mask_sensitive, LLMError
 from .response_parser import parse_response
 from . import gemini
 from . import groq
+
 logger = logging.getLogger('mira.engine.llm.caller')
 PROVIDER_HANDLERS: Dict[str, Callable[[str, str], str]] = {'gemini': gemini.call, 'groq': groq.call}
 AI_UNAVAILABLE_MESSAGE = 'The AI request could not be completed because no configured provider is currently available.'
 _COOLDOWN_LOCK = threading.Lock()
 _PROVIDER_COOLDOWN_UNTIL: Dict[str, float] = {}
-COOLDOWN_DURATION_SEC = 60.0
+COOLDOWN_DURATION_SEC = 25.0
 
 def log(msg: str) -> None:
     from vault_logger import log as v_log
@@ -59,7 +60,7 @@ def call_llm(prompt: str, work: str='summarization') -> str:
         return ''
     # Protect backend: immediately return clear error if no LLM keys configured
     from config import CONFIG
-    if not CONFIG.has_any_llm_key(force_refresh=True):
+    if not CONFIG.has_any_llm_key(force_refresh=False):
         log_error("[Engine LLM] No LLM API keys configured in Vault. Rejecting LLM call to protect backend.")
         return NO_LLM_KEYS_MESSAGE
     work_clean = str(work).strip().lower() if work else 'summarization'
