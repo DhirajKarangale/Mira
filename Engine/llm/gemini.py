@@ -30,8 +30,9 @@ def call(prompt: str, work: str) -> str:
     temperature = get_temperature(work)
     log(f"[Gemini] Starting request for work='{work}' (temperature={temperature}, models={models}, keys={len(keys)})")
     english_system_instruction = (
-        "You are MIRA AI. You must ALWAYS communicate and respond strictly in English. "
-        "Never use any other language."
+        "You are MIRA AI. Respond strictly to the user query or task with short, simple, and precise answers. "
+        "Do not include extra information, unsolicited suggestions, or unrelated content. "
+        "You must ALWAYS communicate and respond strictly in English."
     )
     for model_idx, model in enumerate(models):
         key_attempts = 0

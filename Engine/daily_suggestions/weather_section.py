@@ -94,18 +94,17 @@ def generate_weather_short_summary(
 
     night_temp = remaining_hours[-1].get("temperature_celsius") if remaining_hours else cur_temp
 
-    prompt = f"""You are MIRA, a sharp personal AI assistant.
-Current weather report for {city_name}:
-- Condition: {cur_cond}, Current Temp: {cur_temp}°C
-- Today's High: {today_max}°C, Low: {today_min}°C
-- Rain Chance: {rain_chance}% (Rain volume: {rain_mm} mm)
-- Rain timing (if any): {rain_hour or 'No rain forecasted'}
-- Tonight's expected temp: ~{night_temp}°C
+    prompt = f"""You are MIRA.
+Weather report for {city_name}:
+- Condition: {cur_cond}, Temp: {cur_temp}°C
+- High: {today_max}°C, Low: {today_min}°C
+- Rain Chance: {rain_chance}%, Rain: {rain_mm} mm (timing: {rain_hour or 'No rain forecasted'})
+- Tonight: ~{night_temp}°C
 
 Task:
-Generate a concise, strictly factually accurate short summary of the current weather and forecast for {city_name} (1 to 2 short sentences, max 22 words).
-State current conditions, high/low, rain expectations, and evening trend.
-Must be strictly in English only. No conversational fluff, no quotation marks, no markdown asterisks."""
+Generate a short, precise weather summary for {city_name} (1 to 2 short sentences, max 22 words).
+State current conditions, high/low, and rain expectations.
+Strict English only. No quotation marks, conversational filler, or markdown asterisks."""
 
     from config import CONFIG
     if CONFIG.has_any_llm_key():
@@ -248,23 +247,22 @@ def generate_weather_funny_suggestion(
 
     loc_display = f" in {city_name}" if city_name else ""
 
-    prompt = f"""You are MIRA, a helpful, sharp, and delightfully witty personal AI assistant.
-Current weather report for {user_name}{loc_display}:
+    prompt = f"""You are MIRA.
+Weather report for {user_name}{loc_display}:
 - Condition: {cond}, Temp: {temp}°C (feels like {app_temp}°C)
 - High / Low: High of {today_max}°C, Low of {today_min}°C
 - Rain: {rain_mm} mm (Chance: {rain_chance}%, timing: {rain_hour or 'None'})
 - Wind: {wind} km/h
-- Time of Day: {time_of_day} ({greeting_desc})
-- Advisory Status: {'YES - ' + advisory_type.upper() if has_advisory else 'NO ADVISORY NEEDED (calm/mild)'}
+- Advisory Status: {'YES - ' + advisory_type.upper() if has_advisory else 'NO ADVISORY NEEDED'}
 
 Strict Rules:
 1. If Advisory Status is YES:
-   Provide a genuinely valuable, concise, actionable weather recommendation for {user_name} based on the actual conditions above (e.g. carry an umbrella with expected rain timing, hydrate in heat, bundle up in cold, wind caution). 1 to 2 sentences max.
+   State a short, precise weather recommendation (e.g., carry an umbrella, hydrate in heat, dress warmly in cold). Max 1-2 short sentences.
 2. If Advisory Status is NO ADVISORY NEEDED:
-   Explicitly state that no weather precautions or suggestions are needed, followed by a witty, amusing, cheerful message tailored to {greeting_desc} for {user_name}. (e.g. "No weather precautions needed this afternoon — skies are calm and drama-free. Keep crushing your code in peace, {user_name}!").
-3. Address {user_name} directly in a friendly, conversational tone.
-4. Keep it concise (max 32 words, 1-2 sentences).
-5. Strictly return ONLY the message text without quotation marks or markdown asterisks in English only."""
+   State simply and directly that no weather precautions are needed.
+3. Keep the response short, simple, and precise (max 25 words).
+4. Do not include extra information, unsolicited suggestions, or conversational fluff.
+5. Strictly return ONLY the message text in English without quotation marks or asterisks."""
 
     from config import CONFIG
     if CONFIG.has_any_llm_key():

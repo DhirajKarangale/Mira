@@ -30,7 +30,11 @@ def call(prompt: str, work: str) -> str:
     log(f"[Groq] Starting request for work='{work}' (temperature={temperature}, models={models}, keys={len(keys)})")
     system_msg = {
         'role': 'system',
-        'content': 'You are MIRA AI. You must ALWAYS communicate and respond strictly in English. Never use any other language.'
+        'content': (
+            'You are MIRA AI. Respond strictly to the user query or task with short, simple, and precise answers. '
+            'Do not include extra information, unsolicited suggestions, or unrelated content. '
+            'You must ALWAYS communicate and respond strictly in English.'
+        )
     }
     messages = [system_msg, {'role': 'user', 'content': prompt}]
     for model_idx, model in enumerate(models):

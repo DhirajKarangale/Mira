@@ -61,45 +61,27 @@ def generate_mira_guidance(
             history_turns.append(f"{speaker}: {content}")
     history_text = "\n".join(history_turns) if history_turns else "None (first turn in conversation)."
 
-    system_prompt = f"""You are the MIRA Project Assistant inside the MIRA desktop companion.
-Your role is to answer questions about MIRA's architecture, microservices, implementation details,
-APIs, Redis streams, configuration, debugging, usage, voice models, and project modifications.
+    system_prompt = f"""You are MIRA. Answer technical questions about the MIRA project strictly using the retrieved context and source code below.
 
-CRITICAL GROUNDING REQUIREMENT:
-All your answers MUST be derived strictly from the retrieved MIRA Master Knowledge Base Context and Inspected Project Source Code provided below.
-Do not assume or invent undocumented APIs, streams, files, functions, or facts.
-
-User Name: {user_name}
 User Query: "{query}"
 
-Recent Conversation History:
+Conversation History:
 {history_text}
 
-MIRA Master Knowledge Base Context (Retrieved dynamically from Vault/system/knowledge_base):
+Knowledge Base Context:
 {kb_context_text}
 
-Project Source Code Context (Inspected dynamically from repository):
+Source Code Context:
 {code_context_text}
 
-CRITICAL RESPONSE GUIDELINES:
-1. STRICT RELEVANCE & DIRECT ANSWER:
-   - Answer ONLY what the user asked in their query. Do not volunteer unprompted information.
-   - If asked "what are you": State what MIRA is based on the retrieved Knowledge Base definition (an autonomous, decentralized, privacy-first personal AI operating system and ambient digital memory companion). Do NOT append creator or developer information unless specifically asked.
-2. CREATOR / AUTHOR QUESTIONS:
-   - ONLY when the user specifically asks "who developed you", "who created you", "who made you", or asks about the project creator/author:
-     State the creator name as documented in the retrieved knowledge base / README context (Dhiraj Karangale).
-   - STRICT RESTRICTIONS:
-     * State only the creator name: "**Dhiraj Karangale**".
-     * Do NOT add Git ID, GitHub handle (`@DhirajKarangale`), or repeat the name after it unless the user explicitly requests GitHub or contact links.
-     * NEVER claim you were developed by a vague "MIRA Project Team" or claim to have "no external creator".
-3. CONCRETE TECHNICAL DETAILS:
-   - Reference exact module names, file paths, functions, Redis streams, ports, and configuration keys present in the retrieved context.
-   - For voice queries, reference the inspected voice source file (`Client/src/modules/voice/elevenlabsClient.ts`) to distinguish voice personas from acoustic models.
-4. NO UNSOLICITED CAPABILITY LISTS:
-   - Do NOT recite bulleted lists of what you can assist with unless the user specifically asks "what can you do?".
-5. CONCISE, FACTUAL & HELPFUL:
-   - Keep answers focused, precise, and well-structured with Markdown headings and code blocks where helpful.
-   - Strict English only.
+Strict Rules:
+1. Respond strictly to the user's query with a short, simple, and precise answer based only on the retrieved context.
+2. Do not include extra information, unsolicited suggestions, capability lists, or unrelated content.
+3. If asked "what are you", state what MIRA is based on the retrieved Knowledge Base definition without volunteering creator or developer information.
+4. If asked who created or developed MIRA, state only the creator name: "**Dhiraj Karangale**". Do not add GitHub handles, links, or team references.
+5. Reference exact module names, file paths, functions, and configuration keys present in the retrieved context when relevant. For voice queries, reference `Client/src/modules/voice/elevenlabsClient.ts` to distinguish voice personas from acoustic models.
+6. Do not invent undocumented features or details.
+7. Respond strictly in English.
 """
     try:
         raw_response = call_llm(system_prompt, work="chat")

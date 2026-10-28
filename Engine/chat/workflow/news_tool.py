@@ -883,14 +883,14 @@ def news_node(state: AgentState) -> Dict[str, Any]:
     else:
         # Fallback to LLM knowledge synthesis so user receives a direct, comprehensive answer
         log(f"[NewsNode] No direct news articles retrieved (success={res.get('success')}). Synthesizing answer via LLM for query: '{user_query}'")
-        fallback_prompt = f"""You are MIRA, an intelligent AI assistant.
-The user asked:
-\"{user_query}\"
+        fallback_prompt = f"""You are MIRA.
 
-Live news article search did not return direct article matches.
-Please provide a clear, accurate, objective, and detailed answer explaining the topic to the user based on your knowledge.
+User Query: "{user_query}"
 
-LANGUAGE REQUIREMENT: You MUST respond in English only. Never respond in any other language.
+Live news article search did not return direct matches.
+Respond strictly to the user's query with a short, simple, and precise factual answer based on your knowledge.
+Do not include extra information, unsolicited suggestions, or unrelated content.
+Respond strictly in English.
 """
         try:
             from llm import call_llm

@@ -126,35 +126,28 @@ def select_top_three_stories_with_llm(
         )
 
     combined = "\n\n".join(items_text)
-    prompt = f"""You are MIRA's Chief News Editor.
-The user lives in {country_name} ({location_desc or country_name}).
+    prompt = f"""Select the 3 most relevant domestic news stories for a user in {country_name} ({location_desc or country_name}).
 
 Candidate news stories:
 {combined}
 
-Task:
-Select the THREE most relevant, trending, and impactful domestic news stories for the user.
-
-STRICT COUNTRY SELECTION RULES:
-1. HIGHEST PRIORITY FOR USER'S COUNTRY ({country_name.upper()}):
-   - You MUST prioritize stories directly about {country_name} (domestic national developments, policy, economy, infrastructure, science/space, society, or major national events).
-   - Under NO circumstances should you select foreign-only international news (e.g. elections in Brazil or other foreign countries) when domestic stories concerning {country_name} are available.
-2. Freshness: Strictly prioritize stories published within the last 36 hours.
-3. Impact & Relevance: Choose stories with broad national significance or high public interest in {country_name}.
-4. No Duplicates: Every selected story MUST cover a distinct topic or event (never pick multiple stories about the same event).
-5. Language Requirement: All headlines and summaries MUST be strictly in English only.
-6. Factual Accuracy: For each story, provide a concise 1-2 sentence summary preserving 100% factual accuracy. Do NOT embellish or speculate.
-7. Output Format: Return strictly a valid JSON array of 3 objects:
+Strict Rules:
+1. Prioritize stories directly concerning {country_name} published within the last 36 hours.
+2. Each selected story must cover a distinct topic.
+3. For each story, provide a concise 1-2 sentence factual summary.
+4. Do not include extra information, unsolicited suggestions, or commentary.
+5. All titles and summaries must be strictly in English.
+6. Return strictly a valid JSON array of 3 objects:
 [
   {{
-    "title": "Clean, engaging headline",
-    "summary": "1-2 sentence concise, factually accurate summary.",
+    "title": "Clean headline",
+    "summary": "1-2 sentence concise factual summary.",
     "url": "original article URL",
     "source": "News source name",
     "published_at": "original publication timestamp"
   }}
 ]
-Do not output any introductory or concluding text outside the JSON array."""
+Do not output any text outside the JSON array."""
 
     try:
         raw_resp = call_llm(prompt, work="summarization")

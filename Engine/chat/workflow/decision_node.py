@@ -181,38 +181,23 @@ def decision_node(state: AgentState) -> Dict[str, Any]:
             recent_turns.append(f"{speaker}: {clean_c}")
     history_str = "\n".join(recent_turns) if recent_turns else "None (first turn in session)"
 
-    prompt = f"""You are the Decision, Intent Routing, and Retrieval Planning module of MIRA, an intelligent desktop AI assistant.
-Analyze the user's latest query, session conversation history, and current reference time.
-
-CRITICAL LANGUAGE REQUIREMENT: You MUST respond in English only. All JSON field values and reasoning must be in English.
+    prompt = f"""Analyze the user query, recent history, and reference time to determine the route and retrieval parameters.
 
 Reference Time: {now_str} (Timezone: {user_tz})
 User Name: {user_name}
 
-Recent Conversation History for this session:
+Recent Conversation History:
 {history_str}
 
-User's Latest Query: "{user_query}"
+User Query: "{user_query}"
 
-Instructions:
-1. Understand Intent & Route:
-   - "mira_assistant": The user is asking questions about MIRA (architecture, modules, Engine, Vault, Memory, Operator, Message Broker, Client, scripts, APIs, Redis streams, configuration, implementation, debugging, usage, voice models, female/male voices, TTS, STT, creator/developer) OR asking to make changes, additions, or modifications to the MIRA project directly through chat.
-   - "history_answer": The query is a follow-up, clarification, reformatting, or question whose answer is ALREADY present in the conversation history above.
-   - "user_activity": The user is asking about their personal activities, screen time, applications used, documents opened, or work history that REQUIRES querying the personal screen activity database.
-   - "weather": The user is asking about current weather, weather forecasts, temperature, rain/precipitation, snowfall, humidity, wind speed, or meteorological conditions.
-   - "news": The user is specifically asking for recent, breaking, or current news articles, headlines, or live journalistic updates.
-   - "general_llm": General knowledge, coding help, historical/analytical explanations, definitions, reasoning, greeting, or chit-chat that does not query personal screen logs, weather, news, or MIRA.
-2. Follow-Up & Context Resolution:
-   - "is_follow_up": true if the query refers to, continues, or relies on previous messages in this session.
-   - "can_answer_from_history": true if the conversation history above already contains enough information to answer without external search.
-   - "resolved_query": If the query is a follow-up with ambiguous references, rewrite it into a self-contained query with missing context resolved.
-3. Expected Answer Detail ("detail_level"):
-   - "overview", "detailed", or "concise".
-4. Retrieval Plan:
-   - If route is "user_activity": search_query, app_name, time_expression.
-   - If route is "mira_assistant": search_query for MIRA knowledge base, and intent ("INFORMATIONAL" or "MODIFICATION").
-   - If route is "weather": forecast_days (integer 1 to 16), location (specific city or place mentioned in query, or null if asking about user's own location).
-   - If route is "news": news_plan (operation, q, category, country, location, lang, sortby, max_results).
+Routes:
+- "mira_assistant": Questions about MIRA (architecture, modules, code, APIs, streams, config, voices, creator) or project modifications.
+- "history_answer": Query answered directly from the conversation history above.
+- "user_activity": Questions about user's personal screen activity, apps used, or work history.
+- "weather": Weather conditions, forecasts, or temperature.
+- "news": Recent headlines or news articles.
+- "general_llm": General knowledge, coding, or chit-chat not requiring tools.
 
 Return strictly a valid JSON object matching this schema:
 {{
@@ -242,7 +227,7 @@ Return strictly a valid JSON object matching this schema:
     }}
   }}
 }}
-Do not include any extra text outside the JSON object.
+All values must be in English. Output only the JSON object with no surrounding text.
 """
 
     route = "general_llm"

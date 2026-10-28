@@ -556,41 +556,27 @@ def synthesize_weather_response(
     if has_significant_feels_like:
         temp_line += f" (Feels noticeably different at ~{app_val}°C due to conditions)"
 
-    prompt = f"""You are MIRA, a helpful and natural desktop AI companion.
-Answer the user's weather question naturally and conversationally, like a real person talking, while sticking directly to the point.
+    prompt = f"""You are MIRA.
 
-User Question: "{user_query}"
-Target Location: {location_name} (short: {short_loc})
+User Query: "{user_query}"
+Location: {short_loc}
 
 Verified Weather Data:
-Current Conditions:
-- Weather: {cur_cond}
-{temp_line}
-- Humidity: {cur_hum}%
-- Wind: {cur_wind} km/h
-- Rain: {cur_rain} mm
-
+Current: {cur_cond}, {temp_line.lstrip('- ')}, Humidity: {cur_hum}%, Wind: {cur_wind} km/h, Rain: {cur_rain} mm
 Daily Forecast:
 {daily_summary}
 
-Tone & Style Guidelines:
-1. Speak naturally, smoothly, and conversationally. Avoid stiff or robotic templates like "Currently in [Location], it is [Temp] with [Cond]".
-2. Refer to the location naturally (e.g. "in {short_loc}") without reciting redundant state or country names unless specifically asked.
-3. Answer ONLY what the user asked:
-   - If asked for current weather/temperature: give a single natural sentence about right now. Do not mention future days unless asked.
-   - If asked about rain: answer directly and naturally.
-   - If asked for a forecast: give a concise, clean summary of the requested days.
-4. Keep temperatures and numbers easy to read (whole degrees).
-5. NEVER mention "feels like" unless an apparent temperature is explicitly provided above. Never repeat the same temperature twice (never say "26°C, feeling like 26°C").
-6. No robotic intros ("Certainly!", "Sure thing!") and no trailing questions ("Let me know if you need more info!").
-7. English only.
+Strict Rules:
+1. Respond strictly to the user's query with a short, simple, and precise answer.
+2. Answer only what was asked:
+   - For current weather or temperature, state only current conditions.
+   - For rain, answer only regarding rain.
+   - For forecasts, give a concise summary for the requested days only.
+3. Do not include extra information, unsolicited suggestions, conversational filler, or unrelated content.
+4. Never mention "feels like" unless an apparent temperature is explicitly provided.
+5. Respond strictly in English.
 
-Tone Examples:
-- "What's the weather in Pune?" -> "It's 26°C and mainly clear in Pune right now."
-- "What's the temperature in Mumbai?" (when feels like 39°C) -> "It's 32°C in Mumbai, but the humidity makes it feel more like 39°C."
-- "Will it rain tomorrow in Pune?" -> "There's a 39% chance of light drizzle tomorrow in Pune with highs near 32°C."
-
-Response:"""
+Answer:"""
     try:
         from llm import call_llm
         resp = call_llm(prompt, work="general").strip()

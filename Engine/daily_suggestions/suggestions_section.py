@@ -639,71 +639,38 @@ def generate_daily_suggestions_with_llm(
     has_activity = bool(activity_summary and activity_summary.strip())
     activity_context = activity_summary if has_activity else "No screen activity recorded in the past 2 days."
 
-    if is_weekend:
-        weekend_planning_instruction = (
-            "- Today is a WEEKEND (Saturday / Sunday). Balance focused personal project progress with rejuvenation:\n"
-            "  * Prioritize 2-3 specific in-flight side project milestones from active files.\n"
-            f"  * Include 1-2 refreshing outdoor/outing suggestions tailored to {city_name} or unwinding."
-        )
-    else:
-        weekend_planning_instruction = (
-            "- Today is a WEEKDAY. Focus squarely on high-impact core engineering tasks, resolving active bugs, and shipping code."
-        )
+    prompt = f"""You are MIRA.
+Generate daily task suggestions based on active workspace files and ongoing work.
 
-    prompt = f"""You are MIRA, a personal AI assistant known for being sharp, intelligent, delightfully witty, and deeply practical.
-Today is {day_name}, {date_str}.
-Day Type: {'WEEKEND (Saturday/Sunday)' if is_weekend else 'WEEKDAY'}
-User Name: {user_name}
-User Context (User Knowledge Base): {profile_text}
+Today: {day_name}, {date_str} ({'Weekend' if is_weekend else 'Weekday'})
+User: {user_name}
 
----
-1. PREVIOUS SUGGESTIONS & COMPLETION RATE:
-- 14-day completion rate: {overall_rate * 100:.0f}% (Weekday: {weekday_rate * 100:.0f}%, Weekend: {weekend_rate * 100:.0f}%)
-- Pacing guidance: {pace_guidance}
-- Pending / unfinished tasks from yesterday's suggestions:
-{pending_yesterday_text}
-
----
-2. RECENT ONGOING WORK & WORKSPACE ACTIVITY (Activity Knowledge Base - Past 48h):
-Primary Projects & Active In-Flight Files:
+Ongoing Work & Active Files:
 {ongoing_work_text}
-- Active applications: {', '.join(active_apps) if active_apps else 'None recorded'}
-- Most recent activity: {most_recent_session}
-- Chronological timeline of recent sessions:
+Active Applications: {', '.join(active_apps) if active_apps else 'None'}
+Recent Timeline:
 {activity_context}
 
----
-3. ACTIVITY SIGNALS & EVIDENCE ANALYSIS:
-- Context Switching: {'YES - ' + ctx_evidence if ctx_detected else 'NONE - Single-focus workflow'}
-- Active Bugs / Troubleshooting: {'YES - ' + frust_evidence if frust_detected else 'NONE - Clean workflow detected'}
-- Discovered Opportunities / Reminders: {'YES - ' + rem_evidence if rem_detected else 'NONE'}
-- Recent Stated Chat Goals: {chat_goals_text}
+Signals:
+- Frustrations / Bugs: {frust_evidence if frust_detected else 'None'}
+- Context Switching: {ctx_evidence if ctx_detected else 'None'}
+- Pending Tasks: {pending_yesterday_text}
 
----
-TASK:
-Generate exactly {target_count} personalized, practical, and highly specific daily suggestions for today.
+Task:
+Generate exactly {target_count} short, practical, and precise daily suggestions for today.
 
-CRITICAL SPECIFICITY & VALUE RULES:
-1. NEVER BE VAGUE OR GENERIC:
-   - Strictly avoid useless filler like "stabilize the UI", "explore a hackathon", "take a short break", "drink water / stretch", "read documentation", or "tackle recurring errors".
-2. CONCRETE FILE & PROBLEM TARGETING:
-   - Every single task MUST explicitly reference the CONCRETE files, scripts, components, or exact bugs the user is currently working on (e.g. {', '.join(act_sig.get('active_files_detail', [])[:5]) or 'active files in context'}).
-   - State the exact next engineering action (e.g. resolve specific error in packaging script, verify candidate paths in launcher, align route icons in navigation component).
-3. ROAST-LIKE & WITTY PERSONALITY:
-   - Deliver each suggestion with MIRA's signature cheeky, slightly roast-like wit (teasing packaging quirks, Windows charmap bugs, or endless tabs), but ensure the underlying task is 100% concrete, useful, and actionable.
-4. ZERO HALLUCINATION:
-   - Do NOT invent fake tasks, phantom deadlines, or unverified projects. Ground every suggestion in the verified files and actions above.
-5. LANGUAGE REQUIREMENT:
-   - All suggestions MUST be strictly in English only. Never output in any other language.
-6. LENGTH & FORMAT:
-   - Exactly 1 to 2 short sentences per suggestion (maximum 28 words).
-   - Return strictly a valid JSON array of {target_count} strings:
+Strict Rules:
+1. Every suggestion must explicitly reference confirmed active files, components, or tasks from the context above.
+2. Keep each suggestion short, simple, and precise (1 to 2 short sentences, maximum 28 words).
+3. Do not include extra information, unsolicited generic advice, or unrelated content.
+4. Do not invent unverified tasks or projects.
+5. All suggestions must be in English.
+6. Return strictly a valid JSON array of {target_count} strings:
 [
   "Suggestion 1",
-  "Suggestion 2",
-  ...
+  "Suggestion 2"
 ]
-Do NOT include markdown asterisks inside strings or text outside the JSON array."""
+Do not output text outside the JSON array."""
 
     try:
         raw_resp = call_llm(prompt, work="summarization")

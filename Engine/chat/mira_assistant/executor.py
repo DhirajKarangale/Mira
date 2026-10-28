@@ -156,8 +156,6 @@ def plan_and_execute_modification(
 
     # Step 3: LLM Code Modification Planning
     planning_prompt = f"""You are the MIRA Code Modification Planner.
-The user requested a code or configuration modification to the MIRA project.
-
 User Query: "{query}"
 
 Existing File Contexts:
@@ -171,7 +169,7 @@ Strict Rules:
 2. Only create new files or update/add code in existing files.
 3. Preserve all existing coding conventions, docstrings, typing annotations, imports, and comments.
 4. Minimal complete change: Modify only what is strictly necessary to satisfy the request.
-5. If creating or updating a file, provide the COMPLETE, valid, production-ready file content.
+5. Provide COMPLETE, valid file content for any modified or created file.
 
 Return strictly a valid JSON object matching this schema:
 {{

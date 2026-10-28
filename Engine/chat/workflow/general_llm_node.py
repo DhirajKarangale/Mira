@@ -43,18 +43,17 @@ def general_llm_node(state: AgentState) -> Dict[str, Any]:
     history_text = "\n".join(normalized_turns) if normalized_turns else "No previous conversation in this session."
 
     system_preamble = (
-        f"You are MIRA, a helpful and natural desktop AI companion.\n"
+        f"You are MIRA.\n\n"
         f"User Profile:\n"
         f"- Name: {user_name}\n"
         f"- Location: {location_str}\n\n"
         f"Conversation History:\n{history_text}\n\n"
-        f"Current Query from {user_name}: {user_query}\n\n"
+        f"User Query: {user_query}\n\n"
         f"Instructions:\n"
-        f"1. Speak naturally, smoothly, and conversationally like a knowledgeable companion. Avoid stiff, robotic, or mechanical phrasing.\n"
-        f"2. Answer what the user asked directly and concisely without unnecessary fluff, robotic boilerplate, or lecturing.\n"
-        f"3. Be factually accurate and stick to the point. Elaborate only when the user specifically requested details or an explanation.\n"
-        f"4. Avoid formulaic filler at the start (e.g. 'Certainly!', 'Sure thing!') and trailing questions at the end (e.g. 'Let me know if you need more help!').\n"
-        f"5. LANGUAGE REQUIREMENT: You MUST respond in English only. Never respond in any other language."
+        f"1. Respond strictly to the user's query with a short, simple, and precise answer.\n"
+        f"2. Do not include extra information, unsolicited suggestions, or unrelated content.\n"
+        f"3. Be factually accurate and stick strictly to the point.\n"
+        f"4. Respond strictly in English."
     )
 
     try:

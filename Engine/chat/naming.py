@@ -31,22 +31,11 @@ def format_naming_prompt(messages: List[Dict[str, Any]]) -> str:
 
     dialogue = "\n".join(conversation_lines)
     prompt = (
-        "You are an expert conversation summarizer that creates concise, high-signal titles for chat sessions.\n\n"
-        "Task: Read the dialogue and output a concise, specific title summarizing the core topic.\n\n"
+        "Generate a short, precise title for the chat dialogue below.\n\n"
         "Strict Rules:\n"
         "- Length: 2 to 4 words only (maximum 30 characters).\n"
-        "- Format: Use Title Case noun phrases (e.g., 'FastAPI CORS Setup', 'Instagram Founders').\n"
-        "- Relevance: Accurately capture the central entity, subject, or question.\n"
-        "- Prohibited: NO quotes, colons, question marks, period, or punctuation.\n"
-        "- Prohibited: NO generic fillers like 'Chat', 'Conversation', 'Discussion', 'Overview', 'Query', 'Help'.\n"
-        "- Output ONLY the title itself. Do not explain or add commentary.\n\n"
-        "Examples:\n"
-        "Dialogue: User: Who created Python and why? Mira: Guido van Rossum created Python in 1991...\n"
-        "Title: Python Creation & Origin\n\n"
-        "Dialogue: User: How to fix CORS errors in FastAPI? Mira: Use CORSMiddleware...\n"
-        "Title: FastAPI CORS Setup\n\n"
-        "Dialogue: User: What is the capital of France? Mira: Paris is the capital...\n"
-        "Title: Capital of France\n\n"
+        "- Format: Title Case noun phrase (e.g., 'FastAPI CORS Setup').\n"
+        "- Output ONLY the title itself with no punctuation, quotes, or filler words.\n\n"
         f"Dialogue:\n{dialogue}\n\n"
         "Title:"
     )

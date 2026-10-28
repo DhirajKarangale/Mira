@@ -37,31 +37,21 @@ def history_node(state: AgentState) -> Dict[str, Any]:
 
     history_text = "\n".join(normalized_turns) if normalized_turns else "No prior messages."
 
-    detail_instructions = {
-        "overview": "Provide a clean, natural overview of the relevant points discussed previously.",
-        "detailed": "Provide all relevant details, numbers, timestamps, and context discussed previously.",
-        "concise": "Answer directly and concisely, addressing only the specific question asked."
-    }.get(detail_level, "Answer directly and concisely.")
+    prompt = f"""You are MIRA.
 
-    prompt = f"""You are MIRA, a helpful and natural desktop AI companion.
-The user is asking a follow-up question that can be answered directly from the current conversation history.
+User Query: "{user_query}"
 
-User Name: {user_name}
-Current Query: "{user_query}"
-Requested Detail Level: {detail_level}
-
-Conversation History for this session:
+Conversation History:
 {history_text}
 
 Strict Rules:
-1. Answer the user's question using ONLY the facts and data stated in the conversation history above.
-2. Speak naturally, smoothly, and conversationally like an intelligent companion. Avoid robotic or stiff templates.
-3. {detail_instructions}
-4. Do NOT invent, assume, or add unsupported information.
-5. If the conversation history does not contain the answer, state clearly and naturally that this was not mentioned previously.
-6. Avoid robotic filler at the start and trailing questions at the end.
-7. LANGUAGE REQUIREMENT: You MUST respond in English only. Never respond in any other language.
-"""
+1. Respond strictly to the user's query using only facts from the conversation history above.
+2. Provide a short, simple, and precise answer.
+3. Do not include extra information, unsolicited suggestions, or unrelated content.
+4. Do not invent or assume details. If the conversation history does not contain the answer, state clearly that it was not mentioned previously.
+5. Respond strictly in English.
+
+Answer:"""
 
     try:
         raw_response = call_llm(prompt, work="general")

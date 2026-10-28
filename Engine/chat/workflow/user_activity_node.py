@@ -259,62 +259,24 @@ def _formulate_activity_response(
     direct_timeline = "\n".join(direct_lines)
     evidence_text = "\n".join(evidence_items)
 
-    if detail_level == "detailed":
-        detail_prompt_section = (
-            "Detail Level: DETAILED TIMELINE\n"
-            "The user explicitly requested full details or a complete timeline.\n"
-            "Present the complete, detailed chronological timeline with all available details: exact timestamps, "
-            "applications, window titles, documents, queries, and tools.\n"
-            "Format:\n"
-            "- **[Timestamp or Range]** — **[Application]**: [Factual description with all confirmed details]"
-        )
-    elif detail_level == "concise":
-        detail_prompt_section = (
-            "Detail Level: CONCISE PINPOINT ANSWER\n"
-            "The user asked a specific question regarding their activity (e.g. asking about a specific app, file, or time).\n"
-            "Answer ONLY what the user asked directly, concisely, and factually based on the confirmed activity data.\n"
-            "State the specific application, timestamp, or confirmed action without dumping unrelated timeline entries.\n"
-            "Format: Direct, concise factual sentence(s) answering the question."
-        )
-    else:  # overview
-        detail_prompt_section = (
-            "Detail Level: CONCISE OVERVIEW\n"
-            "The user asked a general question about their activity.\n"
-            "Provide a clean, structured, concise overview summarizing the user's primary activities, main applications used, "
-            "and time periods spent. Group continuous activities rather than listing every single timestamp snapshot.\n"
-            "Format:\n"
-            "Concise summary of main tasks accomplished, followed by high-level bullet points for key activities if helpful."
-        )
+    prompt = f"""You are MIRA.
 
-    prompt = f"""You are the User Activity Agent of MIRA.
-Analyze the user's question and the verified screen activity events below.
-Answer the user's question accurately, concisely, and factually.
-
-User: {user_name}
-Question: "{user_query}"
+User Query: "{user_query}"
 Time Range: {time_desc}
-
-{detail_prompt_section}
 
 Verified Screen Activity Events:
 {evidence_text}
 
 Strict Rules:
-1. Answer ONLY what the user asked regarding their activity.
-2. Explain each activity in simple, clear language based ONLY on the verified data.
-3. For applications and browsers: state the specific document, file, website, tool, or query being used whenever confirmed by the data.
-4. Do NOT confuse project names with Git branch names or UI labels. If 'main', 'master', or a similar label appears, do NOT assume or claim it is a project name or Git branch.
-5. Strictly distinguish between applications/tools (e.g. Antigravity IDE, Visual Studio Code, Microsoft Edge, Chrome, Notepad, File Explorer, Terminal) and projects (e.g. Mira, Voice Buildathon, JungaliJumper3D, Azentio.ai Build Labs). Applications are tools used to work on a project. NEVER call an application a project (e.g. NEVER say 'Antigravity IDE Project' or 'Microsoft Edge Project').
-6. Do NOT autocomplete missing context, make assumptions, invent actions, or hallucinate details. If an activity is unclear, state only what is known.
-7. Chronological & Concise: Present events chronologically. Do NOT include unrelated information, additional explanations, suggestions, assumptions, or unnecessary introductions.
-8. Project Stage & Status: When the user asks about the "current stage", "status", or "progress" of projects:
-   - Identify each distinct project confirmed in the evidence.
-   - Synthesize the current stage/status for each project based on the confirmed work (e.g. Active Development & Configuration, Architecture Review & Design, Task Planning / Backlog Setup, Team Formation).
-   - State the latest confirmed work done for each project clearly.
-   - Do NOT output defensive disclaimers like "The specific current stage isn't explicitly detailed". Directly characterize the stage and status based on the confirmed activities.
-9. AVOID greetings, conversational pleasantries, and trailing follow-up questions.
-10. LANGUAGE REQUIREMENT: You MUST respond in English only. Never respond in any other language.
-"""
+1. Respond strictly to the user's query with a short, simple, and precise answer based only on the verified events above.
+2. Do not include extra information, unsolicited suggestions, conversational filler, or unrelated content.
+3. State specific documents, files, websites, or tools only when confirmed by the data.
+4. Distinguish between applications and projects. Never call an application a project, and never treat UI labels like 'main' or 'master' as project names.
+5. Do not invent or assume actions or details. If an activity is unclear, state only what is known.
+6. If asked about project stage or status, state the confirmed status directly from the evidence without disclaimers.
+7. Respond strictly in English.
+
+Answer:"""
     try:
         raw_ans = call_llm(prompt, work="activity_retrieval").strip()
         # Accept only if valid text and not JSON parameters or unavailable error
@@ -338,17 +300,15 @@ def _understand_activity_query(
     using LLM work category 'activity_retrieval' (temp 0.0 in config.json).
     """
     current_time_str = now_in_tz.strftime("%Y-%m-%d %I:%M %p (%A)")
-    prompt = f"""You are the Activity Retrieval Query Analyzer for MIRA.
-CRITICAL LANGUAGE REQUIREMENT: All outputs, fields, and queries must be strictly in English.
-Analyze the user's question to extract search parameters for querying screen activity history.
+    prompt = f"""Extract search parameters from the user's query for screen activity retrieval.
 
 Current Reference Time: {current_time_str} (Timezone: {user_tz})
 User Query: "{query}"
 
-Extract the following JSON fields:
-1. "search_query": Focused keywords for semantic vector search on summarized screen text (e.g. "projects repository code workspace", "WhatsApp chat", "editing code in VS Code", "reading documentation"). If the user is asking broadly about all their activity or general timeline (e.g. "what have I done", "what was I doing"), set to null.
-2. "app_name": Specific desktop app name if explicitly mentioned or strongly implied (e.g. "Microsoft Edge", "Visual Studio Code", "Notepad", "WhatsApp", "Discord", "Figma", "Spotify", "Terminal"). If not specific to an app, set to null.
-3. "time_expression": The specific relative or absolute time phrase mentioned (e.g. "last 5 hours", "past 2 hours", "yesterday", "today", "between 9 AM and 5 PM", "last month", "last week"). If the user is asking broadly about projects, ongoing work, apps, or activities without specifying a date or time, set to null so all history is searched.
+Extract strictly in English:
+1. "search_query": Semantic search keywords for activity text, or null if asking broadly about general activity/timeline.
+2. "app_name": Specific desktop app name if mentioned or implied, else null.
+3. "time_expression": Specific time phrase (e.g. "past 2 hours", "yesterday", "today"), or null if no specific time range.
 
 Return strictly a valid JSON object matching:
 {{
@@ -356,7 +316,7 @@ Return strictly a valid JSON object matching:
   "app_name": "<string or null>",
   "time_expression": "<string or null>"
 }}
-Do not include any other markdown or commentary outside the JSON object.
+Do not include any text outside the JSON object.
 """
     try:
         raw = call_llm(prompt, work="activity_retrieval")
