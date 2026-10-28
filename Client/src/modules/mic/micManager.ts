@@ -600,6 +600,16 @@ export class MicManager {
               );
             }
           }
+
+          // If result was marked final and we have a collected command in buffer, schedule fast submission after 1.4s of silence
+          if (result.isFinal && this.wakeWord.getIsCollecting() && this.processor.hasContent()) {
+            setTimeout(() => {
+              const silence = Date.now() - this.lastSpeechTime;
+              if (silence >= 1200 && this.wakeWord.getIsCollecting() && !this.isFinalizingCommand) {
+                this.handleSilence(silence);
+              }
+            }, 1400);
+          }
         }
       };
 
@@ -676,9 +686,9 @@ export class MicManager {
         audioPlayer.restoreVolume();
       }
 
-      // If collecting command and silence reached 10 seconds, finalize and submit!
+      // If collecting command and silence reached conversational threshold (1.8s), finalize and submit!
       if (this.wakeWord.getIsCollecting() && !this.isFinalizingCommand) {
-        if (silenceDurationMs >= 10000) {
+        if (this.processor.isSilenceTriggered(silenceDurationMs) && this.processor.hasContent()) {
           this.handleSilence(silenceDurationMs);
         }
       }

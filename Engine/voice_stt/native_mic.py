@@ -305,29 +305,25 @@ class NativeMicWorker:
             try:
                 import uuid
                 import requests
-                from chat.broker_client import publish_chat_job
                 job_id = f"job-mic-{int(time.time()*1000)}-{uuid.uuid4().hex[:6]}"
-                logger.info(f"[NativeMic] Routing voice command to Chat Engine (job: {job_id})")
-                # Broadcast into websocket manager so Chat page updates immediately
-                from chat.websocket import ws_manager
-                import asyncio
-                loop = None
-                try:
-                    loop = asyncio.get_event_loop()
-                except Exception:
-                    pass
-                if loop and loop.is_running():
-                    asyncio.run_coroutine_threadsafe(
-                        ws_manager.broadcast({
-                            "type": "voice_command_detected",
-                            "command": command,
-                            "job_id": job_id,
-                        }),
-                        loop
-                    )
+                logger.info(f"[NativeMic] Submitting voice command to Chat Engine (job: {job_id}): \"{command}\"")
+
+                # Submit to MIRA Engine Chat endpoint
+                response = requests.post(
+                    "http://127.0.0.1:9007/chats/message",
+                    json={
+                        "job_id": job_id,
+                        "content": command,
+                        "role": "user",
+                        "generate_ai_reply": True,
+                    },
+                    timeout=12,
+                )
+                logger.info(f"[NativeMic] Voice command successfully posted to chat: status={response.status_code}")
             except Exception as e:
-                logger.debug(f"[NativeMic] Chat engine route log: {e}")
+                logger.error(f"[NativeMic] Error submitting voice command to chat: {e}")
 
         threading.Thread(target=_bg, daemon=True).start()
 
 native_mic = NativeMicWorker.get_instance()
+

@@ -9,7 +9,7 @@
 
 import type { SentenceValidationResult, SentenceProcessorOptions } from "./types";
 
-export const DEFAULT_SILENCE_THRESHOLD_MS = 10000; // 10-second pause
+export const DEFAULT_SILENCE_THRESHOLD_MS = 1800; // 1.8-second natural conversational pause
 
 const STOP_COMMAND_PHRASES = new Set([
   "stop",

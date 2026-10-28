@@ -865,6 +865,14 @@ export const ChatsPage: FC = () => {
             messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
           }
         }, 30);
+      } else {
+        // When a new session is created or switched via voice command, activate it immediately in view
+        selectedSessionIdRef.current = sessionId;
+        setSelectedSessionId(sessionId);
+        setMessages([userMessage]);
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 30);
       }
     };
 
