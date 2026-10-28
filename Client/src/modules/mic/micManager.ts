@@ -272,8 +272,7 @@ export class MicManager {
 
   /**
    * Starts listening to the microphone.
-   * If browser SpeechRecognition is available (Chrome, Edge, Brave), uses real-time streaming recognition.
-   * Otherwise falls back to MediaRecorder + ElevenLabs STT.
+   * Runs both decoupled real-time voice providers and audio capture listener for maximum reliability.
    */
   public async start(): Promise<void> {
     if (this.state === "listening" || this.state === "collecting_command") {
@@ -286,26 +285,29 @@ export class MicManager {
     this.lastSpeechTime = Date.now();
     this.setState("listening");
 
+    // 1. Start decoupled Voice-to-Text service (Browser streaming speech / OS Native STT)
     try {
       await voiceToTextService.start();
-      this.startSilenceMonitoringLoop();
-      console.log("[MicManager] VoiceToTextService started successfully.");
+      console.log("[MicManager] VoiceToTextService active.");
     } catch (err) {
-      console.warn("[MicManager] Primary Voice-to-Text provider failed, starting audio listener fallback:", err);
-      try {
-        await this.listener.start();
-        this.startSilenceMonitoringLoop();
-      } catch (listenerErr) {
-        this.setState("idle");
-        throw listenerErr;
-      }
+      console.warn("[MicManager] VoiceToTextService start notice:", err);
     }
+
+    // 2. Start audio capture listener (feeds audio visualizer and records chunks for neural STT)
+    try {
+      await this.listener.start();
+      console.log("[MicManager] Audio listener active.");
+    } catch (listenerErr) {
+      console.warn("[MicManager] Audio listener start notice:", listenerErr);
+    }
+
+    this.startSilenceMonitoringLoop();
   }
 
   /**
    * Halts microphone listening and releases all resources.
    */
-  public stop = (): void => {
+  public stop(): void {
     try {
       voiceToTextService.stop();
     } catch {}
@@ -313,21 +315,17 @@ export class MicManager {
       this.listener?.stop();
     } catch {}
     try {
-      if (typeof this.stopBrowserRecognition === "function") {
-        this.stopBrowserRecognition();
-      }
+      this.stopBrowserRecognition();
     } catch {}
     try {
-      if (typeof this.stopSilenceMonitoringLoop === "function") {
-        this.stopSilenceMonitoringLoop();
-      }
+      this.stopSilenceMonitoringLoop();
     } catch {}
     this.wakeWord.reset();
     this.processor.clear();
     this.isFinalizingCommand = false;
     audioPlayer.restoreVolume();
     this.setState("disabled");
-  };
+  }
 
   /**
    * Toggles microphone state directly.
@@ -345,6 +343,13 @@ export class MicManager {
    */
   private async handleAudioChunk(chunk: AudioCaptureChunk): Promise<void> {
     const isCollecting = this.wakeWord.getIsCollecting();
+
+    // If real-time streaming browser speech recognition is actively capturing speech,
+    // skip double-transcribing the same audio chunk with Whisper/ElevenLabs to prevent duplicate text.
+    const activeProvider = voiceToTextService.getActiveProvider();
+    if (activeProvider?.id === "browser_speech" && activeProvider.getIsRunning?.()) {
+      return;
+    }
 
     // Transcribe if speech was detected OR we are already collecting a command
     if (!chunk.hasAudioEnergy && !isCollecting && chunk.peakRms < 1.0) {
@@ -464,7 +469,7 @@ export class MicManager {
               duration: 4000,
             }
           );
-          if (wakeCheck.commandPart) {
+          if (wakeCheck.commandPart && result.isFinal) {
             this.processor.addSegment(wakeCheck.commandPart);
           }
           break;
@@ -475,19 +480,26 @@ export class MicManager {
         console.log(`[MicManager] Speech ignored (waiting for "Mira"): "${clean}"`);
       }
     } else {
-      // 3. Collecting command: aggregate speech segment
-      const processed = this.wakeWord.processTranscription(clean);
-      const segmentToAdd = processed.commandPart || clean;
-      if (segmentToAdd) {
-        this.processor.addSegment(segmentToAdd);
-        toast.info(`"${segmentToAdd}"`, {
-          title: "Speech Captured",
-          color: MessageBarColor.Blue,
-          duration: 3500,
-        });
-        console.log(
-          `[MicManager] Collected segment: "${segmentToAdd}". Current command: "${this.processor.getRawText()}"`
-        );
+      // 3. Collecting command: ONLY commit FINAL results to SentenceProcessor!
+      // Interim results represent live in-progress speech, do NOT append them repeatedly.
+      if (result.isFinal) {
+        const processed = this.wakeWord.processTranscription(clean);
+        const segmentToAdd = processed.commandPart || clean;
+        if (segmentToAdd) {
+          this.processor.addSegment(segmentToAdd);
+          toast.info(`"${segmentToAdd}"`, {
+            title: "Speech Captured",
+            color: MessageBarColor.Blue,
+            duration: 3500,
+          });
+          console.log(
+            `[MicManager] Collected final segment: "${segmentToAdd}". Current command: "${this.processor.getRawText()}"`
+          );
+        }
+      } else {
+        // Live interim feedback: user is currently speaking
+        // Reset silence timer, but do not append partial drafts to the sentence processor
+        console.debug(`[MicManager] Live speech interim: "${clean}"`);
       }
     }
 
@@ -614,7 +626,10 @@ export class MicManager {
     }
   }
 
-  public stopBrowserRecognition = (): void => {
+  public stopBrowserRecognition(): void {
+    try {
+      voiceToTextService.getProvider("browser_speech")?.stop();
+    } catch {}
     if (this.browserRecognition) {
       this.isBrowserRecognitionActive = false;
       try {
@@ -625,16 +640,16 @@ export class MicManager {
       } catch { }
       this.browserRecognition = null;
     }
-  };
+  }
 
-  public stopBrowserRecognitionFallback = (): void => {
+  public stopBrowserRecognitionFallback(): void {
     this.stopBrowserRecognition();
-  };
+  }
 
   /**
-   * Continuous monitoring loop for 10-second silence timeout and auto-volume restoration.
+   * Continuous monitoring loop for 1.8-second silence timeout and auto-volume restoration.
    */
-  public startSilenceMonitoringLoop = (): void => {
+  public startSilenceMonitoringLoop(): void {
     if (this.silenceCheckTimer) {
       clearInterval(this.silenceCheckTimer);
     }
@@ -657,14 +672,14 @@ export class MicManager {
         }
       }
     }, 250);
-  };
+  }
 
-  public stopSilenceMonitoringLoop = (): void => {
+  public stopSilenceMonitoringLoop(): void {
     if (this.silenceCheckTimer) {
       clearInterval(this.silenceCheckTimer);
       this.silenceCheckTimer = null;
     }
-  };
+  }
 
   /**
    * Handles silence measurement:

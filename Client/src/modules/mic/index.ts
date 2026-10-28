@@ -9,7 +9,9 @@
 // Core classes and singletons
 export { MicListener, micListener } from "./listener";
 export { ElevenLabsSTT, elevenLabsSTT } from "./speechToText";
-export { voiceToTextService, VoiceToTextService, type IVoiceToTextProvider, type VoiceToTextResult } from "./voiceToTextService";
+// Dedicated Speech-to-Text Providers
+export * from "./providers";
+export { voiceToTextService, VoiceToTextService } from "./voiceToTextService";
 export { WakeWordDetector, wakeWordDetector, DEFAULT_WAKE_WORDS } from "./wakeWordDetector";
 export { SentenceProcessor, sentenceProcessor, DEFAULT_SILENCE_THRESHOLD_MS } from "./sentenceProcessor";
 export { ChatRouter, chatRouter } from "./chatRouter";

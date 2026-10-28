@@ -26,6 +26,13 @@ export {
   generateChunkAudio,
   isKeyRotationError,
 } from "./elevenlabsClient";
+export {
+  keyQuotaManager,
+  ttsKeyManager,
+  KeyQuotaManager,
+  type KeyQuotaInfo,
+  type SubscriptionCheckResult,
+} from "./keyQuotaManager";
 export { audioPlayer, AudioPlayer } from "./audioPlayer";
 export { voiceQueueManager } from "./voiceQueueManager";
 export { chatVoiceBridge } from "./chatVoiceBridge";

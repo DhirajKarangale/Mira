@@ -29,9 +29,11 @@ class QdrantVectorStore:
         self._current_path: Optional[Path] = None
         self._known_dimensions: Dict[str, int] = {}
 
-    def get_client(self) -> QdrantClient:
+    def get_client(self, create_if_missing: bool = False, activity_dt: Optional[datetime] = None) -> Optional[QdrantClient]:
         with self._lock:
-            active_path = self.storage.get_active_knowledge_base()
+            active_path = self.storage.get_active_knowledge_base(create_if_missing=create_if_missing, activity_dt=activity_dt)
+            if active_path is None:
+                return None
             if self._client is None or self._current_path != active_path:
                 if self._client is not None:
                     try:
@@ -79,7 +81,26 @@ class QdrantVectorStore:
         if not jobs:
             return (0, []) if return_job_ids else True
         with self._lock:
-            client = self.get_client()
+            activity_dt: Optional[datetime] = None
+            for job in jobs:
+                if isinstance(job, dict):
+                    raw_ts = job.get('timestamp')
+                    if raw_ts is None and isinstance(job.get('job_data'), dict):
+                        raw_ts = job['job_data'].get('timestamp')
+                    if raw_ts is not None:
+                        try:
+                            unix_ts = to_unix_timestamp(raw_ts)
+                            activity_dt = datetime.fromtimestamp(unix_ts)
+                            break
+                        except Exception:
+                            pass
+            if activity_dt is None:
+                activity_dt = datetime.now()
+
+            client = self.get_client(create_if_missing=True, activity_dt=activity_dt)
+            if client is None:
+                log_error('[QdrantVectorStore] Failed to acquire Qdrant client for active Knowledge Base.')
+                return (0, []) if return_job_ids else False
             valid_records: List[Dict[str, Any]] = []
             successful_job_ids: List[str] = []
             vector_dim: Optional[int] = None
@@ -141,9 +162,11 @@ class QdrantVectorStore:
                 self._ensure_collection(client, vector_dim or len(points[0].vector))
                 client.upsert(collection_name=COLLECTION_NAME, points=points)
                 log(f"[QdrantVectorStore] Successfully ingested {len(points)} encrypted points into '{COLLECTION_NAME}'")
-                self.storage.update_end_date_on_ingestion(before_rename_cb=self.close, after_rename_cb=self.reopen)
+                self.storage.update_end_date_on_ingestion(before_rename_cb=self.close, after_rename_cb=self.reopen, activity_dt=activity_dt)
                 try:
-                    kb_protector.encrypt_folder_snapshot(self.storage.get_active_knowledge_base())
+                    active_kb_p = self.storage.get_active_knowledge_base(create_if_missing=False, activity_dt=activity_dt)
+                    if active_kb_p:
+                        kb_protector.encrypt_folder_snapshot(active_kb_p)
                 except Exception:
                     pass
                 if return_job_ids:
@@ -157,7 +180,9 @@ class QdrantVectorStore:
 
     def search(self, query_vector: Optional[List[float]]=None, limit: int=5, app_name: Optional[Union[str, List[str]]]=None, os_name: Optional[str]=None, start_timestamp: Optional[Union[int, float, str]]=None, end_timestamp: Optional[Union[int, float, str]]=None, timestamp_gt: Optional[Union[int, float, str]]=None, timestamp_gte: Optional[Union[int, float, str]]=None, timestamp_lt: Optional[Union[int, float, str]]=None, timestamp_lte: Optional[Union[int, float, str]]=None, text_query: Optional[str]=None, timestamp_between: Optional[Tuple[Any, Any]]=None, **kwargs: Any) -> List[Dict[str, Any]]:
         with self._lock:
-            client = self.get_client()
+            client = self.get_client(create_if_missing=False)
+            if client is None:
+                return []
             existing_collections = [c.name for c in client.get_collections().collections]
             if COLLECTION_NAME not in existing_collections:
                 return []
@@ -234,7 +259,9 @@ class QdrantVectorStore:
 
     def get_point(self, point_id: str) -> Optional[Dict[str, Any]]:
         with self._lock:
-            client = self.get_client()
+            client = self.get_client(create_if_missing=False)
+            if client is None:
+                return None
             try:
                 res = client.retrieve(collection_name=COLLECTION_NAME, ids=[point_id], with_payload=True, with_vectors=True)
                 if not res:
@@ -260,7 +287,9 @@ class QdrantVectorStore:
 
     def update_point_payload(self, point_id: str, payload_updates: Dict[str, Any]) -> bool:
         with self._lock:
-            client = self.get_client()
+            client = self.get_client(create_if_missing=False)
+            if client is None:
+                return False
             clean_updates = dict(payload_updates)
             if 'summarized_text' in clean_updates:
                 raw_text = str(clean_updates['summarized_text'] or '')
@@ -278,7 +307,9 @@ class QdrantVectorStore:
     def count_points(self) -> int:
         with self._lock:
             try:
-                client = self.get_client()
+                client = self.get_client(create_if_missing=False)
+                if client is None:
+                    return 0
                 existing = [c.name for c in client.get_collections().collections]
                 if COLLECTION_NAME not in existing:
                     return 0

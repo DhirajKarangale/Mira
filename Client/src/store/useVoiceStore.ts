@@ -28,12 +28,15 @@ export interface VoiceState {
   isLoading: boolean;
   isInitialized: boolean;
   error: string | null;
+  areAllKeysExpired: boolean;
 
   // Actions
   initialize: () => Promise<void>;
   refresh: () => Promise<void>;
   updateKeyIndex: (newIndex: number) => Promise<void>;
   rotateToNextKey: () => Promise<string | null>;
+  markAllKeysExpired: () => void;
+  resetKeysExpired: () => void;
   setMicrophoneState: (nextState: "on" | "off") => Promise<void>;
   setMicrophoneAutoStart: (enabled: boolean) => Promise<void>;
   setVoiceConfig: (updates: VoiceConfigUpdateRequest) => Promise<void>;
@@ -50,6 +53,15 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
   currentKeyIndex: 0,
   totalKeys: 0,
   activeKey: null,
+  areAllKeysExpired: false,
+
+  markAllKeysExpired: () => {
+    set({ areAllKeysExpired: true });
+  },
+
+  resetKeysExpired: () => {
+    set({ areAllKeysExpired: false });
+  },
 
   isMicOn: false,
   micAutoStart: false,
@@ -233,8 +245,14 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
 
   /**
    * Locally updates the keys array and safely clamps current key index.
+   * If keys changed or new keys are provided, resets the expired state.
    */
   setKeys: (newKeys: string[], targetCurrentIndex?: number) => {
+    const prevKeys = get().keys;
+    const keysChanged =
+      newKeys.length !== prevKeys.length ||
+      newKeys.some((k, i) => k !== prevKeys[i]);
+
     const safeIdx =
       newKeys.length > 0
         ? Math.max(
@@ -253,6 +271,7 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
       totalKeys: newKeys.length,
       currentKeyIndex: safeIdx,
       activeKey: newKeys.length > 0 ? newKeys[safeIdx] || null : null,
+      areAllKeysExpired: keysChanged ? false : get().areAllKeysExpired,
     });
   },
 

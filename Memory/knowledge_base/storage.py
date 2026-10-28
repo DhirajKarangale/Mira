@@ -132,16 +132,50 @@ class KnowledgeBaseStorage:
             kb_dir = self.base_dir
             if not kb_dir.exists():
                 return []
-            results: List[Dict[str, Any]] = []
+            monthly_groups: Dict[Tuple[int, int], List[Dict[str, Any]]] = {}
             for item in kb_dir.iterdir():
                 if item.is_dir():
                     parsed = self.parse_kb_name(item.name)
                     if parsed:
                         parsed['path'] = str(item.resolve())
                         parsed['is_active'] = True
-                        results.append(parsed)
+                        month_key = (parsed['start_datetime'].year, parsed['start_datetime'].month)
+                        monthly_groups.setdefault(month_key, []).append(parsed)
+
+            results: List[Dict[str, Any]] = []
+            for month_key, kbs in monthly_groups.items():
+                if len(kbs) == 1:
+                    results.append(kbs[0])
+                else:
+                    def _kb_score(kb_item: Dict[str, Any]) -> Tuple[int, datetime, datetime]:
+                        p = Path(kb_item['path'])
+                        has_collection = (p / 'collection' / 'knowledge_base' / 'storage.sqlite').exists()
+                        return (1 if has_collection else 0, kb_item['end_datetime'], kb_item['start_datetime'])
+
+                    kbs.sort(key=_kb_score, reverse=True)
+                    best_kb = kbs[0]
+                    results.append(best_kb)
+                    for dup in kbs[1:]:
+                        dup_path = Path(dup['path'])
+                        has_col = (dup_path / 'collection' / 'knowledge_base' / 'storage.sqlite').exists()
+                        if not has_col:
+                            try:
+                                log(f"[KnowledgeBaseStorage] Removing empty duplicate KB '{dup['name']}' for month {month_key[1]:02d}/{month_key[0]}")
+                                kb_protector.unlock_folder(dup_path)
+                                shutil.rmtree(dup_path, ignore_errors=True)
+                            except Exception as e:
+                                log_error(f"[KnowledgeBaseStorage] Failed to remove empty duplicate KB '{dup['name']}': {e}")
+
             results.sort(key=lambda x: (x['end_datetime'], x['start_datetime']), reverse=True)
             return results
+
+    def get_knowledge_base_for_month(self, year: int, month: int) -> Optional[Dict[str, Any]]:
+        all_kbs = self.list_knowledge_bases()
+        matching = [
+            k for k in all_kbs
+            if k['start_datetime'].year == year and k['start_datetime'].month == month
+        ]
+        return matching[0] if matching else None
 
     def get_knowledge_bases_paginated(self, start_date: Optional[str]=None, end_date: Optional[str]=None, search: Optional[str]=None, page: int=1, limit: int=10, get_point_count_cb: Optional[Callable[[Path], int]]=None) -> Dict[str, Any]:
         with self._lock:
@@ -277,26 +311,35 @@ class KnowledgeBaseStorage:
                         log_error(f"[KnowledgeBaseStorage] Failed to delete expired Knowledge Base '{kb_name}': {e}")
             return deleted_names
 
-    def get_active_knowledge_base(self) -> Path:
+    def get_active_knowledge_base(self, create_if_missing: bool = False, activity_dt: Optional[datetime] = None) -> Optional[Path]:
         with self._lock:
-            now = datetime.now()
+            ref_dt = activity_dt or datetime.now()
+            target_year, target_month = ref_dt.year, ref_dt.month
+
+            # 1. Check if cached active path is already valid for target month
             if self._active_kb_path and self._active_kb_path.exists():
                 parsed = self.parse_kb_name(self._active_kb_path.name)
-                if parsed and parsed['is_current_month']:
+                if parsed and parsed['start_datetime'].year == target_year and parsed['start_datetime'].month == target_month:
                     return self._active_kb_path
-            all_kbs = self.list_knowledge_bases()
-            current_month_kbs = [k for k in all_kbs if k['is_current_month']]
-            if current_month_kbs:
-                selected = current_month_kbs[0]
-                self._active_kb_path = Path(selected['path'])
-                self._active_kb_name = selected['name']
-                self._start_date_str = selected['start_date']
-                self._end_date_str = selected['end_date']
+
+            # 2. Check if a knowledge base is already present for target month
+            existing_kb = self.get_knowledge_base_for_month(target_year, target_month)
+            if existing_kb:
+                self._active_kb_path = Path(existing_kb['path'])
+                self._active_kb_name = existing_kb['name']
+                self._start_date_str = existing_kb['start_date']
+                self._end_date_str = existing_kb['end_date']
                 kb_protector.create_or_update_manifest(self._active_kb_path, self._active_kb_name)
                 kb_protector.lock_folder(self._active_kb_path)
-                log(f'[KnowledgeBaseStorage] Reusing Knowledge Base for current month: {self._active_kb_name}')
+                log(f'[KnowledgeBaseStorage] Using existing Knowledge Base for month {target_month:02d}/{target_year}: {self._active_kb_name}')
                 return self._active_kb_path
-            current_date_str = now.strftime('%d_%m_%Y')
+
+            # 3. No knowledge base present for target month
+            if not create_if_missing:
+                return None
+
+            # 4. Activity arrived and no KB for current/target month -> Create new knowledge base for new month
+            current_date_str = ref_dt.strftime('%d_%m_%Y')
             new_kb_name = f'kb-{current_date_str}-{current_date_str}'
             new_kb_path = self.base_dir / new_kb_name
             new_kb_path.mkdir(parents=True, exist_ok=True)
@@ -306,31 +349,43 @@ class KnowledgeBaseStorage:
             self._end_date_str = current_date_str
             kb_protector.create_or_update_manifest(new_kb_path, new_kb_name)
             kb_protector.lock_folder(new_kb_path)
-            log(f'[KnowledgeBaseStorage] Created new Knowledge Base for current month: {new_kb_name}')
+            log(f'[KnowledgeBaseStorage] Created new Knowledge Base for new month {target_month:02d}/{target_year}: {new_kb_name}')
             return self._active_kb_path
 
     def get_active_kb_name(self) -> str:
         with self._lock:
-            if not self._active_kb_name or not self._active_kb_path or (not self._active_kb_path.exists()):
-                self.get_active_knowledge_base()
-            return self._active_kb_name or ''
+            p = self.get_active_knowledge_base(create_if_missing=False)
+            return p.name if p else (self._active_kb_name or '')
 
-    def get_active_kb_path(self) -> Path:
+    def get_active_kb_path(self) -> Optional[Path]:
         with self._lock:
-            return self.get_active_knowledge_base()
+            return self.get_active_knowledge_base(create_if_missing=False)
 
-    def update_end_date_on_ingestion(self, before_rename_cb: Optional[Callable[[], None]]=None, after_rename_cb: Optional[Callable[[Path], None]]=None) -> Path:
+    def update_end_date_on_ingestion(self, before_rename_cb: Optional[Callable[[], None]]=None, after_rename_cb: Optional[Callable[[Path], None]]=None, activity_dt: Optional[datetime]=None) -> Optional[Path]:
         with self._lock:
-            active_path = self.get_active_knowledge_base()
+            ref_dt = activity_dt or datetime.now()
+            active_path = self.get_active_knowledge_base(create_if_missing=True, activity_dt=ref_dt)
+            if not active_path:
+                return None
             parsed = self.parse_kb_name(active_path.name)
             if not parsed:
                 return active_path
+
+            # Ensure we strictly stay within the same month
+            if parsed['start_datetime'].year != ref_dt.year or parsed['start_datetime'].month != ref_dt.month:
+                return active_path
+
             start_date_str = parsed['start_date']
             old_end_date_str = parsed['end_date']
-            today_str = datetime.now().strftime('%d_%m_%Y')
-            if old_end_date_str == today_str:
+            activity_date_str = ref_dt.strftime('%d_%m_%Y')
+            if old_end_date_str == activity_date_str:
                 return active_path
-            new_kb_name = f'kb-{start_date_str}-{today_str}'
+
+            # Only advance if activity date is later
+            if ref_dt.date() < parsed['end_datetime'].date():
+                return active_path
+
+            new_kb_name = f'kb-{start_date_str}-{activity_date_str}'
             new_kb_path = self.base_dir / new_kb_name
             if new_kb_path.exists() and new_kb_path != active_path:
                 kb_protector.unlock_folder(active_path)
@@ -339,7 +394,7 @@ class KnowledgeBaseStorage:
                 self._active_kb_path = new_kb_path
                 self._active_kb_name = new_kb_name
                 self._start_date_str = start_date_str
-                self._end_date_str = today_str
+                self._end_date_str = activity_date_str
                 kb_protector.create_or_update_manifest(new_kb_path, new_kb_name)
                 kb_protector.lock_folder(new_kb_path)
                 kb_protector.encrypt_folder_snapshot(new_kb_path)
@@ -347,6 +402,7 @@ class KnowledgeBaseStorage:
                     after_rename_cb(new_kb_path)
                 log(f'[KnowledgeBaseStorage] Switched active KB to existing target path: {new_kb_name}')
                 return new_kb_path
+
             kb_protector.unlock_folder(active_path)
             if before_rename_cb:
                 try:
@@ -358,7 +414,7 @@ class KnowledgeBaseStorage:
                 self._active_kb_path = new_kb_path
                 self._active_kb_name = new_kb_name
                 self._start_date_str = start_date_str
-                self._end_date_str = today_str
+                self._end_date_str = activity_date_str
                 kb_protector.create_or_update_manifest(new_kb_path, new_kb_name)
                 kb_protector.lock_folder(new_kb_path)
                 kb_protector.encrypt_folder_snapshot(new_kb_path)

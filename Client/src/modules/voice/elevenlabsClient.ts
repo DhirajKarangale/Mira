@@ -1,5 +1,6 @@
 import { useVoiceStore } from "@/store/useVoiceStore";
 import { toast, MessageBarColor } from "@/components";
+import { keyQuotaManager } from "./keyQuotaManager";
 import type { KeyRotationCheckResult, ChunkGenerationOptions } from "./types";
 
 // Verified premade voices available to all ElevenLabs tiers (including Free accounts):
@@ -118,13 +119,24 @@ export async function generateChunkAudio(
   }
 
   const voiceStore = useVoiceStore.getState();
-  const keys = voiceStore.keys.map((k) => k?.trim()).filter(Boolean);
+  const rawKeys = voiceStore.keys.map((k) => k?.trim()).filter(Boolean);
 
-  if (keys.length === 0) {
+  if (rawKeys.length === 0) {
     throw new Error(
       "No ElevenLabs API keys configured. Please add an API key in Configurations > Voice & Mic."
     );
   }
+
+  // Filter out known dead/revoked keys
+  const keys = keyQuotaManager.filterValidKeyList(rawKeys);
+  if (keys.length === 0) {
+    throw new Error(
+      "All configured ElevenLabs keys are known dead or revoked. Please add an active key in Configurations > Voice & Mic."
+    );
+  }
+
+  // Ensure key ring is alive and auto-heal any temporary exhaustion
+  keyQuotaManager.resetExhaustionIfAllExhausted(keys);
 
   const { voiceId: defaultVoice, modelId: defaultModel } = resolveVoiceAndModel(
     voiceStore.voiceModelId
@@ -143,6 +155,15 @@ export async function generateChunkAudio(
   while (currentAttempt < totalKeys) {
     const activeKeyIndex = (initialKeyIndex + currentAttempt) % totalKeys;
     const activeApiKey = keys[activeKeyIndex];
+
+    // Proactive rotation: if key is near 8,800 characters and another key exists, advance proactively
+    if (totalKeys > 1 && keyQuotaManager.isAboutToExhaust(activeApiKey, cleanChunk.length)) {
+      console.warn(
+        `[ElevenLabs] Key #${activeKeyIndex + 1} is near quota limit (8,800 chars). Proactively rotating.`
+      );
+      currentAttempt++;
+      continue;
+    }
 
     try {
       const endpoint = `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(
@@ -176,7 +197,9 @@ export async function generateChunkAudio(
         console.log(
           `[ElevenLabs] Generated audio using voice model ID "${targetVoiceId}" with key #${activeKeyIndex + 1}`
         );
-        // If we rotated away from the previous key index, persist the new active key in background
+        // Record character usage
+        keyQuotaManager.recordUsage(activeApiKey, cleanChunk.length);
+
         if (activeKeyIndex !== voiceStore.currentKeyIndex) {
           useVoiceStore
             .getState()
@@ -206,32 +229,61 @@ export async function generateChunkAudio(
       const rotationCheck = isKeyRotationError(response.status, errorPayload);
 
       if (rotationCheck.shouldRotate) {
-        const nextKeyIndex = (activeKeyIndex + 1) % totalKeys;
-        console.warn(
-          `[ElevenLabs] Key #${activeKeyIndex + 1} unavailable for voice "${targetVoiceId}" (${
-            rotationCheck.reason
-          }). Automatically rotating to next Key #${nextKeyIndex + 1} (${currentAttempt + 1}/${totalKeys}).`
-        );
+        const errorStr = (
+          typeof errorPayload === "string" ? errorPayload : JSON.stringify(errorPayload) || ""
+        ).toLowerCase();
 
-        // Immediately persist pointer to the next active key in Store and Vault so subsequent requests don't start at dead keys
-        useVoiceStore
-          .getState()
-          .updateKeyIndex(nextKeyIndex)
-          .catch((err) => {
-            console.debug("[ElevenLabs] Failed to persist rotated key index:", err);
-          });
+        if (response.status === 402 || errorStr.includes("quota") || errorStr.includes("credit")) {
+          keyQuotaManager.markKeyStatus(activeApiKey, "exhausted");
+        } else if (response.status === 401 || errorStr.includes("invalid_api_key")) {
+          keyQuotaManager.markKeyStatus(activeApiKey, "invalid");
+        }
 
-        toast.info(
-          `ElevenLabs Key #${activeKeyIndex + 1} expired/exhausted. Automatically switched to Key #${nextKeyIndex + 1}.`,
-          {
-            title: "API Key Rotated",
-            color: MessageBarColor.Cyan,
-            duration: 4000,
-          }
-        );
+        if (currentAttempt < totalKeys - 1) {
+          const nextKeyIndex = (activeKeyIndex + 1) % totalKeys;
+          console.warn(
+            `[ElevenLabs] Key #${activeKeyIndex + 1} unavailable (${
+              rotationCheck.reason
+            }). Rotating to next Key #${nextKeyIndex + 1} (${currentAttempt + 1}/${totalKeys}).`
+          );
 
-        currentAttempt++;
-        continue; // Try next key
+          useVoiceStore
+            .getState()
+            .updateKeyIndex(nextKeyIndex)
+            .catch((err) => {
+              console.debug("[ElevenLabs] Failed to persist rotated key index:", err);
+            });
+
+          toast.info(
+            `ElevenLabs Key #${activeKeyIndex + 1} unavailable. Switched to Key #${nextKeyIndex + 1}.`,
+            {
+              title: "API Key Rotated",
+              color: MessageBarColor.Cyan,
+              duration: 3500,
+            }
+          );
+
+          currentAttempt++;
+          continue; // Try next key
+        } else {
+          // Reached full circle!
+          console.warn(
+            `[ElevenLabs] All ${totalKeys} keys cycled through. Auto-resetting statuses to keep ring alive.`
+          );
+          keyQuotaManager.resetAllKeyStatuses(keys);
+
+          toast.warning(
+            `All ${totalKeys} ElevenLabs keys cycled. If you still have credits, verify your voice model settings or add a fresh key.`,
+            {
+              title: "ElevenLabs Notice",
+              color: MessageBarColor.Yellow,
+              duration: 6000,
+            }
+          );
+          throw new Error(
+            `ElevenLabs generation failed after attempting all ${totalKeys} keys. Please check your voice ID or credits.`
+          );
+        }
       }
 
       // Unrelated HTTP error (e.g. malformed text, 400 Bad Request, 500 Internal Error)
@@ -242,6 +294,10 @@ export async function generateChunkAudio(
 
       throw new Error(`ElevenLabs HTTP ${response.status}: ${errMessage}`);
     } catch (err: unknown) {
+      if ((err as Error)?.message?.includes("stopped until new keys are added")) {
+        throw err;
+      }
+
       // If error is already an unrotatable ElevenLabs error, rethrow immediately
       const errorMsg = (err as Error)?.message || "";
       if (errorMsg.startsWith("ElevenLabs HTTP")) {
@@ -266,6 +322,6 @@ export async function generateChunkAudio(
 
   // All keys exhausted
   throw new Error(
-    `All configured ElevenLabs API keys (${totalKeys}) failed due to expired, invalid, or exhausted quotas.`
+    `ElevenLabs audio generation failed after attempting all ${totalKeys} keys. Please check your voice model configuration or credits.`
   );
 }

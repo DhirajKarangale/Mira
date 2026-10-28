@@ -89,7 +89,9 @@ class KnowledgeBaseWorkerManager:
         except Exception as e:
             log_error(f'[KnowledgeBaseWorkerManager] Failed to protect all KB folders on startup: {e}')
         try:
-            await asyncio.to_thread(self.vector_store.get_client)
+            active_p = self.storage.get_active_knowledge_base(create_if_missing=False)
+            if active_p is not None:
+                await asyncio.to_thread(self.vector_store.get_client, False)
         except Exception as e:
             log_error(f'[KnowledgeBaseWorkerManager] Failed to pre-warm Qdrant client: {e}')
         self.refresh_config()
@@ -117,7 +119,8 @@ class KnowledgeBaseWorkerManager:
 
     def get_status(self) -> Dict[str, Any]:
         active_kb = self.storage.get_active_kb_name()
-        active_path = str(self.storage.get_active_kb_path())
+        p = self.storage.get_active_kb_path()
+        active_path = str(p) if p else None
         points_count = self.vector_store.count_points()
         return {'is_running': self.is_running, 'worker_count': self._worker_count, 'active_tasks': len([t for t in self._tasks if not t.done()]), 'poll_time': self._poll_time, 'batch_size': self._batch_size, 'total_jobs_processed': self._total_jobs_processed, 'active_knowledge_base': active_kb, 'active_kb_path': active_path, 'total_points_in_active_kb': points_count}
 

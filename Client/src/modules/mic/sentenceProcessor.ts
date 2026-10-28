@@ -188,29 +188,50 @@ export class SentenceProcessor {
 
   /**
    * Adds a new transcription segment to the aggregated command text.
-   * Handles deduplication and smooth joins across partial segments.
+   * Handles deduplication, prefix replacement, and smooth joins across partial segments.
    */
   public addSegment(segmentText: string): void {
     const trimmed = (segmentText || "").trim();
     if (!trimmed) return;
 
-    // Check if identical to the last segment (e.g. repeated STT chunk)
-    const last = this.segments[this.segments.length - 1];
-    if (last && last.toLowerCase() === trimmed.toLowerCase()) {
-      return;
-    }
+    if (this.segments.length > 0) {
+      const lastIndex = this.segments.length - 1;
+      const last = this.segments[lastIndex];
 
-    // Check for overlap at boundary: e.g. last ends with "tell me", new starts with "tell me about"
-    if (last) {
+      // 1. Identical segment: skip duplicate
+      if (last.toLowerCase() === trimmed.toLowerCase()) {
+        return;
+      }
+
+      // 2. Extension / superstring of last segment:
+      // E.g., last was "can you tell me" and new is "can you tell me who is the CEO of Google"
+      // Replace last with the full new segment instead of appending duplicates!
+      if (trimmed.toLowerCase().startsWith(last.toLowerCase())) {
+        this.segments[lastIndex] = trimmed;
+        return;
+      }
+
+      // 3. Substring of last segment:
+      // E.g., last was "can you tell me who is the CEO of Google" and new is "CEO of Google"
+      if (last.toLowerCase().includes(trimmed.toLowerCase())) {
+        return;
+      }
+
+      // 4. Overlap check across full length
       const lastWords = last.split(/\s+/);
       const newWords = trimmed.split(/\s+/);
       const overlapLen = this.findOverlapWords(lastWords, newWords);
       if (overlapLen > 0) {
-        // Drop the overlapping words from the new segment
         const nonOverlapping = newWords.slice(overlapLen).join(" ");
         if (nonOverlapping.trim()) {
           this.segments.push(nonOverlapping.trim());
         }
+        return;
+      }
+
+      // 5. If new segment is already included anywhere in accumulated raw text, drop it
+      const currentRaw = this.getRawText().toLowerCase();
+      if (currentRaw.includes(trimmed.toLowerCase())) {
         return;
       }
     }
@@ -368,11 +389,14 @@ export class SentenceProcessor {
 
   /**
    * Formats sentence: ensures first letter is capitalized, preserves punctuation,
-   * and appends appropriate terminal punctuation if absent.
+   * collapses repeated phrases, and appends appropriate terminal punctuation if absent.
    */
   private formatSentence(text: string): string {
     let clean = text.trim();
     if (!clean) return "";
+
+    // Deduplicate repeated identical phrases (e.g. "can you tell me can you tell me")
+    clean = this.deduplicateRepeatedPhrases(clean);
 
     // Capitalize first character
     clean = clean.charAt(0).toUpperCase() + clean.slice(1);
@@ -393,10 +417,50 @@ export class SentenceProcessor {
   }
 
   /**
+   * Automatically collapses stuttered or repeated phrases in transcription output.
+   * e.g. "can you tell me can you tell me who is" -> "can you tell me who is"
+   */
+  private deduplicateRepeatedPhrases(text: string): string {
+    const words = text.split(/\s+/).filter(Boolean);
+    if (words.length <= 1) return text;
+
+    const resultWords = [...words];
+    let changed = true;
+    let passes = 0;
+
+    while (changed && passes < 10) {
+      changed = false;
+      passes++;
+      const n = resultWords.length;
+      for (let phraseLen = Math.floor(n / 2); phraseLen >= 1; phraseLen--) {
+        for (let i = 0; i <= n - 2 * phraseLen; i++) {
+          const phrase1 = resultWords
+            .slice(i, i + phraseLen)
+            .map((w) => w.toLowerCase().replace(/[^a-z0-9]/g, ""))
+            .join(" ");
+          const phrase2 = resultWords
+            .slice(i + phraseLen, i + 2 * phraseLen)
+            .map((w) => w.toLowerCase().replace(/[^a-z0-9]/g, ""))
+            .join(" ");
+
+          if (phrase1 && phrase1 === phrase2) {
+            resultWords.splice(i + phraseLen, phraseLen);
+            changed = true;
+            break;
+          }
+        }
+        if (changed) break;
+      }
+    }
+
+    return resultWords.join(" ");
+  }
+
+  /**
    * Finds word overlap between two consecutive word arrays to prevent stuttering.
    */
   private findOverlapWords(prevWords: string[], nextWords: string[]): number {
-    const maxOverlap = Math.min(prevWords.length, nextWords.length, 4);
+    const maxOverlap = Math.min(prevWords.length, nextWords.length);
     for (let len = maxOverlap; len >= 1; len--) {
       const prevSlice = prevWords.slice(-len).map((w) => w.toLowerCase().replace(/[^a-z0-9]/g, ""));
       const nextSlice = nextWords.slice(0, len).map((w) => w.toLowerCase().replace(/[^a-z0-9]/g, ""));

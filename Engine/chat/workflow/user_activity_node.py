@@ -419,6 +419,25 @@ def _find_relevant_knowledge_bases(
     if not discovered:
         return []
 
+    # Strictly one knowledge base per month: group by (year, month) and select canonical
+    by_month: Dict[Tuple[int, int], List[Tuple[datetime, datetime, Path]]] = {}
+    for dt1, dt2, p in discovered:
+        key = (dt1.year, dt1.month)
+        by_month.setdefault(key, []).append((dt1, dt2, p))
+
+    unique_monthly: List[Tuple[datetime, datetime, Path]] = []
+    for (y, m), kbs in by_month.items():
+        if len(kbs) == 1:
+            unique_monthly.append(kbs[0])
+        else:
+            def kb_priority(item):
+                p = item[2]
+                has_col = (p / "collection" / "knowledge_base" / "storage.sqlite").exists()
+                return (1 if has_col else 0, item[1], item[0])
+            best = max(kbs, key=kb_priority)
+            unique_monthly.append(best)
+
+    discovered = unique_monthly
     # Sort newest first
     discovered.sort(key=lambda x: (x[1], x[0]), reverse=True)
 
