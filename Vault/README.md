@@ -1,607 +1,206 @@
-# Vault
+# MIRA Vault Module (Encrypted Configuration, Secrets & Audit Vault)
 
-The **Vault** is the centralized security, secret management, encrypted configuration storage, and audit logging service for MIRA.
-
----
-
-## 1. Purpose
-
-- **Encrypted Configurations**: Stores module configurations in an encrypted SQLite database.
-- **Audit Logging**: Collects and queries encrypted audit logs with automatic retention cleanup.
-- **Application Permissions**: Manages per-application screen capture permissions.
-- **AI Credentials & Priority**: Stores LLM API keys, provider priorities, and worker concurrency limits.
-- **Chat & Daily Suggestions Persistence**: Encrypts and persists chat history and daily suggestions.
-- **Cryptography Services**: Provides centralized XChaCha20-Poly1305 data encryption and decryption.
+> **The zero-trust security and persistence backbone of MIRA: managing authenticated encryption for secrets, housing local SQLite databases, enforcing audit log retention, and securing LLM credentials.**
 
 ---
 
-## 2. API Endpoints
-
-### 2.1 Health Check
-`GET /health`
-
-- **Response (`200 OK`):**
-  ```json
-  { "service": "Vault", "status": "online" }
-  ```
+## Table of Contents
+- [1. Module Overview](#1-module-overview)
+- [2. Module Contents](#2-module-contents)
+- [3. How It Communicates](#3-how-it-communicates)
+- [4. Technology Stack](#4-technology-stack)
+- [5. Architecture Flow Diagram](#5-architecture-flow-diagram)
 
 ---
 
-### 2.2 Create Log
-`POST /logs`
+<a id="1-module-overview"></a><a id="module-overview"></a>
+## 1. Module Overview
 
-- **Request Body (JSON):**
-  ```json
-  { "module_name": "operator", "data": "Capture cycle started" }
-  ```
-- **Response (`201 Created`):**
-  ```json
-  { "message": "Log added successfully" }
-  ```
+### 1.1 Architectural Purpose
+The **Vault** module is the foundational security, configuration authority, and encrypted database microservice of MIRA, running on port **`9001`**. In an autonomous assistant that observes desktop activity and processes natural language, security cannot be an afterthought. The Vault enforces a strict **Zero-Trust Local Storage Model**: all persistent records—including user profiles, AI provider API keys (Gemini, Groq), priority rankings, per-application screen capture permissions, multi-session chat histories, daily executive briefings, and system telemetry logs—are encrypted before being committed to disk.
+
+The Vault derives its master cryptographic keys directly from the host operating system's native hardware-backed credential store (Apple Keychain on macOS, Windows Credential Manager on Windows, and SecretService / GNOME Keyring on Linux). Operating as the first microservice booted during the system lifecycle, it serves startup parameters to all sibling modules (Broker, Operator, Memory, Engine, Client) and broadcasts real-time configuration update notifications across the Message Broker whenever settings change.
 
 ---
 
-### 2.3 Get Logs
-`GET /logs`
+### 1.2 Key Capabilities
+- **Zero-Knowledge Authenticated Encryption**: Implements authenticated symmetric encryption using **PyNaCl** (libsodium SecretBox / XSalsa20-Poly1305), guaranteeing that database files cannot be decrypted without the host machine's hardware keyring.
+- **Hardware-Backed Key Derivation**: Integrates with the host operating system's secure credential vault via the Python `keyring` library, eliminating plaintext passwords and hardcoded secrets.
+- **Single Source of Truth for Configs**: Stores and dynamically serves verified configuration dictionaries for all MIRA microservices (`logs`, `message_broker`, `operator`, `user_details`, `ai_priorities`).
+- **AI Credential & Worker Limits Authority**: Secures third-party API keys, defines active model priority hierarchies (e.g. Gemini $\to$ Groq failover), and manages concurrency worker bounds.
+- **Encrypted Audit Logging & Automated Retention**: Collects cryptographically sealed audit events across all services, providing query filters and automated retention cleanup to purge expired entries.
+- **Chat History & User Profile Database**: Encrypts and persists conversational chat sessions, message turns, unread states, user names, and work preferences.
+- **Application Permission Control**: Manages the master whitelist/blacklist of system applications allowed to undergo desktop screen capture.
 
-- **Query Parameters:**
-  - `module_name` (string, optional, default: `"all"`): Filter by module.
-  - `search` (string, optional): Text search query.
-  - `start_date` / `end_date` (string, optional): Date filter (`YYYY-MM-DD`).
-  - `limit` (integer, optional, default: `50`): Max logs to retrieve.
-  - `page` (integer, optional): Page number.
-  - `envelope` (boolean, optional, default: `false`): Include pagination wrapper.
-- **Response (`200 OK`):**
-  ```json
-  {
-    "items": [{ "id": 1, "module_name": "operator", "timestamp": "...", "data": "..." }],
-    "total": 1,
-    "page": 1,
-    "limit": 50
-  }
-  ```
+> [!TIP]
+> **Unified Installation & Execution**: To install and run the Vault module alongside the full MIRA ecosystem, see the centralized [Scripts & Installation Guide](../scripts/README.md).
 
 ---
 
-### 2.4 Delete Logs
-`DELETE /logs`
-
-- **Query Parameters:**
-  - `module_name` (string, optional): Target module, or omit for all.
-- **Response (`200 OK`):**
-  ```json
-  { "status": "success", "message": "Logs deleted successfully", "deleted_count": 5 }
-  ```
-
----
-
-### 2.5 Retention Cleanup
-`POST /retention/cleanup`
-
-- **Response (`200 OK`):**
-  ```json
-  { "deleted_expired_count": 0, "deleted_invalid_count": 0, "retained_count": 1 }
-  ```
-
----
-
-### 2.6 Get Configuration by Key
-`GET /config/{key}`
-
-- **Path Parameters:**
-  - `key` (string, required): `logs`, `message_broker`, `operator`, `user_details`.
-- **Response (`200 OK`):**
-  ```json
-  { "CAPTURE_INTERVAL_SECS": 10, "AUTO_START": false }
-  ```
-
----
-
-### 2.7 Update Logs Configuration
-`POST /config/logs`
-
-- **Request Body (JSON):**
-  ```json
-  { "retention_period": 30, "show_logs_vault": true }
-  ```
-- **Response (`200 OK`):**
-  ```json
-  { "retention_period": 30, "show_logs_vault": true }
-  ```
-
----
-
-### 2.8 Update Message Broker Configuration
-`POST /config/message_broker`
-
-- **Request Body (JSON):**
-  ```json
-  { "REDIS_HOST": "127.0.0.1", "REDIS_PORT": 6379 }
-  ```
-- **Response (`200 OK`):**
-  ```json
-  { "REDIS_HOST": "127.0.0.1", "REDIS_PORT": 6379 }
-  ```
-
----
-
-### 2.9 Update Operator Configuration
-`POST /config/operator`
-
-- **Request Body (JSON):**
-  ```json
-  { "CAPTURE_INTERVAL_SECS": 10, "AUTO_START": true }
-  ```
-- **Response (`200 OK`):**
-  ```json
-  { "CAPTURE_INTERVAL_SECS": 10, "AUTO_START": true }
-  ```
-
----
-
-### 2.10 Get User Details
-`GET /user`
-
-- **Response (`200 OK`):**
-  ```json
-  { "first_name": "John", "city": "Pune", "country": "India", "exists": true }
-  ```
-
----
-
-### 2.11 Save User Details
-`POST /user`
-
-- **Request Body (JSON):**
-  ```json
-  { "first_name": "John", "city": "Pune", "country": "India" }
-  ```
-- **Response (`200 OK`):**
-  ```json
-  { "first_name": "John", "city": "Pune", "country": "India", "exists": true }
-  ```
-
----
-
-### 2.12 Get Detected OS
-`GET /os`
-
-- **Response (`200 OK`):**
-  ```json
-  "windows"
-  ```
-
----
-
-### 2.13 Register Service URL
-`POST /services`
-
-- **Request Body (JSON):**
-  ```json
-  { "service_name": "operator", "url": "http://127.0.0.1:9003" }
-  ```
-- **Response (`200 OK`):**
-  ```json
-  { "status": "success", "service_name": "operator" }
-  ```
-
----
-
-### 2.14 Get Registered Services
-`GET /services`
-
-- **Response (`200 OK`):**
-  ```json
-  { "operator": "http://127.0.0.1:9003", "engine": "http://127.0.0.1:9007" }
-  ```
-
----
-
-### 2.15 Get Applications & Permissions
-`GET /apps`
-
-- **Response (`200 OK`):**
-  ```json
-  [{ "app_name": "Code", "app_id": "code.exe", "allowed_to_capture": true }]
-  ```
-
----
-
-### 2.16 Refresh Applications
-`POST /apps/refresh`
-
-- **Response (`200 OK`):**
-  ```json
-  { "status": "success", "total_apps": 25 }
-  ```
-
----
-
-### 2.17 Update App Permission
-`POST /apps/permission`
-
-- **Request Body (JSON):**
-  ```json
-  { "app_id": "chrome.exe", "allowed_to_capture": false }
-  ```
-- **Response (`200 OK`):**
-  ```json
-  { "status": "success", "app_id": "chrome.exe", "allowed_to_capture": false }
-  ```
-
----
-
-### 2.18 Get AI Providers
-`GET /ai/providers`
-
-- **Response (`200 OK`):**
-  ```json
-  ["gemini", "groq"]
-  ```
-
----
-
-### 2.19 Get All AI Configs
-`GET /ai/configs`
-
-- **Response (`200 OK`):**
-  ```json
-  [{ "llm_provider": "gemini", "total_keys": 1, "current_key": 0, "keys": ["AIza..."] }]
-  ```
-
----
-
-### 2.20 Get AI Config by Provider
-`GET /ai/configs/{provider}`
-
-- **Path Parameters:**
-  - `provider` (string, required): `gemini`, `groq`.
-- **Response (`200 OK`):**
-  ```json
-  { "llm_provider": "gemini", "total_keys": 1, "current_key": 0, "keys": ["AIza..."] }
-  ```
-
----
-
-### 2.21 Update AI Config
-`POST /ai/configs/{provider}`
-
-- **Path Parameters:**
-  - `provider` (string, required): Provider name.
-- **Request Body (JSON):**
-  ```json
-  { "add_key": "AIzaSy..." }
-  ```
-- **Response (`200 OK`):**
-  ```json
-  { "llm_provider": "gemini", "total_keys": 2, "current_key": 0 }
-  ```
-
----
-
-### 2.22 Delete AI Config
-`DELETE /ai/configs/{provider}`
-
-- **Path Parameters:**
-  - `provider` (string, required): Provider name.
-- **Response (`200 OK`):**
-  ```json
-  { "status": "success", "message": "Config deleted for gemini" }
-  ```
-
----
-
-### 2.23 Get AI Priorities
-`GET /ai/priorities`
-
-- **Response (`200 OK`):**
-  ```json
-  ["gemini", "groq"]
-  ```
-
----
-
-### 2.24 Update AI Priorities
-`PUT /ai/priorities`
-
-- **Request Body (JSON Array):**
-  ```json
-  ["groq", "gemini"]
-  ```
-- **Response (`200 OK`):**
-  ```json
-  ["groq", "gemini"]
-  ```
-
----
-
-### 2.25 Get News Configuration
-`GET /news/config`
-
-- **Response (`200 OK`):**
-  ```json
-  { "id": "gnews", "total_keys": 1, "current_key": 0, "keys": ["key1..."] }
-  ```
-
----
-
-### 2.26 Update News Configuration
-`POST /news/config`
-
-- **Request Body (JSON):**
-  ```json
-  { "add_key": "new_key" }
-  ```
-- **Response (`200 OK`):**
-  ```json
-  { "id": "gnews", "total_keys": 2, "current_key": 0 }
-  ```
-
----
-
-### 2.27 Delete News Configuration
-`DELETE /news/config`
-
-- **Response (`200 OK`):**
-  ```json
-  { "status": "success", "message": "GNews config cleared" }
-  ```
-
----
-
-### 2.28 Get Engine Workers Config
-`GET /engine/workers`
-
-- **Response (`200 OK`):**
-  ```json
-  { "chat_workers": 1, "screenshot_extraction_workers": 1, "screenshot_summarization_workers": 1 }
-  ```
-
----
-
-### 2.29 Update Engine Workers Config
-`PUT /engine/workers`
-
-- **Request Body (JSON):**
-  ```json
-  { "chat_workers": 2 }
-  ```
-- **Response (`200 OK`):**
-  ```json
-  { "chat_workers": 2 }
-  ```
-
----
-
-### 2.30 System Storage Status
-`GET /system/storage`
-
-- **Response (`200 OK`):**
-  ```json
-  { "database_size_bytes": 1048576, "total_logs": 150, "total_chats": 20 }
-  ```
-
----
-
-### 2.31 Encrypt Data
-`POST /crypto/encrypt`
-
-- **Request Body (JSON):**
-  ```json
-  { "plaintext": "secret_data" }
-  ```
-- **Response (`200 OK`):**
-  ```json
-  { "ciphertext": "base64..." }
-  ```
-
----
-
-### 2.32 Decrypt Data
-`POST /crypto/decrypt`
-
-- **Request Body (JSON):**
-  ```json
-  { "ciphertext": "base64..." }
-  ```
-- **Response (`200 OK`):**
-  ```json
-  { "plaintext": "secret_data" }
-  ```
-
----
-
-### 2.33 Batch Encrypt Data
-`POST /crypto/encrypt-batch`
-
-- **Request Body (JSON):**
-  ```json
-  { "plaintexts": ["secret1", "secret2"] }
-  ```
-- **Response (`200 OK`):**
-  ```json
-  { "ciphertexts": ["base64_1...", "base64_2..."] }
-  ```
-
----
-
-### 2.34 Batch Decrypt Data
-`POST /crypto/decrypt-batch`
-
-- **Request Body (JSON):**
-  ```json
-  { "ciphertexts": ["base64_1...", "base64_2..."] }
-  ```
-- **Response (`200 OK`):**
-  ```json
-  { "plaintexts": ["secret1", "secret2"] }
-  ```
-
----
-
-### 2.35 Get Chat Sessions
-`GET /chats/sessions`
-
-- **Query Parameters:**
-  - `limit` (integer, optional, default: `10`): Page size.
-  - `page` (integer, optional): Page number.
-  - `cursor` (string, optional): Pagination cursor.
-- **Response (`200 OK`):**
-  ```json
-  { "sessions": [{ "session_id": "sid_1", "chat_name": "New Chat" }], "total_items": 1 }
-  ```
-
----
-
-### 2.36 Get Chats by Session
-`GET /chats/sessions/{session_id}`
-
-- **Path Parameters:**
-  - `session_id` (string, required): Session ID.
-- **Response (`200 OK`):**
-  ```json
-  { "session_id": "sid_1", "messages": [{ "role": "user", "content": "hello" }] }
-  ```
-
----
-
-### 2.37 Create Chat Message
-`POST /chats`
-
-- **Request Body (JSON):**
-  ```json
-  { "session_id": "sid_1", "role": "user", "content": "hello" }
-  ```
-- **Response (`201 Created`):**
-  ```json
-  { "id": "msg_1", "session_id": "sid_1", "role": "user", "content": "hello" }
-  ```
-
----
-
-### 2.38 Rename Chat Session
-`PATCH /chats/sessions/{session_id}`
-
-- **Path Parameters:**
-  - `session_id` (string, required): Session ID.
-- **Request Body (JSON):**
-  ```json
-  { "chat_name": "Renamed Session" }
-  ```
-- **Response (`200 OK`):**
-  ```json
-  { "status": "success", "session_id": "sid_1", "chat_name": "Renamed Session" }
-  ```
-
----
-
-### 2.39 Delete Chat Session
-`DELETE /chats/sessions/{session_id}`
-
-- **Path Parameters:**
-  - `session_id` (string, required): Session ID.
-- **Response (`200 OK`):**
-  ```json
-  { "status": "success", "message": "Chat session deleted." }
-  ```
-
----
-
-### 2.40 Delete All Chats
-`DELETE /chats/all`
-
-- **Response (`200 OK`):**
-  ```json
-  { "status": "success", "deleted_count": 20 }
-  ```
-
----
-
-### 2.41 Cleanup Duplicate Chats
-`POST /chats/cleanup`
-
-- **Response (`200 OK`):**
-  ```json
-  { "status": "success", "deleted": 0 }
-  ```
-
----
-
-### 2.42 Get Latest Daily Suggestions
-`GET /daily_suggestions/latest`
-
-- **Response (`200 OK`):**
-  ```json
-  { "id": 1, "suggestions": ["Task 1"], "completed": [], "weather": {}, "news": [] }
-  ```
-
----
-
-### 2.43 Get Previous Daily Suggestions
-`GET /daily_suggestions/previous`
-
-- **Query Parameters:**
-  - `skip_today` (boolean, optional, default: `true`): Exclude current day.
-- **Response (`200 OK`):**
-  ```json
-  { "id": 1, "suggestions": ["Task 1"], "completed": [0] }
-  ```
-
----
-
-### 2.44 Get Daily Suggestions History
-`GET /daily_suggestions/history`
-
-- **Query Parameters:**
-  - `days` (integer, optional, default: `14`): Number of historical days.
-- **Response (`200 OK`):**
-  ```json
-  [{ "id": 1, "date_suggestions": "2026-10-27", "suggestions": [] }]
-  ```
-
----
-
-### 2.45 Save Daily Suggestions
-`POST /daily_suggestions`
-
-- **Request Body (JSON):**
-  ```json
-  { "suggestions": ["Task 1", "Task 2"], "weather": {} }
-  ```
-- **Response (`200 OK`):**
-  ```json
-  { "id": 1, "status": "saved" }
-  ```
-
----
-
-### 2.46 Update Suggestion Completion
-`POST /daily_suggestions/completed`
-
-- **Request Body (JSON):**
-  ```json
-  { "index": 0, "completed": true, "record_id": 1 }
-  ```
-- **Response (`200 OK`):**
-  ```json
-  { "status": "success", "completed": [0] }
-  ```
-
----
-
-## 3. Installation & Startup
-
-### Install Dependencies
-```bash
-pip install -r requirements.txt
+<a id="2-module-contents"></a><a id="module-contents"></a>
+## 2. Module Contents
+
+### 2.1 Directory & File Manifest
+```
+Vault/
+├── api.py                    # Comprehensive REST route implementations & Pydantic models
+├── app.py                    # FastAPI application initialization & Uvicorn startup
+├── config.py                 # Service discovery (services.json), directory roots, & defaults
+├── config_storage.py         # Encrypted SQLite storage engine & migration controllers
+├── crypto.py                 # PyNaCl SecretBox wrapper, keyring key retrieval, & hashing
+├── log_manager.py            # Encrypted audit log management & retention pruning engine
+├── requirements.txt          # Python package requirements
+├── schema.sql                # SQLite database schema definitions
+└── system/                   # Encrypted local storage directory (auto-created)
+    ├── vault.db              # Encrypted SQLite database file
+    ├── audit_logs.db         # Encrypted audit logs database
+    └── knowledge_base/       # Root storage path for Qdrant vector partitions
 ```
 
-### Start Server
-Run from the `Vault/` directory:
-```bash
-python app.py
+---
+
+### 2.2 Core Subsystems & Components
+
+#### 1. Cryptographic Engine (`crypto.py`)
+- **Keyring Handshake**: Interacts with the host OS keyring (`keyring.get_password("mira_vault", "master_key")`). If no key exists on initial launch, generates a cryptographically secure 32-byte key via `nacl.utils.random(32)` and seals it into the OS keyring.
+- **PyNaCl SecretBox**: Performs authenticated symmetric encryption (XSalsa20 stream cipher + Poly1305 MAC). Every ciphertext payload includes a unique 24-byte nonce to prevent replay attacks.
+- **Key Hashing & Masking**: Exposes API helpers to mask sensitive API keys (`sk-...` $\to$ `sk-****abcd`) for secure presentation in the Client UI.
+
+#### 2. Configuration & State Database (`config_storage.py`)
+- Manages `system/vault.db` containing configuration tables (`configs`, `users`, `ai_configs`, `ai_priorities`, `apps_permissions`, `chat_sessions`, `chat_messages`, `daily_suggestions`).
+- Every string value, prompt override, and credential is encrypted before execution of SQLite `INSERT`/`UPDATE` operations and decrypted on `SELECT`.
+
+#### 3. Audit Logging & Retention Engine (`log_manager.py`)
+- Manages `system/audit_logs.db`. Accepts log entries from all microservices, attaches ISO timestamps, service identifiers, and severity levels, and encrypts log bodies.
+- Enforces user-configured retention policies (`1 day`, `7 days`, `30 days`, `Never auto delete`) by running automated batch cleanup queries.
+
+---
+
+### 2.3 Cryptographic Model & OS Keyring Integration
 ```
-Or with Uvicorn:
-```bash
-uvicorn app:app --host 127.0.0.1 --port 9001
+┌────────────────────────────────────────────────────────┐
+│             Native OS Hardware Keyring                 │
+│  (macOS Keychain / Windows Credential / Linux Secret)  │
+└──────────────────────────┬─────────────────────────────┘
+                           │ master_key (32 bytes)
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│                   PyNaCl SecretBox                     │
+│               XSalsa20-Poly1305 Cipher                 │
+└──────────────┬───────────────────────────▲─────────────┘
+  Plaintext    │ Encrypt                   │ Decrypt
+  Settings     ▼                           │ Ciphertext
+┌────────────────────────────────────────────────────────┐
+│              Local SQLite Encrypted Storage            │
+│                 (system/vault.db)                      │
+└────────────────────────────────────────────────────────┘
+```
+
+---
+
+<a id="3-how-it-communicates"></a><a id="how-it-communicates"></a>
+## 3. How It Communicates
+
+### 3.1 Incoming Endpoints & Ports
+The Vault service listens on port **`9001`** and serves as the security authority for the entire ecosystem:
+
+| Method | Endpoint | Description & Usage |
+| :--- | :--- | :--- |
+| `GET` | `/health` | Microservice health check (`{"service": "Vault", "status": "online"}`). |
+| `GET` | `/config/{key}` | Retrieves encrypted configuration records by module key (`operator`, `logs`, `message_broker`). |
+| `POST` | `/config/{key}` | Updates and persists configuration for a specific module key. |
+| `GET` | `/user` | Fetches the encrypted user profile (name, title, work style, preferences). |
+| `POST` | `/user` | Updates the encrypted user profile details. |
+| `GET` | `/ai/providers` | Returns list of supported LLM provider keys (`["gemini", "groq"]`). |
+| `GET` | `/ai/configs` | Lists all stored AI provider configurations with safely masked API keys. |
+| `GET` | `/ai/configs/{provider}` | Reads configuration and decrypted credentials for a specific provider. |
+| `POST` | `/ai/configs/{provider}` | Stores or updates credentials and model parameters for a provider. |
+| `DELETE`| `/ai/configs/{provider}` | Removes an AI provider's credentials. |
+| `GET` | `/ai/priorities` | Retrieves the active AI provider failover sequence (e.g. `["gemini", "groq"]`). |
+| `PUT` | `/ai/priorities` | Updates the AI provider priority order. |
+| `GET` | `/news/config` | Reads GNews API credentials and active category filters. |
+| `POST` | `/news/config` | Configures GNews API token and search topics. |
+| `GET` | `/engine/workers` | Serves concurrency limits and polling intervals to Engine and Memory workers. |
+| `PUT` | `/engine/workers` | Updates concurrency and polling timing parameters. |
+| `GET` | `/system/storage` | Returns the resolved absolute file path for local vector database storage. |
+| `GET` | `/apps` | Lists all registered applications with their screen capture permission status. |
+| `POST` | `/apps/refresh` | Ingests an updated registry of discovered applications from the Operator. |
+| `POST` | `/apps/permission` | Sets whitelist or blacklist capture status for an application. |
+| `POST` | `/logs` | Ingests a new diagnostic or operational log entry from any microservice. |
+| `GET` | `/logs` | Queries encrypted audit logs with pagination, service filtering, and level filtering. |
+| `DELETE`| `/logs` | Truncates or deletes audit logs. |
+| `POST` | `/retention/cleanup` | Evaluates audit log retention rules and deletes expired entries. |
+| `POST` | `/crypto/encrypt` | Utility endpoint encrypting plaintext strings using Vault's master key. |
+| `POST` | `/crypto/decrypt` | Utility endpoint decrypting Vault ciphertext payloads. |
+| `GET` | `/chats/sessions` | Lists all conversational chat sessions with message counts and timestamps. |
+| `GET` | `/chats/sessions/{id}` | Fetches message history for a specific chat session. |
+| `POST` | `/chats` | Appends a user or assistant message to an encrypted chat session. |
+| `DELETE`| `/chats/sessions/{id}` | Deletes a chat session and all associated messages. |
+| `GET` | `/daily_suggestions/latest` | Retrieves the most recently generated daily briefing. |
+| `POST` | `/daily_suggestions` | Persists a newly synthesized daily briefing payload. |
+
+---
+
+### 3.2 Outgoing Microservice Communication
+The Vault service communicates outbound with the Message Broker to propagate configuration state:
+
+#### Message Broker Service (Port `9002`)
+| Method | Endpoint | Purpose & Usage |
+| :--- | :--- | :--- |
+| `POST` | `/jobs` | Dispatches configuration synchronization events (`consumer_key: config_sync`) whenever settings, AI keys, or application permissions are updated. |
+
+---
+
+### 3.3 Message Broker & Event Synchronization
+Whenever a user modifies settings in the Client UI, Vault commits the change to SQLite and pushes a notification:
+
+| Stream / Consumer Key | Role | Payload Content | Purpose |
+| :--- | :--- | :--- | :--- |
+| **`config_sync`** | **Producer** | `module`: Config identifier<br>`timestamp`: Epoch milliseconds<br>`action`: `"updated"` | Prompts Operator, Memory, and Engine to reload their cached configuration in memory without restarts. |
+
+---
+
+<a id="4-technology-stack"></a><a id="technology-stack"></a>
+## 4. Technology Stack
+
+| Domain | Technology / Library | Version | Architectural Rationale |
+| :--- | :--- | :--- | :--- |
+| **API Framework** | **FastAPI** | `^0.110.0` | Asynchronous REST routing, dependency injection, and Pydantic request validation. |
+| **ASGI Server** | **Uvicorn** | `^0.28.0` | Production-grade ASGI runtime powering low-latency concurrent HTTP handlers. |
+| **Cryptography** | **PyNaCl (libsodium)** | `^1.5.0` | Authenticated symmetric encryption (XSalsa20 stream cipher + Poly1305 MAC). |
+| **Key Management** | **keyring** | `^24.0.0` | Bridges Python to native OS secure credential stores (Keychain, Credential Manager, SecretService). |
+| **Embedded Database** | **SQLite3** | Standard Lib | Serverless, zero-configuration local relational database engine storing encrypted tables. |
+| **Data Validation** | **Pydantic v2** | `^2.6.0` | Strict schema serialization, input sanitization, and automatic OpenAPI generation. |
+| **HTTP Client** | **Requests** | `^2.31.0` | Outbound HTTP client dispatching config sync notifications to Message Broker. |
+
+---
+
+<a id="5-architecture-flow-diagram"></a><a id="architecture-flow-diagram"></a>
+## 5. Architecture Flow Diagram
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CLIENT as Client UI (9004)
+    participant VLT as Vault Service (9001)
+    participant OS as OS Keyring Store
+    participant DB as SQLite (vault.db)
+    participant MB as Message Broker (9002)
+
+    Note over VLT,OS: Bootstrapping & Key Derivation
+    VLT->>OS: Query master key ("mira_vault", "master_key")
+    alt Key Missing
+        VLT->>VLT: Generate 32-byte random key via PyNaCl
+        VLT->>OS: Store generated key in hardware keyring
+    end
+    OS-->>VLT: Returns 32-byte master encryption key
+
+    Note over CLIENT,MB: Configuration Update & Sync Propagation
+    CLIENT->>VLT: POST /config/operator (capture_interval_secs: 15)
+    VLT->>VLT: Encrypt payload with PyNaCl SecretBox (XSalsa20-Poly1305)
+    VLT->>DB: UPDATE configs SET encrypted_data = ...
+    DB-->>VLT: Commit confirmed
+    VLT->>MB: POST /jobs (consumer_key: config_sync, module: "operator")
+    MB-->>VLT: Event published (201 Created)
+    VLT-->>CLIENT: Returns 200 OK (Settings Applied)
 ```
