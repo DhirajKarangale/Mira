@@ -1,4 +1,5 @@
 import { useVoiceStore } from "@/store/useVoiceStore";
+import { toast, MessageBarColor } from "@/components";
 import type { KeyRotationCheckResult, ChunkGenerationOptions } from "./types";
 
 // Verified premade voices available to all ElevenLabs tiers (including Free accounts):
@@ -21,11 +22,11 @@ export function isKeyRotationError(
   statusCode: number,
   errorData?: unknown
 ): KeyRotationCheckResult {
-  // 1. Authentication failure
-  if (statusCode === 401) {
+  // 1. Authentication or forbidden failure (invalid, revoked, expired, or forbidden key)
+  if (statusCode === 401 || statusCode === 403) {
     return {
       shouldRotate: true,
-      reason: "Authentication error (HTTP 401): invalid, missing, or expired API key",
+      reason: `Authentication or access error (HTTP ${statusCode}): invalid, missing, expired, or blocked API key`,
     };
   }
 
@@ -36,7 +37,6 @@ export function isKeyRotationError(
       reason: "Usage quota exhausted / payment required (HTTP 402)",
     };
   }
-
 
   // 3. Rate limiting / concurrency or monthly quota exceeded
   if (statusCode === 429) {
@@ -61,8 +61,16 @@ export function isKeyRotationError(
       "limit reached",
       "usage limit",
       "invalid_api_key",
+      "api_key_invalid",
+      "key_revoked",
+      "expired",
+      "unauthorized",
+      "disabled",
+      "account_disabled",
       "detected_unusual_activity",
       "blocked_key",
+      "exceeds your quota",
+      "character limit",
     ];
 
     for (const kw of quotaKeywords) {
@@ -198,11 +206,30 @@ export async function generateChunkAudio(
       const rotationCheck = isKeyRotationError(response.status, errorPayload);
 
       if (rotationCheck.shouldRotate) {
+        const nextKeyIndex = (activeKeyIndex + 1) % totalKeys;
         console.warn(
           `[ElevenLabs] Key #${activeKeyIndex + 1} unavailable for voice "${targetVoiceId}" (${
             rotationCheck.reason
-          }). Attempting rotation to next key (${currentAttempt + 1}/${totalKeys}).`
+          }). Automatically rotating to next Key #${nextKeyIndex + 1} (${currentAttempt + 1}/${totalKeys}).`
         );
+
+        // Immediately persist pointer to the next active key in Store and Vault so subsequent requests don't start at dead keys
+        useVoiceStore
+          .getState()
+          .updateKeyIndex(nextKeyIndex)
+          .catch((err) => {
+            console.debug("[ElevenLabs] Failed to persist rotated key index:", err);
+          });
+
+        toast.info(
+          `ElevenLabs Key #${activeKeyIndex + 1} expired/exhausted. Automatically switched to Key #${nextKeyIndex + 1}.`,
+          {
+            title: "API Key Rotated",
+            color: MessageBarColor.Cyan,
+            duration: 4000,
+          }
+        );
+
         currentAttempt++;
         continue; // Try next key
       }

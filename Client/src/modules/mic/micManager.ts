@@ -237,22 +237,26 @@ export class MicManager {
   /**
    * Halts microphone listening and releases all resources.
    */
-  public stop(): void {
+  public stop = (): void => {
     try {
       this.listener?.stop();
     } catch {}
     try {
-      this.stopBrowserRecognition();
+      if (typeof this.stopBrowserRecognition === "function") {
+        this.stopBrowserRecognition();
+      }
     } catch {}
     try {
-      this.stopSilenceMonitoringLoop();
+      if (typeof this.stopSilenceMonitoringLoop === "function") {
+        this.stopSilenceMonitoringLoop();
+      }
     } catch {}
     this.wakeWord.reset();
     this.processor.clear();
     this.isFinalizingCommand = false;
     audioPlayer.restoreVolume();
     this.setState("disabled");
-  }
+  };
 
   /**
    * Toggles microphone state directly.
@@ -562,7 +566,7 @@ export class MicManager {
     }
   }
 
-  private stopBrowserRecognition(): void {
+  public stopBrowserRecognition = (): void => {
     if (this.browserRecognition) {
       this.isBrowserRecognitionActive = false;
       try {
@@ -573,16 +577,16 @@ export class MicManager {
       } catch {}
       this.browserRecognition = null;
     }
-  }
+  };
 
-  public stopBrowserRecognitionFallback(): void {
+  public stopBrowserRecognitionFallback = (): void => {
     this.stopBrowserRecognition();
-  }
+  };
 
   /**
    * Continuous monitoring loop for 10-second silence timeout and auto-volume restoration.
    */
-  private startSilenceMonitoringLoop(): void {
+  public startSilenceMonitoringLoop = (): void => {
     if (this.silenceCheckTimer) {
       clearInterval(this.silenceCheckTimer);
     }
@@ -605,14 +609,14 @@ export class MicManager {
         }
       }
     }, 250);
-  }
+  };
 
-  private stopSilenceMonitoringLoop(): void {
+  public stopSilenceMonitoringLoop = (): void => {
     if (this.silenceCheckTimer) {
       clearInterval(this.silenceCheckTimer);
       this.silenceCheckTimer = null;
     }
-  }
+  };
 
   /**
    * Handles silence measurement:
@@ -748,6 +752,16 @@ export class MicManager {
     }
     this.stateListeners.clear();
   }
+}
+
+// Ensure prototype safety across hot-module reloads
+if (typeof (MicManager.prototype as any).stopBrowserRecognition !== "function") {
+  (MicManager.prototype as any).stopBrowserRecognition = function () {
+    try {
+      (this as any).browserRecognition?.stop();
+    } catch {}
+    (this as any).browserRecognition = null;
+  };
 }
 
 export const micManager = new MicManager();

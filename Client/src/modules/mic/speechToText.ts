@@ -7,6 +7,7 @@
 
 import { useVoiceStore } from "@/store/useVoiceStore";
 import { isKeyRotationError } from "@/modules/voice/elevenlabsClient";
+import { toast, MessageBarColor } from "@/components";
 import type { TranscriptionResult, MicError } from "./types";
 
 export const DEFAULT_STT_MODEL_ID = "scribe_v1";
@@ -167,11 +168,30 @@ export class ElevenLabsSTT {
           const rotationCheck = isKeyRotationError(response.status, errorPayload);
 
           if (rotationCheck.shouldRotate) {
+            const nextKeyIndex = (activeKeyIndex + 1) % totalKeys;
             console.warn(
               `[ElevenLabs STT] Key #${activeKeyIndex + 1} exhausted/unauthorized (${
                 rotationCheck.reason
-              }). Rotating to next key (${currentAttempt + 1}/${totalKeys}).`
+              }). Automatically rotating to next Key #${nextKeyIndex + 1} (${currentAttempt + 1}/${totalKeys}).`
             );
+
+            // Immediately persist pointer to the next active key in Store and Vault so subsequent requests don't start at dead keys
+            useVoiceStore
+              .getState()
+              .updateKeyIndex(nextKeyIndex)
+              .catch((err) => {
+                console.debug("[ElevenLabs STT] Failed to persist rotated key index:", err);
+              });
+
+            toast.info(
+              `ElevenLabs Key #${activeKeyIndex + 1} expired/exhausted. Automatically switched to Key #${nextKeyIndex + 1}.`,
+              {
+                title: "API Key Rotated",
+                color: MessageBarColor.Cyan,
+                duration: 4000,
+              }
+            );
+
             currentAttempt++;
             continue;
           }
