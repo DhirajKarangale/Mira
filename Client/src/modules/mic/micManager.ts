@@ -19,6 +19,7 @@ import { elevenLabsSTT, ElevenLabsSTT } from "./speechToText";
 import { wakeWordDetector, WakeWordDetector } from "./wakeWordDetector";
 import { sentenceProcessor, SentenceProcessor, isVoiceStopCommand } from "./sentenceProcessor";
 import { chatRouter, ChatRouter } from "./chatRouter";
+import { voiceToTextService, type VoiceToTextResult } from "./voiceToTextService";
 import type {
   MicState,
   MicError,
@@ -70,6 +71,11 @@ export class MicManager {
     this.bindListenerEvents();
     this.initStoreSubscription();
     this.initNativeMicWebSocket();
+
+    // Subscribe to decoupled Voice-to-Text providers
+    voiceToTextService.onText((result: VoiceToTextResult) => {
+      this.handleSpeechInput(result);
+    });
   }
 
   private nativeMicWs: WebSocket | null = null;
@@ -280,28 +286,19 @@ export class MicManager {
     this.lastSpeechTime = Date.now();
     this.setState("listening");
 
-    // Activate native OS microphone on the host machine via MIRA Engine
-    fetch("http://127.0.0.1:9007/voice/stt/mic/start", { method: "POST" }).catch(() => { });
-
-    const hasSpeechRecognition =
-      typeof window !== "undefined" &&
-      Boolean(
-        (window as unknown as { SpeechRecognition?: any }).SpeechRecognition ||
-        (window as unknown as { webkitSpeechRecognition?: any }).webkitSpeechRecognition
-      );
-
-    if (hasSpeechRecognition) {
-      console.log("[MicManager] Starting native streaming SpeechRecognition engine...");
-      this.startBrowserRecognition();
-      this.startSilenceMonitoringLoop();
-      return;
-    }
-
     try {
-      await this.listener.start();
+      await voiceToTextService.start();
+      this.startSilenceMonitoringLoop();
+      console.log("[MicManager] VoiceToTextService started successfully.");
     } catch (err) {
-      this.setState("idle");
-      throw err;
+      console.warn("[MicManager] Primary Voice-to-Text provider failed, starting audio listener fallback:", err);
+      try {
+        await this.listener.start();
+        this.startSilenceMonitoringLoop();
+      } catch (listenerErr) {
+        this.setState("idle");
+        throw listenerErr;
+      }
     }
   }
 
@@ -309,22 +306,22 @@ export class MicManager {
    * Halts microphone listening and releases all resources.
    */
   public stop = (): void => {
-    // Deactivate native OS microphone on the host machine via MIRA Engine
-    fetch("http://127.0.0.1:9007/voice/stt/mic/stop", { method: "POST" }).catch(() => { });
-
+    try {
+      voiceToTextService.stop();
+    } catch {}
     try {
       this.listener?.stop();
-    } catch { }
+    } catch {}
     try {
       if (typeof this.stopBrowserRecognition === "function") {
         this.stopBrowserRecognition();
       }
-    } catch { }
+    } catch {}
     try {
       if (typeof this.stopSilenceMonitoringLoop === "function") {
         this.stopSilenceMonitoringLoop();
       }
-    } catch { }
+    } catch {}
     this.wakeWord.reset();
     this.processor.clear();
     this.isFinalizingCommand = false;
@@ -403,29 +400,34 @@ export class MicManager {
   }
 
   /**
-   * Processes a recognized text segment from either ElevenLabs STT or browser SpeechRecognition.
+   * Universal Speech Input Handler:
+   * Receives transcribed text from whichever Voice-to-Text service is active
+   * (Browser Speech, Local Neural Whisper, ElevenLabs STT, or any future provider).
    */
-  private async processTranscribedText(text: string): Promise<void> {
-    const clean = text.trim();
+  public handleSpeechInput(result: VoiceToTextResult): void {
+    const clean = (result.text || "").trim();
     if (!clean) return;
 
-    console.log(`[MicManager] Transcript received: "${clean}"`);
+    this.lastSpeechTime = Date.now();
 
-    // 1. Voice Playback Interruption:
-    // If voice is currently playing and user speaks an interrupt word ("stop", "quiet", "quite", "mute"),
-    // immediately cancel ongoing playback and do not submit to chat.
+    const candidates = result.alternatives && result.alternatives.length > 0
+      ? result.alternatives
+      : [clean];
+
+    // 1. Voice Playback Interrupt Check (Immediate Stop)
+    // Always check for stop, quiet, quite, mute, shut up
     const isVoicePlaying =
       audioPlayer.isPlaying ||
       voiceQueueManager.getCurrentPlaying() !== null ||
       voiceQueueManager.getSnapshot().totalInQueue > 0;
 
-    if (isVoicePlaying && isVoiceStopCommand(clean)) {
-      console.log(`[MicManager] Voice playback interrupt detected ("${clean}"). Stopping playback.`);
+    const stopMatch = candidates.find((t) => isVoiceStopCommand(t));
+    if (stopMatch) {
+      console.log(`[MicManager] Voice stop command detected ("${stopMatch}"). Stopping playback.`);
       voiceQueueManager.stopAll();
       audioPlayer.stop();
       audioPlayer.restoreVolume();
 
-      // Reset collection state
       this.wakeWord.reset();
       this.processor.clear();
       this.setState("listening");
@@ -438,44 +440,77 @@ export class MicManager {
       return;
     }
 
-    // Feed transcription into Wake Word Detector
-    const wakeWordResult = this.wakeWord.processTranscription(clean);
+    // Duck volume during user speech if voice is currently playing
+    if (isVoicePlaying) {
+      audioPlayer.duckVolume(0.2);
+    }
 
-    if (wakeWordResult.detected) {
-      if (wakeWordResult.isNewActivation) {
-        this.setState("collecting_command");
-        // Play subtle activation chime & notify user via MessageBar
-        this.playActivationChime();
-        toast.info(
-          wakeWordResult.commandPart
-            ? `Wake word detected! Command: "${wakeWordResult.commandPart}"`
-            : "Wake word detected! Listening for your command...",
-          {
-            title: "Mira Activated",
-            color: MessageBarColor.Cyan,
-            duration: 4000,
+    // 2. Wake Word Detection (Mira, Mirror, Meera, Mera, Amira, etc.)
+    if (!this.wakeWord.getIsCollecting()) {
+      let detectedWake = false;
+      for (const candidate of candidates) {
+        const wakeCheck = this.wakeWord.processTranscription(candidate);
+        if (wakeCheck.detected) {
+          detectedWake = true;
+          this.setState("collecting_command");
+          this.playActivationChime();
+          toast.info(
+            wakeCheck.commandPart
+              ? `Wake word detected! Command: "${wakeCheck.commandPart}"`
+              : "Wake word detected! Listening for your command...",
+            {
+              title: "Mira Activated",
+              color: MessageBarColor.Cyan,
+              duration: 4000,
+            }
+          );
+          if (wakeCheck.commandPart) {
+            this.processor.addSegment(wakeCheck.commandPart);
           }
-        );
-      } else {
-        // Additional command segment detected while collecting
-        toast.info(`"${wakeWordResult.commandPart || clean}"`, {
+          break;
+        }
+      }
+
+      if (!detectedWake) {
+        console.log(`[MicManager] Speech ignored (waiting for "Mira"): "${clean}"`);
+      }
+    } else {
+      // 3. Collecting command: aggregate speech segment
+      const processed = this.wakeWord.processTranscription(clean);
+      const segmentToAdd = processed.commandPart || clean;
+      if (segmentToAdd) {
+        this.processor.addSegment(segmentToAdd);
+        toast.info(`"${segmentToAdd}"`, {
           title: "Speech Captured",
           color: MessageBarColor.Blue,
           duration: 3500,
         });
-      }
-
-      // If a command portion was returned, feed into Sentence Processor
-      if (wakeWordResult.commandPart) {
-        this.processor.addSegment(wakeWordResult.commandPart);
         console.log(
-          `[MicManager] Collected command segment: "${wakeWordResult.commandPart}". Current raw command: "${this.processor.getRawText()}"`
+          `[MicManager] Collected segment: "${segmentToAdd}". Current command: "${this.processor.getRawText()}"`
         );
       }
-    } else {
-      // Speech detected prior to wake word - quietly ignored
-      console.log(`[MicManager] Speech ignored (waiting for "Mira"): "${clean}"`);
     }
+
+    // 4. Fast-track finalization if recognizer marks final and we have command content
+    if (result.isFinal && this.wakeWord.getIsCollecting() && this.processor.hasContent()) {
+      setTimeout(() => {
+        const silence = Date.now() - this.lastSpeechTime;
+        if (silence >= 1200 && this.wakeWord.getIsCollecting() && !this.isFinalizingCommand) {
+          this.handleSilence(silence);
+        }
+      }, 1400);
+    }
+  }
+
+  /**
+   * Processes a recognized text segment from STT providers.
+   */
+  private async processTranscribedText(text: string): Promise<void> {
+    this.handleSpeechInput({
+      text,
+      isFinal: true,
+      provider: "transcription",
+    });
   }
 
   /**
@@ -532,84 +567,13 @@ export class MicManager {
           const primary = alternatives[0] || "";
           if (!primary) continue;
 
-          // Check if user spoke a stop command during voice playback
-          const isVoicePlaying =
-            audioPlayer.isPlaying ||
-            voiceQueueManager.getCurrentPlaying() !== null ||
-            voiceQueueManager.getSnapshot().totalInQueue > 0;
-
-          if (isVoicePlaying) {
-            const stopMatch = alternatives.find((t) => isVoiceStopCommand(t));
-            if (stopMatch) {
-              console.log(
-                `[MicManager] Voice playback interrupt detected ("${stopMatch}"). Stopping playback.`
-              );
-              voiceQueueManager.stopAll();
-              audioPlayer.stop();
-              audioPlayer.restoreVolume();
-
-              this.wakeWord.reset();
-              this.processor.clear();
-              this.setState("listening");
-
-              toast.info("Voice playback stopped", {
-                title: "Voice Stopped",
-                color: MessageBarColor.Gray,
-                duration: 3000,
-              });
-              return;
-            }
-          }
-
-          // If NOT collecting yet: check wake word detection across ALL alternatives!
-          if (!this.wakeWord.getIsCollecting()) {
-            for (const alt of alternatives) {
-              const wakeCheck = this.wakeWord.processTranscription(alt);
-              if (wakeCheck.detected) {
-                this.setState("collecting_command");
-                this.playActivationChime();
-                toast.info(
-                  wakeCheck.commandPart
-                    ? `Wake word detected! Command: "${wakeCheck.commandPart}"`
-                    : "Wake word detected! Listening for your command...",
-                  {
-                    title: "Mira Activated",
-                    color: MessageBarColor.Cyan,
-                    duration: 4000,
-                  }
-                );
-                if (wakeCheck.commandPart) {
-                  this.processor.addSegment(wakeCheck.commandPart);
-                }
-                break;
-              }
-            }
-          } else if (result.isFinal) {
-            // Already collecting command: when result is finalized, process and aggregate segment!
-            const processed = this.wakeWord.processTranscription(primary);
-            const segmentToAdd = processed.commandPart || primary;
-            if (segmentToAdd) {
-              this.processor.addSegment(segmentToAdd);
-              toast.info(`"${segmentToAdd}"`, {
-                title: "Speech Captured",
-                color: MessageBarColor.Blue,
-                duration: 3500,
-              });
-              console.log(
-                `[MicManager] Collected segment: "${segmentToAdd}". Current command: "${this.processor.getRawText()}"`
-              );
-            }
-          }
-
-          // If result was marked final and we have a collected command in buffer, schedule fast submission after 1.4s of silence
-          if (result.isFinal && this.wakeWord.getIsCollecting() && this.processor.hasContent()) {
-            setTimeout(() => {
-              const silence = Date.now() - this.lastSpeechTime;
-              if (silence >= 1200 && this.wakeWord.getIsCollecting() && !this.isFinalizingCommand) {
-                this.handleSilence(silence);
-              }
-            }, 1400);
-          }
+          // Forward to universal speech handler
+          this.handleSpeechInput({
+            text: primary,
+            isFinal: Boolean(result.isFinal),
+            provider: "browser",
+            alternatives,
+          });
         }
       };
 
