@@ -10,6 +10,10 @@
 </p>
 
 <p align="center">
+  <strong>Developed & Created by <a href="https://github.com/DhirajKarangale">Dhiraj Karangale</a></strong>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-0078D6?style=flat-square&logo=apple&logoColor=white" alt="Cross Platform" />
   <img src="https://img.shields.io/badge/Desktop%20Framework-Tauri%20v2-FFC131?style=flat-square&logo=tauri&logoColor=black" alt="Tauri v2" />
   <img src="https://img.shields.io/badge/Frontend-React%2019%20%2B%20TypeScript%20%2B%20Tailwind%20v4-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React 19" />
@@ -18,6 +22,7 @@
   <img src="https://img.shields.io/badge/Vectors-Local%20Qdrant-DC382D?style=flat-square&logo=qdrant&logoColor=white" alt="Qdrant Local" />
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License" />
   <a href="SECURITY.md"><img src="https://img.shields.io/badge/Security-Policy-blue?style=flat-square" alt="Security Policy" /></a>
+  <a href="https://github.com/DhirajKarangale"><img src="https://img.shields.io/badge/Author-Dhiraj%20Karangale-8A2BE2?style=flat-square&logo=github&logoColor=white" alt="Author" /></a>
 </p>
 
 <p align="center">
@@ -48,6 +53,7 @@
 - [7. Future Scope & Roadmap](#7-future-scope--roadmap)
 - [8. Master System Architecture & Flow Diagram](#8-master-system-architecture--flow-diagram)
 - [9. License & Contributing](#9-license--contributing)
+- [10. Author & Contact](#10-author--contact)
 
 ---
 
@@ -409,3 +415,18 @@ flowchart TD
 MIRA is open-source software licensed under the **[MIT License](LICENSE)**. 
 
 Contributions, bug reports, and pull requests are welcomed across all modules. Please see our **[Contributing Guidelines](CONTRIBUTING.md)**, **[Code of Conduct](CODE_OF_CONDUCT.md)**, and **[Security Policy](SECURITY.md)** for details on development setup, architectural guidelines, community standards, and responsible security vulnerability reporting.
+
+---
+
+<a id="10-author--contact"></a><a id="10-author-contact"></a>
+## 10. Author & Contact
+
+**MIRA** is developed and created by **Dhiraj Karangale**.
+
+- **Author & Architect:** Dhiraj Karangale
+- **Contact No:** [+91 7620320595](tel:+917620320595)
+- **Email:** [dakarangale02@gmail.com](mailto:dakarangale02@gmail.com)
+- **GitHub:** [@DhirajKarangale](https://github.com/DhirajKarangale)
+- **LinkedIn:** [Dhiraj Karangale](https://www.linkedin.com/in/dhiraj-karangale-464ab91bb/)
+- **Portfolio:** [dhirajkarangale.vercel.app](https://dhirajkarangale.vercel.app/)
+
