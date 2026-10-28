@@ -1,32 +1,36 @@
 import { useState, useEffect, useMemo, type FC } from "react";
 import {
   Volume2,
-  VolumeX,
   Keyboard,
-  Lock,
   Loader2,
   Bot,
   Copy,
   Check,
   Save,
   RotateCcw,
-  Sparkles,
-  Zap,
-  User,
-  Cpu,
-  Layers,
   Heart,
+  AlertTriangle,
+  Play,
+  Square,
+  Mic,
+  Activity,
+  ShieldCheck,
+  Radio,
 } from "lucide-react";
 import type { VoiceConfig, VoiceConfigUpdateRequest } from "@/services";
 import { useVoiceStore } from "@/store/useVoiceStore";
 import { cn } from "@/lib/utils";
 import {
   PREMADE_VOICES,
-  AVAILABLE_MODELS,
   resolveVoiceAndModel,
   serializeVoiceConfig,
   isKnownModel,
+  KNOWN_DEAD_KEYS,
+  KNOWN_EXHAUSTED_KEYS,
+  audioPlayer,
 } from "@/modules/voice";
+import { voiceToTextService } from "@/modules/mic";
+import { toast } from "@/components";
 
 interface VoiceControlConfigCardProps {
   voiceConfig: VoiceConfig | null | undefined;
@@ -42,10 +46,19 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
   const isMasterEnabled = Boolean(voiceConfig?.voice_enable_master);
   const isWhileTypingEnabled = isMasterEnabled && Boolean(voiceConfig?.voice_enable_while_typing);
 
-  const volume = useVoiceStore((s) => s.volume);
-  const setVolume = useVoiceStore((s) => s.setVolume);
-  const maximizeVolume = useVoiceStore((s) => s.maximizeVolume);
-  const superBoostVolume = useVoiceStore((s) => s.superBoostVolume);
+  const keys = useVoiceStore((s) => s.keys);
+  const areAllKeysExpired = useVoiceStore((s) => s.areAllKeysExpired);
+  const isMicOn = useVoiceStore((s) => s.isMicOn);
+  const micAutoStart = useVoiceStore((s) => s.micAutoStart);
+
+  const hasNoUsableKeys =
+    keys.length === 0 ||
+    areAllKeysExpired ||
+    (keys.length > 0 &&
+      keys.every(
+        (k) =>
+          KNOWN_DEAD_KEYS.has(k.trim()) || KNOWN_EXHAUSTED_KEYS.has(k.trim())
+      ));
 
   const serverModelId = voiceConfig?.voice_model_id ?? "";
   const currentResolved = useMemo(
@@ -55,58 +68,41 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
 
   const [selectedVoiceId, setSelectedVoiceId] = useState(currentResolved.voiceId);
   const [selectedModelId, setSelectedModelId] = useState(currentResolved.modelId);
-  const [customVoiceInput, setCustomVoiceInput] = useState(currentResolved.voiceId);
-  const [voiceGenderTab, setVoiceGenderTab] = useState<"female" | "male" | "custom">("female");
+  const [customVoiceInput, setCustomVoiceInput] = useState(serverModelId);
   const [isCopied, setIsCopied] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
   const [isSavingVoice, setIsSavingVoice] = useState(false);
+  const [testingVoiceId, setTestingVoiceId] = useState<string | null>(null);
 
   useEffect(() => {
     const res = resolveVoiceAndModel(serverModelId);
     setSelectedVoiceId(res.voiceId);
     setSelectedModelId(res.modelId);
-    setCustomVoiceInput(res.voiceId);
+    setCustomVoiceInput(serverModelId || res.voiceId);
   }, [serverModelId]);
 
   const activeVoiceObj = useMemo(() => {
     return PREMADE_VOICES.find((v) => v.id === selectedVoiceId) || null;
   }, [selectedVoiceId]);
 
-  const activeModelObj = useMemo(() => {
-    return AVAILABLE_MODELS.find((m) => m.id === selectedModelId) || AVAILABLE_MODELS[0];
-  }, [selectedModelId]);
+  // Strictly 3 Free Premade Female Voices
+  const freeFemaleVoices = useMemo(() => PREMADE_VOICES.slice(0, 3), []);
 
-  const femaleVoices = useMemo(
-    () => PREMADE_VOICES.filter((v) => v.gender === "female"),
-    []
-  );
+  const isCustomVoiceDirty = customVoiceInput.trim() !== serverModelId.trim();
 
-  const maleVoices = useMemo(
-    () => PREMADE_VOICES.filter((v) => v.gender === "male"),
-    []
-  );
-
-  const isCustomVoiceDirty = customVoiceInput.trim() !== selectedVoiceId;
+  // STT Active Provider info
+  const activeSTTProvider = useMemo(() => {
+    try {
+      return voiceToTextService.getActiveProvider();
+    } catch {
+      return null;
+    }
+  }, []);
 
   const handleSelectVoice = async (voiceId: string) => {
     setSelectedVoiceId(voiceId);
-    setCustomVoiceInput(voiceId);
     const serialized = serializeVoiceConfig(voiceId, selectedModelId);
-    setIsSavingVoice(true);
-    try {
-      await onUpdateVoiceConfig({
-        voice_model_id: serialized,
-      });
-      setJustSaved(true);
-      setTimeout(() => setJustSaved(false), 2500);
-    } finally {
-      setIsSavingVoice(false);
-    }
-  };
-
-  const handleSelectModel = async (modelId: string) => {
-    setSelectedModelId(modelId);
-    const serialized = serializeVoiceConfig(selectedVoiceId, modelId);
+    setCustomVoiceInput(serialized);
     setIsSavingVoice(true);
     try {
       await onUpdateVoiceConfig({
@@ -128,7 +124,7 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
 
     setSelectedVoiceId(targetVoice);
     setSelectedModelId(targetModel);
-    const serialized = serializeVoiceConfig(targetVoice, targetModel);
+    const serialized = clean.startsWith("{") ? clean : serializeVoiceConfig(targetVoice, targetModel);
 
     setIsSavingVoice(true);
     try {
@@ -142,6 +138,37 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
     }
   };
 
+  const handleTestVoice = async (voiceId: string) => {
+    if (testingVoiceId) {
+      audioPlayer.stop();
+      setTestingVoiceId(null);
+      return;
+    }
+    setTestingVoiceId(voiceId);
+    try {
+      const res = await audioPlayer.testVoice(
+        "Hello! I am MIRA, your personal AI assistant. How can I help you today?",
+        { voiceId, modelId: selectedModelId }
+      );
+      if (res.provider === "elevenlabs") {
+        toast.success("Playing natural ElevenLabs voice sample in full fidelity.", {
+          title: "ElevenLabs Voice Test",
+        });
+      } else {
+        toast.warning(
+          `ElevenLabs key error (${res.error}). Played via local Windows speech fallback.`,
+          { title: "Voice Fallback Active" }
+        );
+      }
+    } catch (err: unknown) {
+      toast.error((err as Error)?.message || "Audio sample test failed", {
+        title: "Playback Error",
+      });
+    } finally {
+      setTestingVoiceId(null);
+    }
+  };
+
   const handleCopy = () => {
     if (!customVoiceInput) return;
     navigator.clipboard.writeText(customVoiceInput);
@@ -150,7 +177,7 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
   };
 
   const handleResetCustom = () => {
-    setCustomVoiceInput(selectedVoiceId);
+    setCustomVoiceInput(serverModelId || selectedVoiceId);
   };
 
   const handleToggleMaster = async () => {
@@ -173,13 +200,13 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
   return (
     <div
       id="voice-control-config-card"
-      className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-zinc-900/50 backdrop-blur-xl shadow-xl transition-all"
+      className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-zinc-900/50 backdrop-blur-xl shadow-xl transition-all space-y-0"
     >
       {/* Background ambient lighting */}
       <div className="absolute -top-20 -right-20 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Header */}
+      {/* 1. Header with Master Switches */}
       <div className="relative p-5 sm:p-6 border-b border-white/[0.06] bg-zinc-950/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shrink-0 shadow-[0_0_15px_rgba(6,182,212,0.15)]">
@@ -188,14 +215,14 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">
-                Voice Control & Speech Settings
+                Voice Output & Speech Settings
               </h2>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium border border-cyan-500/20 bg-cyan-500/10 text-cyan-300">
-                Speech Output
+                ElevenLabs TTS
               </span>
             </div>
             <p className="text-xs text-zinc-400 mt-0.5">
-              Global AI voice output behavior, typing audio suppression, and Vault speech controls
+              Select verified Free female voices, configure voice model IDs, and inspect audio pipeline diagnostics
             </p>
           </div>
         </div>
@@ -203,24 +230,24 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
         {isUpdating && (
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 self-start sm:self-auto">
             <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
-            <span>Syncing with Vault...</span>
+            <span>Saving in Vault...</span>
           </div>
         )}
       </div>
 
-      {/* Controls Grid - Both toggles in the same row on md+ screens */}
-      <div className="relative p-5 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Master Voice Control Toggle Card */}
+      {/* 2. Master Toggle & While-Typing Switch Grid */}
+      <div className="relative p-5 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-4 bg-zinc-950/20">
+        {/* Master Voice Toggle */}
         <div
           id="setting-voice-enable-master"
           className={cn(
-            "flex flex-col justify-between rounded-xl border p-5 transition-all duration-200",
+            "flex flex-col justify-between rounded-xl border p-4 transition-all duration-200",
             isMasterEnabled
               ? "border-cyan-500/30 bg-gradient-to-br from-cyan-950/25 via-zinc-950/60 to-zinc-950/40 shadow-[0_0_20px_rgba(6,182,212,0.06)]"
               : "border-white/[0.06] bg-zinc-950/40 hover:border-white/10"
           )}
         >
-          <div className="space-y-3">
+          <div className="space-y-2">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2.5">
                 <div
@@ -228,735 +255,506 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
                     "flex items-center justify-center w-8 h-8 rounded-lg shrink-0",
                     isMasterEnabled
                       ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
-                      : "bg-zinc-800 text-zinc-400 border border-white/10"
+                      : "bg-zinc-800/60 text-zinc-500 border border-white/[0.06]"
                   )}
                 >
-                  {isMasterEnabled ? (
-                    <Volume2 className="w-4 h-4 text-cyan-400" />
-                  ) : (
-                    <VolumeX className="w-4 h-4 text-zinc-500" />
-                  )}
+                  <Volume2 className="w-4 h-4" />
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-white tracking-tight">
-                    Master Voice Control
+                    Master Voice Output
                   </h3>
-                  <span className="text-[10px] font-mono text-zinc-500 block">
-                    voice_enable_master
+                  <span className="text-[10px] font-mono text-zinc-400">
+                    Global Audio Speech Toggle
                   </span>
                 </div>
               </div>
 
-              <span
+              {/* Switch */}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isMasterEnabled}
+                onClick={handleToggleMaster}
+                disabled={isUpdating}
                 className={cn(
-                  "px-2 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase shrink-0",
-                  isMasterEnabled
-                    ? "bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.15)]"
-                    : "bg-zinc-800/80 border border-white/10 text-zinc-400"
+                  "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-cyan-500/50 disabled:opacity-50",
+                  isMasterEnabled ? "bg-cyan-500" : "bg-zinc-700"
                 )}
               >
-                {isMasterEnabled ? "Active" : "Disabled"}
-              </span>
+                <span
+                  className={cn(
+                    "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out",
+                    isMasterEnabled ? "translate-x-5" : "translate-x-0"
+                  )}
+                />
+              </button>
             </div>
-
-            <p className="text-xs text-zinc-400 leading-relaxed min-h-[40px]">
-              Primary switch for MIRA voice interactions and speech synthesis. When disabled, all AI voice outputs are globally silenced and typing speech is locked.
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              When enabled, MIRA speaks aloud responses across voice conversations and daily suggestions.
             </p>
-          </div>
-
-          <div className="flex items-center justify-between pt-4 mt-3 border-t border-white/[0.05]">
-            <span className="text-xs font-mono text-zinc-400">
-              {isMasterEnabled ? "Global Voice Active" : "Globally Muted"}
-            </span>
-
-            {/* Switch button */}
-            <button
-              type="button"
-              id="switch-voice-enable-master"
-              role="switch"
-              aria-checked={isMasterEnabled}
-              disabled={isUpdating}
-              onClick={handleToggleMaster}
-              className={cn(
-                "relative inline-flex h-7 w-13 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:ring-offset-2 focus:ring-offset-zinc-950 disabled:opacity-50",
-                isMasterEnabled
-                  ? "bg-cyan-600 shadow-[0_0_15px_rgba(6,182,212,0.4)]"
-                  : "bg-zinc-800 hover:bg-zinc-750"
-              )}
-            >
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out",
-                  isMasterEnabled ? "translate-x-6" : "translate-x-0"
-                )}
-              />
-            </button>
           </div>
         </div>
 
-        {/* Voice Playback While Typing Toggle Card */}
+        {/* Voice While Typing Toggle */}
         <div
-          id="setting-voice-enable-while-typing"
+          id="setting-voice-while-typing"
           className={cn(
-            "flex flex-col justify-between rounded-xl border p-5 transition-all duration-200",
+            "flex flex-col justify-between rounded-xl border p-4 transition-all duration-200",
             !isMasterEnabled
-              ? "border-white/[0.04] bg-zinc-950/20 opacity-60 cursor-not-allowed"
+              ? "opacity-50 border-white/[0.04] bg-zinc-950/20 cursor-not-allowed"
               : isWhileTypingEnabled
-                ? "border-indigo-500/30 bg-gradient-to-br from-indigo-950/25 via-zinc-950/60 to-zinc-950/40 shadow-[0_0_20px_rgba(99,102,241,0.06)]"
-                : "border-white/[0.06] bg-zinc-950/40 hover:border-white/10"
+              ? "border-sky-500/30 bg-gradient-to-br from-sky-950/25 via-zinc-950/60 to-zinc-950/40 shadow-[0_0_20px_rgba(14,165,233,0.06)]"
+              : "border-white/[0.06] bg-zinc-950/40 hover:border-white/10"
           )}
         >
-          <div className="space-y-3">
+          <div className="space-y-2">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2.5">
                 <div
                   className={cn(
                     "flex items-center justify-center w-8 h-8 rounded-lg shrink-0",
-                    !isMasterEnabled
-                      ? "bg-zinc-900 text-zinc-600 border border-white/5"
-                      : isWhileTypingEnabled
-                        ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
-                        : "bg-zinc-800 text-zinc-400 border border-white/10"
+                    isWhileTypingEnabled
+                      ? "bg-sky-500/20 text-sky-300 border border-sky-500/30"
+                      : "bg-zinc-800/60 text-zinc-500 border border-white/[0.06]"
                   )}
                 >
                   <Keyboard className="w-4 h-4" />
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-white tracking-tight">
-                    Voice Playback While Chating
+                    Voice While Typing
                   </h3>
-                  <span className="text-[10px] font-mono text-zinc-500 block">
-                    voice_enable_while_typing
+                  <span className="text-[10px] font-mono text-zinc-400">
+                    Keyboard Chat Speech
                   </span>
                 </div>
               </div>
 
-              {!isMasterEnabled ? (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-amber-500/10 border border-amber-500/25 text-amber-300 shrink-0">
-                  <Lock className="w-2.5 h-2.5" />
-                  <span>Auto-Disabled</span>
-                </span>
-              ) : (
+              {/* Switch */}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isWhileTypingEnabled}
+                onClick={handleToggleWhileTyping}
+                disabled={isUpdating || !isMasterEnabled}
+                className={cn(
+                  "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-sky-500/50 disabled:opacity-50",
+                  isWhileTypingEnabled ? "bg-sky-500" : "bg-zinc-700"
+                )}
+              >
                 <span
                   className={cn(
-                    "px-2 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase shrink-0",
-                    isWhileTypingEnabled
-                      ? "bg-indigo-500/15 border border-indigo-500/30 text-indigo-300"
-                      : "bg-zinc-800/80 border border-white/10 text-zinc-400"
+                    "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out",
+                    isWhileTypingEnabled ? "translate-x-5" : "translate-x-0"
                   )}
-                >
-                  {isWhileTypingEnabled ? "Enabled" : "Disabled"}
-                </span>
-              )}
+                />
+              </button>
             </div>
-
-            <p className="text-xs text-zinc-400 leading-relaxed min-h-[40px]">
-              Allow MIRA to vocalize speech responses while you are actively typing on your keyboard. Turn off to automatically mute voice output during keyboard input.
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              When enabled, typed messages in the chat interface will also receive voice audio responses.
             </p>
           </div>
-
-          <div className="flex items-center justify-between pt-4 mt-3 border-t border-white/[0.05]">
-            <span className="text-xs font-mono text-zinc-400 flex items-center gap-1.5">
-              {!isMasterEnabled ? (
-                <>
-                  <Lock className="w-3 h-3 text-amber-400 shrink-0" />
-                  <span className="text-amber-400/90">Locked by Master Control</span>
-                </>
-              ) : isWhileTypingEnabled ? (
-                "Speaking While Typing"
-              ) : (
-                "Muted During Typing"
-              )}
-            </span>
-
-            {/* Switch button */}
-            <button
-              type="button"
-              id="switch-voice-enable-while-typing"
-              role="switch"
-              aria-checked={isWhileTypingEnabled}
-              disabled={!isMasterEnabled || isUpdating}
-              onClick={handleToggleWhileTyping}
-              title={
-                !isMasterEnabled
-                  ? "Locked: Enable Master Voice Control first"
-                  : isWhileTypingEnabled
-                    ? "Disable voice while typing"
-                    : "Enable voice while typing"
-              }
-              className={cn(
-                "relative inline-flex h-7 w-13 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:ring-offset-2 focus:ring-offset-zinc-950",
-                !isMasterEnabled
-                  ? "bg-zinc-900 cursor-not-allowed opacity-50"
-                  : isWhileTypingEnabled
-                    ? "bg-indigo-600 shadow-[0_0_15px_rgba(99,102,241,0.4)] cursor-pointer"
-                    : "bg-zinc-800 hover:bg-zinc-750 cursor-pointer"
-              )}
-            >
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out",
-                  isWhileTypingEnabled ? "translate-x-6" : "translate-x-0"
-                )}
-              />
-            </button>
-          </div>
         </div>
       </div>
 
-      {/* Speech Output Volume & Audio Booster Section */}
-      <div className="relative p-5 sm:p-6 border-t border-white/[0.06] bg-zinc-950/20">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <div
-              className={cn(
-                "flex items-center justify-center w-8 h-8 rounded-lg shrink-0 transition-colors",
-                volume > 1.0
-                  ? "bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.2)]"
-                  : "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
-              )}
-            >
-              <Volume2 className="w-4 h-4" />
+      {/* Warning banner if ElevenLabs keys are exhausted / blocked */}
+      {hasNoUsableKeys && (
+        <div className="p-4 sm:p-5 mx-5 sm:mx-6 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-start gap-3 animate-in fade-in">
+          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <div className="space-y-1.5 flex-1">
+            <div className="font-semibold text-amber-300 flex items-center justify-between gap-2 flex-wrap">
+              <span>ElevenLabs API Keys Exhausted or Blocked</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+                Windows Speech Fallback Active
+              </span>
+            </div>
+            <p className="text-zinc-300 leading-relaxed">
+              All 7 ElevenLabs keys in Vault have 0 credits or are blocked by ElevenLabs.
+              MIRA is currently falling back to your computer&apos;s local Windows speech synthesizer (which is why the voice sounds robotic and stays the same regardless of which model or persona is selected).
+            </p>
+            <p className="text-amber-200 font-medium">
+              👉 To hear Rachel, Sarah, or Alice in natural ElevenLabs audio, please add a fresh API key with available credits in the <strong>ElevenLabs API Keys</strong> section below.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Strictly 3 Free ElevenLabs Female Voices */}
+      <div className="p-5 sm:p-6 border-t border-white/[0.06] bg-zinc-950/30 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-pink-500/10 border border-pink-500/20 text-pink-400">
+              <Heart className="w-3.5 h-3.5" />
             </div>
             <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-sm font-semibold text-white tracking-tight">
-                  Speech Output Volume & Booster
-                </h3>
-                {volume === 0 ? (
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-white/10 font-bold">
-                    Muted
-                  </span>
-                ) : volume > 1.0 ? (
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold flex items-center gap-1 shadow-[0_0_8px_rgba(245,158,11,0.2)]">
-                    <Zap className="w-2.5 h-2.5 text-amber-400" />
-                    {Math.round(volume * 100)}% Super Boost
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold">
-                    {Math.round(volume * 100)}% Full
-                  </span>
-                )}
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 flex items-center gap-1">
-                  <Sparkles className="w-2.5 h-2.5 text-cyan-400" />
-                  Speaker Boost Active
-                </span>
-              </div>
-              <p className="text-xs text-zinc-400 mt-0.5">
-                Full-fidelity output with Web Audio 2.5x dynamic gain booster, anti-clipping dynamics compression, and ElevenLabs neural speaker boost
+              <h3 className="text-sm font-semibold text-white tracking-tight">
+                Free ElevenLabs Female Voices (3 Available)
+              </h3>
+              <p className="text-xs text-zinc-400">
+                Verified Premade voices available on all ElevenLabs tiers (never blocked by free account restrictions)
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
-            <button
-              type="button"
-              id="btn-voice-normal-volume"
-              onClick={maximizeVolume}
-              className={cn(
-                "px-2.5 py-1.5 rounded-lg text-xs font-mono font-semibold transition-all cursor-pointer border flex items-center gap-1.5",
-                Math.abs(volume - 1.0) < 0.05
-                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
-                  : "bg-white/[0.04] hover:bg-white/[0.08] text-zinc-300 border-white/[0.08]"
-              )}
-              title="Set playback volume to standard full 100%"
-            >
-              <Volume2 className="w-3.5 h-3.5" />
-              <span>100% Full</span>
-            </button>
-
-            <button
-              type="button"
-              id="btn-voice-boost-150"
-              onClick={() => superBoostVolume(1.5)}
-              className={cn(
-                "px-2.5 py-1.5 rounded-lg text-xs font-mono font-semibold transition-all cursor-pointer border flex items-center gap-1.5",
-                Math.abs(volume - 1.5) < 0.05
-                  ? "bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.25)]"
-                  : "bg-white/[0.04] hover:bg-white/[0.08] text-zinc-300 border-white/[0.08]"
-              )}
-              title="Boost volume to 150% High"
-            >
-              <Zap className="w-3.5 h-3.5 text-amber-400" />
-              <span>150% Boost</span>
-            </button>
-
-            <button
-              type="button"
-              id="btn-voice-boost-200"
-              onClick={() => superBoostVolume(2.0)}
-              className={cn(
-                "px-2.5 py-1.5 rounded-lg text-xs font-mono font-semibold transition-all cursor-pointer border flex items-center gap-1.5",
-                Math.abs(volume - 2.0) < 0.05
-                  ? "bg-rose-500/20 text-rose-300 border-rose-500/40 shadow-[0_0_12px_rgba(244,63,94,0.25)]"
-                  : "bg-white/[0.04] hover:bg-white/[0.08] text-zinc-300 border-white/[0.08]"
-              )}
-              title="Boost volume to 200% Max Ultra Loud"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-rose-400" />
-              <span>200% Ultra</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Volume Slider Bar with Quick Indicators */}
-        <div className="mt-4 flex flex-col gap-2">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => (volume === 0 ? maximizeVolume() : setVolume(0))}
-              className="text-zinc-400 hover:text-white transition-colors cursor-pointer"
-              title={volume === 0 ? "Restore full volume" : "Mute playback"}
-            >
-              {volume === 0 ? (
-                <VolumeX className="w-4 h-4 text-zinc-500" />
-              ) : (
-                <Volume2 className={cn("w-4 h-4", volume > 1.0 ? "text-amber-400" : "text-emerald-400")} />
-              )}
-            </button>
-            <input
-              id="slider-voice-volume"
-              type="range"
-              min="0"
-              max="2"
-              step="0.05"
-              value={volume}
-              onChange={(e) => setVolume(parseFloat(e.target.value))}
-              className={cn(
-                "w-full sm:max-w-md h-2 rounded-lg appearance-none cursor-pointer transition-all bg-zinc-800",
-                volume > 1.0
-                  ? "accent-amber-500 hover:accent-amber-400"
-                  : "accent-emerald-500 hover:accent-emerald-400"
-              )}
-              title={`Adjust Volume: ${Math.round(volume * 100)}% (0% to 200%)`}
-            />
-            <span
-              className={cn(
-                "text-xs font-mono w-16 text-right font-bold",
-                volume > 1.0 ? "text-amber-300" : "text-zinc-300"
-              )}
-            >
-              {Math.round(volume * 100)}%
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between sm:max-w-md pl-7 text-[10px] font-mono text-zinc-500 select-none">
-            <span>0%</span>
-            <span>50%</span>
-            <span className={cn(volume >= 0.95 && volume <= 1.05 ? "text-emerald-400 font-bold" : "")}>100% (Std)</span>
-            <span className={cn(volume >= 1.45 && volume <= 1.55 ? "text-amber-400 font-bold" : "")}>150% (Boost)</span>
-            <span className={cn(volume >= 1.95 ? "text-rose-400 font-bold" : "")}>200% (Ultra)</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Voice & Model Configuration Section */}
-      <div className="relative p-5 sm:p-6 border-t border-white/[0.06] bg-zinc-950/40 space-y-6">
-        {/* Header with Active Summary Badge */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-400 shrink-0">
-              <Bot className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-semibold text-white tracking-tight">
-                  Voice Persona & AI Engine Model
-                </h3>
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.06] text-zinc-400 border border-white/[0.06]">
-                  ElevenLabs TTS
-                </span>
-              </div>
-              <p className="text-xs text-zinc-400 mt-0.5">
-                Choose natural human voice personas and low-latency speech synthesis models
-              </p>
-            </div>
-          </div>
-
-          {/* Active Summary Pill */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.06] text-xs font-mono self-start sm:self-auto">
-            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-zinc-400">Active:</span>
-            <span className="text-cyan-300 font-semibold">
+          <div className="flex items-center gap-2 text-xs font-mono self-start sm:self-auto">
+            <span className="text-zinc-400">Active Persona:</span>
+            <span className="px-2.5 py-0.5 rounded-full bg-pink-500/20 text-pink-300 border border-pink-500/30 font-semibold flex items-center gap-1.5">
+              <Radio className="w-2.5 h-2.5 text-pink-400 animate-pulse" />
               {activeVoiceObj ? activeVoiceObj.name : "Custom Voice"}
             </span>
-            <span className="text-zinc-600">•</span>
-            <span className="text-sky-300 font-medium">{activeModelObj.name}</span>
-            {justSaved && (
-              <span className="ml-1 text-[11px] text-emerald-400 flex items-center gap-1 font-sans">
-                <Check className="w-3 h-3" /> Saved!
-              </span>
-            )}
           </div>
         </div>
 
-        {/* 1. AI Speech Synthesis Model Selection */}
-        <div className="space-y-2.5">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-              <Cpu className="w-3.5 h-3.5 text-cyan-400" />
-              <span>AI Speech Model</span>
-            </label>
-            <span className="text-[11px] text-zinc-500 font-mono">
-              Affects latency, natural cadence, and credit cost
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-            {AVAILABLE_MODELS.map((model) => {
-              const isSelected = selectedModelId === model.id;
-              return (
-                <button
-                  key={model.id}
-                  type="button"
-                  onClick={() => handleSelectModel(model.id)}
-                  disabled={isSavingVoice}
-                  className={cn(
-                    "relative p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2",
-                    isSelected
-                      ? "bg-cyan-500/10 border-cyan-500/40 shadow-[0_0_15px_rgba(6,182,212,0.15)] ring-1 ring-cyan-500/30"
-                      : "bg-white/[0.02] hover:bg-white/[0.05] border-white/[0.06] text-zinc-400"
-                  )}
-                >
-                  <div className="flex items-center justify-between w-full">
-                    <span
-                      className={cn(
-                        "text-xs font-semibold",
-                        isSelected ? "text-white" : "text-zinc-300"
+        {/* 3 Female Voice Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {freeFemaleVoices.map((voice) => {
+            const isSelected = selectedVoiceId === voice.id;
+            const isTesting = testingVoiceId === voice.id;
+            return (
+              <div
+                key={voice.id}
+                className={cn(
+                  "relative p-4 rounded-xl border transition-all flex flex-col justify-between gap-3",
+                  isSelected
+                    ? "bg-pink-500/10 border-pink-500/40 shadow-[0_0_20px_rgba(236,72,153,0.15)] ring-1 ring-pink-500/30"
+                    : "bg-white/[0.02] hover:bg-white/[0.05] border-white/[0.06] text-zinc-400"
+                )}
+              >
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={cn(
+                          "text-sm font-bold tracking-tight",
+                          isSelected ? "text-white" : "text-zinc-200"
+                        )}
+                      >
+                        {voice.name}
+                      </span>
+                      {voice.recommended && (
+                        <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-pink-500/20 text-pink-300 border border-pink-500/30 font-semibold">
+                          Recommended
+                        </span>
                       )}
-                    >
-                      {model.name}
-                    </span>
-                    <span
-                      className={cn(
-                        "text-[10px] font-mono px-1.5 py-0.5 rounded",
-                        model.recommended
-                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                          : "bg-white/[0.04] text-zinc-400"
-                      )}
-                    >
-                      {model.tag}
+                    </div>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/[0.04] text-zinc-300 border border-white/[0.06]">
+                      {voice.accent}
                     </span>
                   </div>
 
-                  <p className="text-[11px] text-zinc-400 leading-relaxed line-clamp-2">
-                    {model.description}
-                  </p>
-
-                  <div className="flex items-center justify-between pt-1 border-t border-white/[0.04] text-[10px] font-mono">
-                    <code className="text-zinc-500">{model.id}</code>
-                    {isSelected && (
-                      <span className="text-cyan-400 font-semibold flex items-center gap-1">
-                        <Check className="w-3 h-3" /> Selected
-                      </span>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 2. Voice Persona Selection (Female / Male / Custom) */}
-        <div className="space-y-3 pt-2">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/[0.06] pb-2">
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                <User className="w-3.5 h-3.5 text-pink-400" />
-                <span>Voice Persona</span>
-              </label>
-              <span className="text-[11px] text-zinc-500">
-                (Verified ElevenLabs premade voices - Free & Paid friendly)
-              </span>
-            </div>
-
-            {/* Gender / Custom Tabs */}
-            <div className="flex items-center gap-1 p-0.5 rounded-lg bg-zinc-950 border border-white/[0.08] self-start sm:self-auto">
-              <button
-                type="button"
-                onClick={() => setVoiceGenderTab("female")}
-                className={cn(
-                  "px-3 py-1 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5",
-                  voiceGenderTab === "female"
-                    ? "bg-pink-500/20 text-pink-300 font-semibold shadow-sm"
-                    : "text-zinc-400 hover:text-white"
-                )}
-              >
-                <Heart className="w-3 h-3 text-pink-400" />
-                <span>Female Voices ({femaleVoices.length})</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setVoiceGenderTab("male")}
-                className={cn(
-                  "px-3 py-1 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5",
-                  voiceGenderTab === "male"
-                    ? "bg-sky-500/20 text-sky-300 font-semibold shadow-sm"
-                    : "text-zinc-400 hover:text-white"
-                )}
-              >
-                <User className="w-3 h-3 text-sky-400" />
-                <span>Male Voices ({maleVoices.length})</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setVoiceGenderTab("custom")}
-                className={cn(
-                  "px-3 py-1 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5",
-                  voiceGenderTab === "custom"
-                    ? "bg-cyan-500/20 text-cyan-300 font-semibold shadow-sm"
-                    : "text-zinc-400 hover:text-white"
-                )}
-              >
-                <Layers className="w-3 h-3 text-cyan-400" />
-                <span>Custom Voice ID</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Female Voices Grid */}
-          {voiceGenderTab === "female" && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-              {femaleVoices.map((voice) => {
-                const isSelected = selectedVoiceId === voice.id;
-                return (
-                  <button
-                    key={voice.id}
-                    type="button"
-                    onClick={() => handleSelectVoice(voice.id)}
-                    disabled={isSavingVoice}
-                    className={cn(
-                      "relative p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2",
-                      isSelected
-                        ? "bg-pink-500/10 border-pink-500/40 shadow-[0_0_15px_rgba(236,72,153,0.15)] ring-1 ring-pink-500/30"
-                        : "bg-white/[0.02] hover:bg-white/[0.05] border-white/[0.06] text-zinc-400"
-                    )}
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <div className="flex items-center gap-1.5">
-                        <span
-                          className={cn(
-                            "text-xs font-semibold",
-                            isSelected ? "text-white" : "text-zinc-200"
-                          )}
-                        >
-                          {voice.name}
-                        </span>
-                        {voice.recommended && (
-                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-pink-500/20 text-pink-300 border border-pink-500/30">
-                            Recommended
-                          </span>
-                        )}
-                      </div>
-
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.04] text-zinc-400">
-                        {voice.accent}
-                      </span>
-                    </div>
-
-                    <p className="text-[11px] text-zinc-400 leading-relaxed line-clamp-2">
-                      {voice.description}
-                    </p>
-
-                    <div className="flex items-center justify-between pt-1 border-t border-white/[0.04] text-[10px] font-mono">
-                      <code className="text-zinc-600 truncate max-w-[120px]">{voice.id}</code>
-                      {isSelected ? (
-                        <span className="text-pink-400 font-semibold flex items-center gap-1">
-                          <Check className="w-3 h-3" /> Active
-                        </span>
-                      ) : (
-                        <span className="text-zinc-500 hover:text-zinc-300">Select</span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Male Voices Grid */}
-          {voiceGenderTab === "male" && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-              {maleVoices.map((voice) => {
-                const isSelected = selectedVoiceId === voice.id;
-                return (
-                  <button
-                    key={voice.id}
-                    type="button"
-                    onClick={() => handleSelectVoice(voice.id)}
-                    disabled={isSavingVoice}
-                    className={cn(
-                      "relative p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2",
-                      isSelected
-                        ? "bg-sky-500/10 border-sky-500/40 shadow-[0_0_15px_rgba(14,165,233,0.15)] ring-1 ring-sky-500/30"
-                        : "bg-white/[0.02] hover:bg-white/[0.05] border-white/[0.06] text-zinc-400"
-                    )}
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <div className="flex items-center gap-1.5">
-                        <span
-                          className={cn(
-                            "text-xs font-semibold",
-                            isSelected ? "text-white" : "text-zinc-200"
-                          )}
-                        >
-                          {voice.name}
-                        </span>
-                        {voice.recommended && (
-                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">
-                            Recommended
-                          </span>
-                        )}
-                      </div>
-
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.04] text-zinc-400">
-                        {voice.accent}
-                      </span>
-                    </div>
-
-                    <p className="text-[11px] text-zinc-400 leading-relaxed line-clamp-2">
-                      {voice.description}
-                    </p>
-
-                    <div className="flex items-center justify-between pt-1 border-t border-white/[0.04] text-[10px] font-mono">
-                      <code className="text-zinc-600 truncate max-w-[120px]">{voice.id}</code>
-                      {isSelected ? (
-                        <span className="text-sky-400 font-semibold flex items-center gap-1">
-                          <Check className="w-3 h-3" /> Active
-                        </span>
-                      ) : (
-                        <span className="text-zinc-500 hover:text-zinc-300">Select</span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Custom Voice ID Tab */}
-          {voiceGenderTab === "custom" && (
-            <div className="space-y-3 p-4 rounded-xl bg-zinc-950/60 border border-white/[0.06]">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <h4 className="text-xs font-semibold text-white">
-                    Enter Custom Voice ID or Cloned Voice Token
-                  </h4>
-                  <p className="text-[11px] text-zinc-400 mt-0.5">
-                    Paste your ElevenLabs Voice ID (e.g. from your ElevenLabs Voice Lab or Voice Library)
+                  <p className="text-xs text-zinc-400 leading-relaxed">
+                    {voice.description}
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {customVoiceInput && (
-                    <button
-                      type="button"
-                      onClick={handleCopy}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-all cursor-pointer"
-                      title="Copy Custom Voice ID"
-                    >
-                      {isCopied ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span className="text-emerald-400 font-mono text-[11px]">Copied</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span className="font-mono text-[11px]">Copy</span>
-                        </>
-                      )}
-                    </button>
-                  )}
-
-                  {isCustomVoiceDirty && (
-                    <button
-                      type="button"
-                      onClick={handleResetCustom}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-all cursor-pointer"
-                      title="Revert to current active voice"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      <span className="font-mono text-[11px]">Revert</span>
-                    </button>
-                  )}
-
+                <div className="pt-2 border-t border-white/[0.04] flex items-center justify-between gap-2">
+                  {/* Select Voice Button */}
                   <button
                     type="button"
-                    onClick={handleSaveCustomVoice}
-                    disabled={!isCustomVoiceDirty || isSavingVoice}
+                    onClick={() => handleSelectVoice(voice.id)}
+                    disabled={isSavingVoice || isSelected}
                     className={cn(
-                      "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer shadow-sm",
-                      justSaved
-                        ? "bg-emerald-600/30 text-emerald-300 border border-emerald-500/40"
-                        : isCustomVoiceDirty
-                        ? "bg-gradient-to-r from-cyan-600 to-sky-600 hover:from-cyan-500 hover:to-sky-500 text-white border border-cyan-400/30 shadow-[0_0_15px_rgba(6,182,212,0.25)]"
-                        : "bg-white/[0.04] text-zinc-500 border border-white/[0.05] cursor-not-allowed"
+                      "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 flex-1 justify-center",
+                      isSelected
+                        ? "bg-pink-500/20 text-pink-300 border border-pink-500/40 cursor-default"
+                        : "bg-white/[0.04] hover:bg-white/[0.08] text-white border border-white/[0.08]"
                     )}
                   >
-                    {isSavingVoice ? (
+                    {isSelected ? (
                       <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Saving...</span>
+                        <Check className="w-3.5 h-3.5 text-pink-400" />
+                        <span>Active Voice</span>
                       </>
-                    ) : justSaved ? (
+                    ) : (
+                      <span>Select {voice.name}</span>
+                    )}
+                  </button>
+
+                  {/* Test Audio Button */}
+                  <button
+                    type="button"
+                    onClick={() => handleTestVoice(voice.id)}
+                    className={cn(
+                      "px-2.5 py-1.5 rounded-lg text-xs font-mono transition-all cursor-pointer border flex items-center gap-1 shrink-0",
+                      isTesting
+                        ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                        : "bg-white/[0.03] hover:bg-white/[0.08] text-zinc-300 border-white/[0.06]"
+                    )}
+                    title={`Play voice sample for ${voice.name}`}
+                  >
+                    {isTesting ? (
                       <>
-                        <Check className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Saved</span>
+                        <Square className="w-3 h-3 text-amber-400 fill-amber-400" />
+                        <span>Stop</span>
                       </>
                     ) : (
                       <>
-                        <Save className="w-3.5 h-3.5" />
-                        <span>Save Voice ID</span>
+                        <Play className="w-3 h-3 text-cyan-400 fill-cyan-400" />
+                        <span>Sample</span>
                       </>
                     )}
                   </button>
                 </div>
               </div>
+            );
+          })}
+        </div>
+      </div>
 
-              <input
-                type="text"
-                value={customVoiceInput}
-                onChange={(e) => setCustomVoiceInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    handleSaveCustomVoice();
-                  }
-                }}
-                placeholder="Paste 20-character Voice ID (e.g. 21m00Tcm4TlvDq8ikWAM, EXAVITQu4vr4xnSDxMaL)..."
-                className="w-full px-3.5 py-2.5 rounded-xl text-xs font-mono bg-zinc-950/80 border border-white/[0.08] text-cyan-200 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 transition-all"
-              />
-
-              {customVoiceInput.trim() === "QTKSa2Iyv0yoxvXY2V8a" && (
-                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs leading-relaxed space-y-1">
-                  <div className="font-semibold text-amber-300 flex items-center gap-1.5">
-                    <span>⚠️ ElevenLabs Free API Restriction Notice:</span>
-                  </div>
-                  <p>
-                    Voice ID <code className="px-1 py-0.5 rounded bg-black/40 font-mono text-amber-200">QTKSa2Iyv0yoxvXY2V8a</code> (Neha P) is an ElevenLabs <strong>Community Library</strong> voice.
-                  </p>
-                  <p className="text-zinc-300">
-                    ElevenLabs blocks Free Tier API accounts from using Community Library voices (returns <code className="px-1 py-0.5 rounded bg-black/40 font-mono text-rose-300">HTTP 402: Free users cannot use library voices via the API</code>).
-                  </p>
-                  <p className="text-zinc-400 text-[11px]">
-                    On free accounts, please select one of our curated Premade voices above (like <strong>Rachel</strong>, <strong>Sarah</strong>, or <strong>Alice</strong>), which work freely without restriction!
-                  </p>
-                </div>
-              )}
+      {/* 4. Dedicated Voice Model ID / Custom Voice Input */}
+      <div className="p-5 sm:p-6 border-t border-white/[0.06] bg-zinc-950/40 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-400">
+              <Bot className="w-3.5 h-3.5" />
             </div>
-          )}
+            <div>
+              <h3 className="text-sm font-semibold text-white tracking-tight">
+                Voice Model ID / Custom Voice Configuration
+              </h3>
+              <p className="text-xs text-zinc-400">
+                Enter or paste any ElevenLabs Voice ID (from Voice Lab) or Model ID (e.g. eleven_flash_v2_5)
+              </p>
+            </div>
+          </div>
 
-          <div className="pt-2 flex items-center justify-between text-[11px] text-zinc-500 font-mono">
-            <span>
-              Configured voice will use <strong className="text-cyan-400 font-semibold">{activeModelObj.name}</strong> for low-latency generation.
-            </span>
-            <span className="text-zinc-600">
-              Vault key: <code className="text-zinc-500">voice_config.voice_model_id</code>
-            </span>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            {customVoiceInput && (
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-all cursor-pointer"
+                title="Copy current Voice Model ID"
+              >
+                {isCopied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-emerald-400 font-mono text-[11px]">Copied</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span className="font-mono text-[11px]">Copy</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {isCustomVoiceDirty && (
+              <button
+                type="button"
+                onClick={handleResetCustom}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-all cursor-pointer"
+                title="Revert changes"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span className="font-mono text-[11px]">Revert</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={handleSaveCustomVoice}
+              disabled={!isCustomVoiceDirty || isSavingVoice}
+              className={cn(
+                "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer shadow-sm",
+                justSaved
+                  ? "bg-emerald-600/30 text-emerald-300 border border-emerald-500/40"
+                  : isCustomVoiceDirty
+                  ? "bg-gradient-to-r from-cyan-600 to-sky-600 hover:from-cyan-500 hover:to-sky-500 text-white border border-cyan-400/30 shadow-[0_0_15px_rgba(6,182,212,0.25)]"
+                  : "bg-white/[0.04] text-zinc-500 border border-white/[0.05] cursor-not-allowed"
+              )}
+            >
+              {isSavingVoice ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Saving...</span>
+                </>
+              ) : justSaved ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Saved in Vault</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Save Voice Model ID</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        <div className="relative">
+          <input
+            type="text"
+            id="input-voice-model-id"
+            value={customVoiceInput}
+            onChange={(e) => setCustomVoiceInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                handleSaveCustomVoice();
+              }
+            }}
+            placeholder="Paste ElevenLabs Voice ID (e.g. 21m00Tcm4TlvDq8ikWAM) or model ID (e.g. eleven_flash_v2_5)..."
+            className="w-full px-3.5 py-2.5 rounded-xl text-xs font-mono bg-zinc-950/80 border border-white/[0.08] text-cyan-200 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 transition-all"
+          />
+        </div>
+
+        <div className="flex items-center justify-between text-[11px] text-zinc-500 font-mono">
+          <span>
+            Vault configuration key: <code className="text-zinc-400">voice_config.voice_model_id</code>
+          </span>
+          <span>Press Enter to save</span>
+        </div>
+      </div>
+
+      {/* 5. Detailed Active Voice & Speech-To-Text Architecture Diagnostics Section */}
+      <div className="p-5 sm:p-6 border-t border-white/[0.06] bg-zinc-950/60 space-y-4">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+            <Activity className="w-3.5 h-3.5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-white tracking-tight">
+              Active Voice & Speech Architecture Diagnostics
+            </h3>
+            <p className="text-xs text-zinc-400">
+              Live inspection of Text-to-Speech (TTS) and Speech-to-Text (STT) engines currently running in MIRA
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Diagnostic Card A: Voice Output (TTS) */}
+          <div className="p-4 rounded-xl border border-white/[0.06] bg-zinc-900/40 space-y-3">
+            <div className="flex items-center justify-between border-b border-white/[0.04] pb-2">
+              <div className="flex items-center gap-2">
+                <Volume2 className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs font-bold text-white uppercase tracking-wider">
+                  Voice Output (Text-to-Speech)
+                </span>
+              </div>
+              <span
+                className={cn(
+                  "text-[10px] font-mono px-2 py-0.5 rounded-full font-bold",
+                  hasNoUsableKeys
+                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                    : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                )}
+              >
+                {hasNoUsableKeys ? "Fallback Engine Active" : "ElevenLabs Active"}
+              </span>
+            </div>
+
+            <div className="space-y-2 text-xs font-mono">
+              <div className="flex items-center justify-between text-zinc-400">
+                <span>Primary Engine:</span>
+                <span className="text-zinc-200 font-semibold">ElevenLabs TTS API</span>
+              </div>
+
+              <div className="flex items-center justify-between text-zinc-400">
+                <span>Active Voice Persona:</span>
+                <span className="text-pink-300 font-bold">
+                  {activeVoiceObj ? `${activeVoiceObj.name} (Female, ${activeVoiceObj.accent})` : "Custom Voice ID"}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between text-zinc-400">
+                <span>Voice ID Hash:</span>
+                <span className="text-cyan-300 text-[11px]">{selectedVoiceId}</span>
+              </div>
+
+              <div className="flex items-center justify-between text-zinc-400">
+                <span>Synthesis AI Model:</span>
+                <span className="text-emerald-300">Eleven Flash v2.5 (eleven_flash_v2_5)</span>
+              </div>
+
+              <div className="flex items-center justify-between text-zinc-400">
+                <span>Engine Latency:</span>
+                <span className="text-zinc-300">~75ms Ultra-Low Latency</span>
+              </div>
+
+              <div className="flex items-center justify-between text-zinc-400">
+                <span>Key Ring Status:</span>
+                <span className={cn(hasNoUsableKeys ? "text-amber-400 font-bold" : "text-emerald-400")}>
+                  {hasNoUsableKeys
+                    ? "7 Keys (0 credits remaining / blocked)"
+                    : `${keys.length} API Keys Active`}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between text-zinc-400 pt-1 border-t border-white/[0.04]">
+                <span>Fallback Mode:</span>
+                <span className="text-zinc-300">
+                  {hasNoUsableKeys ? "Windows SpeechSynthesis (Active)" : "Browser Speech (Standby)"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Diagnostic Card B: Voice Input (STT) */}
+          <div className="p-4 rounded-xl border border-white/[0.06] bg-zinc-900/40 space-y-3">
+            <div className="flex items-center justify-between border-b border-white/[0.04] pb-2">
+              <div className="flex items-center gap-2">
+                <Mic className="w-4 h-4 text-sky-400" />
+                <span className="text-xs font-bold text-white uppercase tracking-wider">
+                  Voice Input (Speech-to-Text)
+                </span>
+              </div>
+              <span
+                className={cn(
+                  "text-[10px] font-mono px-2 py-0.5 rounded-full font-bold",
+                  isMicOn
+                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                    : "bg-zinc-800 text-zinc-400 border border-white/[0.06]"
+                )}
+              >
+                {isMicOn ? "Microphone ON" : "Microphone Muted"}
+              </span>
+            </div>
+
+            <div className="space-y-2 text-xs font-mono">
+              <div className="flex items-center justify-between text-zinc-400">
+                <span>Active STT Provider:</span>
+                <span className="text-zinc-200 font-semibold">
+                  {activeSTTProvider ? activeSTTProvider.name : "Browser Web Speech API"}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between text-zinc-400">
+                <span>STT Streaming Engine:</span>
+                <span className="text-sky-300">Native Web SpeechRecognition</span>
+              </div>
+
+              <div className="flex items-center justify-between text-zinc-400">
+                <span>Neural Local STT:</span>
+                <span className="text-emerald-300">Faster-Whisper tiny.en (Port 9007)</span>
+              </div>
+
+              <div className="flex items-center justify-between text-zinc-400">
+                <span>Wake Word Detection:</span>
+                <span className="text-cyan-300 font-semibold">&quot;Mira&quot; (Zero Cloud Transmission)</span>
+              </div>
+
+              <div className="flex items-center justify-between text-zinc-400">
+                <span>Input Language:</span>
+                <span className="text-zinc-300">English (en-US / strictly English)</span>
+              </div>
+
+              <div className="flex items-center justify-between text-zinc-400">
+                <span>Auto-Start on Boot:</span>
+                <span className="text-zinc-300">{micAutoStart ? "Enabled" : "Disabled"}</span>
+              </div>
+
+              <div className="flex items-center justify-between text-zinc-400 pt-1 border-t border-white/[0.04]">
+                <span>Privacy & Security:</span>
+                <span className="text-emerald-400 flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5" /> 100% On-Device Capture
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>

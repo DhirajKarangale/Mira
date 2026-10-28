@@ -54,6 +54,9 @@ class TestMIRAAssistantRouting(unittest.TestCase):
             "What Redis streams are managed by the Message Broker?",
             "How does Vault use ChaCha20 encryption?",
             "Explain MIRA Operator screen capture in Rust",
+            "Gave me a list of all the female voice models you have.",
+            "Who developed you?",
+            "What voice models are available?",
         ]
         for q in queries:
             match = detect_mira_query(q)
@@ -171,6 +174,14 @@ class TestMIRAAssistantRetrieval(unittest.TestCase):
         self.assertIn("kb_hits", ctx)
         self.assertIn("inspected_files", ctx)
 
+    def test_voice_source_file_inspection(self):
+        ctx = retrieve_mira_context("Gave me a list of all the female voice models you have.", kb_limit=1)
+        inspected_paths = [f.get("path") for f in ctx.get("inspected_files", [])]
+        self.assertTrue(
+            any("elevenlabsClient.ts" in p for p in inspected_paths),
+            f"Expected elevenlabsClient.ts in inspected paths: {inspected_paths}"
+        )
+
 
 class TestMIRAAssistantExecution(unittest.TestCase):
     """Test 4: Non-Destructive Project Modification & Verification."""
@@ -220,6 +231,62 @@ class TestMIRAAssistantNodeIntegration(unittest.TestCase):
         self.assertIn("node_outputs", res)
         self.assertEqual(res["node_outputs"]["executed_node"], "mira_assistant")
         self.assertIn("Memory", res["final_response"])
+
+    def test_mira_node_voice_models(self):
+        state = {
+            "job_id": "test_job_voice",
+            "session_id": "test_session_voice",
+            "user_query": "Gave me a list of all the female voice models you have.",
+            "chat_history": [],
+            "user_profile": {"user_name": "Developer"},
+            "tool_parameters": {"intent": "INFORMATIONAL"},
+            "node_outputs": {},
+        }
+        res = mira_assistant_node(state)
+        self.assertIn("final_response", res)
+        ans = res["final_response"].lower()
+        # Ensure it has female voices and does not claim only one voice model
+        self.assertTrue("rachel" in ans or "sarah" in ans, f"Response should mention female voices: {ans}")
+        self.assertTrue("eleven flash" in ans or "flash v2.5" in ans or "elevenlabs" in ans)
+
+    def test_mira_node_what_are_you_no_creator_or_git_id(self):
+        state = {
+            "job_id": "test_job_what",
+            "session_id": "test_session_what",
+            "user_query": "what are you",
+            "chat_history": [],
+            "user_profile": {"user_name": "Developer"},
+            "tool_parameters": {"intent": "INFORMATIONAL"},
+            "node_outputs": {},
+        }
+        res = mira_assistant_node(state)
+        self.assertIn("final_response", res)
+        ans = res["final_response"]
+        ans_lower = ans.lower()
+        # Should explain what MIRA is
+        self.assertTrue("mira" in ans_lower, f"Expected MIRA in response: {ans}")
+        # Should NOT volunteer creator name or git ID
+        self.assertNotIn("@dhirajkarangale", ans_lower, f"Git ID should not be present: {ans}")
+        self.assertNotIn("dhirajkarangale", ans_lower, f"Git ID should not be present: {ans}")
+
+    def test_mira_node_creator_no_git_id(self):
+        state = {
+            "job_id": "test_job_creator",
+            "session_id": "test_session_creator",
+            "user_query": "who developed you",
+            "chat_history": [],
+            "user_profile": {"user_name": "Developer"},
+            "tool_parameters": {"intent": "INFORMATIONAL"},
+            "node_outputs": {},
+        }
+        res = mira_assistant_node(state)
+        self.assertIn("final_response", res)
+        ans = res["final_response"]
+        # Must name Dhiraj Karangale
+        self.assertIn("Dhiraj Karangale", ans)
+        # Must NOT add git id or repetition
+        self.assertNotIn("@DhirajKarangale", ans)
+        self.assertNotIn("DhirajKarangale", ans.replace("Dhiraj Karangale", ""))
 
 
 if __name__ == "__main__":

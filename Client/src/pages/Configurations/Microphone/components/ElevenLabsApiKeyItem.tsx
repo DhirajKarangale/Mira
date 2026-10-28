@@ -13,6 +13,7 @@ import {
   Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getKeyStatus } from "@/modules/voice";
 
 interface ElevenLabsApiKeyItemProps {
   index: number;
@@ -143,6 +144,20 @@ export const ElevenLabsApiKeyItem: FC<ElevenLabsApiKeyItemProps> = ({
                 <Lock className="w-2.5 h-2.5" />
                 <span>Encrypted in Vault</span>
               </span>
+
+              {getKeyStatus(apiKey) === "blocked" && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-rose-500/20 border border-rose-500/30 text-rose-300">
+                  <X className="w-2.5 h-2.5 text-rose-400" />
+                  <span>Blocked by ElevenLabs</span>
+                </span>
+              )}
+
+              {getKeyStatus(apiKey) === "exhausted" && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-amber-500/20 border border-amber-500/30 text-amber-300">
+                  <AlertTriangle className="w-2.5 h-2.5 text-amber-400" />
+                  <span>Quota Exhausted (0 credits)</span>
+                </span>
+              )}
             </div>
 
             {/* Key Value / Edit Input */}

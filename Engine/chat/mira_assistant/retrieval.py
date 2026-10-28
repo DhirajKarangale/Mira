@@ -42,6 +42,8 @@ COLLECTION_NAME = "knowledge_base"
 
 # Reusable client cache and thread safety lock
 _LOCK = threading.RLock()
+_CACHED_QDRANT_CLIENT: Optional[Any] = None
+_CACHED_KB_PATH: Optional[Path] = None
 
 
 def get_mira_knowledge_base_path() -> Optional[Path]:
@@ -72,11 +74,17 @@ def get_mira_knowledge_base_path() -> Optional[Path]:
 
 
 def _get_qdrant_client(kb_path: Path):
-    """Safely initializes QdrantClient with portalocker bypass to prevent concurrency lockouts."""
+    """Safely initializes and caches QdrantClient with portalocker bypass to prevent concurrency lockouts."""
+    global _CACHED_QDRANT_CLIENT, _CACHED_KB_PATH
+    if _CACHED_QDRANT_CLIENT is not None and _CACHED_KB_PATH == kb_path:
+        return _CACHED_QDRANT_CLIENT
+
     from qdrant_client import QdrantClient
     with unittest.mock.patch("portalocker.lock", return_value=None), \
          unittest.mock.patch("portalocker.unlock", return_value=None):
-        return QdrantClient(path=str(kb_path))
+        _CACHED_QDRANT_CLIENT = QdrantClient(path=str(kb_path))
+        _CACHED_KB_PATH = kb_path
+        return _CACHED_QDRANT_CLIENT
 
 
 def _decrypt_payloads_batch(records: List[Any]) -> Dict[str, str]:
@@ -132,34 +140,29 @@ def search_knowledge_base(
                 with unittest.mock.patch("portalocker.lock", return_value=None), \
                      unittest.mock.patch("portalocker.unlock", return_value=None):
                     client = _get_qdrant_client(kb_path)
-                    try:
-                        if hasattr(client, "query_points"):
-                            search_res = client.query_points(
-                                collection_name=COLLECTION_NAME,
-                                query=query_vec,
-                                limit=max(limit * 2, 6),
-                                with_payload=True,
-                            )
-                            vector_hits = search_res.points
-                        else:
-                            vector_hits = client.search(
-                                collection_name=COLLECTION_NAME,
-                                query_vector=query_vec,
-                                limit=max(limit * 2, 6),
-                                with_payload=True,
-                                with_vectors=False,
-                            )
-                    finally:
-                        try:
-                            client.close()
-                        except Exception:
-                            pass
+                    if hasattr(client, "query_points"):
+                        search_res = client.query_points(
+                            collection_name=COLLECTION_NAME,
+                            query=query_vec,
+                            limit=max(limit * 2, 6),
+                            with_payload=True,
+                        )
+                        vector_hits = search_res.points
+                    else:
+                        vector_hits = client.search(
+                            collection_name=COLLECTION_NAME,
+                            query_vector=query_vec,
+                            limit=max(limit * 2, 6),
+                            with_payload=True,
+                            with_vectors=False,
+                        )
         except Exception as e:
             logger.error(f"[MIRARetrieval] Vector search notice: {e}")
 
     # 2. Keyword & Metadata Matching Pass
     keyword_hits: List[Any] = []
-    author_intent = any(w in q_lower for w in ("who developed", "who created", "who made", "author", "creator", "developed you", "created you", "dhiraj"))
+    author_intent = any(w in q_lower for w in ("who developed", "who created", "who made", "author", "creator", "developed you", "created you", "dhiraj", "who built"))
+    identity_intent = any(w in q_lower for w in ("what are you", "who are you", "what is mira", "what does mira do", "about mira", "define mira", "system concept", "core concept"))
     module_intents = {
         "operator": ("operator", "screen capture", "rust", "blacklist"),
         "vault": ("vault", "crypto", "encryption", "keyring", "chacha20", "secrets"),
@@ -167,6 +170,7 @@ def search_knowledge_base(
         "memory": ("memory", "tesseract", "ocr", "deduplication", "perceptual hash"),
         "engine": ("engine", "failover", "stt", "whisper", "groq", "gemini", "langgraph"),
         "client": ("client", "tauri", "react", "dashboard", "multi-session"),
+        "voice": ("voice", "voices", "tts", "stt", "elevenlabs", "speech", "whisper", "female voice", "male voice", "audio", "rachel", "eleven_flash"),
     }
 
     try:
@@ -174,18 +178,12 @@ def search_knowledge_base(
             with unittest.mock.patch("portalocker.lock", return_value=None), \
                  unittest.mock.patch("portalocker.unlock", return_value=None):
                 client = _get_qdrant_client(kb_path)
-                try:
-                    all_points, _ = client.scroll(
-                        collection_name=COLLECTION_NAME,
-                        limit=250,
-                        with_payload=True,
-                        with_vectors=False,
-                    )
-                finally:
-                    try:
-                        client.close()
-                    except Exception:
-                        pass
+                all_points, _ = client.scroll(
+                    collection_name=COLLECTION_NAME,
+                    limit=250,
+                    with_payload=True,
+                    with_vectors=False,
+                )
 
         for pt in all_points:
             payload = pt.payload or {}
@@ -197,10 +195,16 @@ def search_knowledge_base(
             match_score = 0.0
 
             if author_intent:
-                if "author" in heading or "author" in section or "author & contact" in heading:
+                if "author" in heading or "author & contact" in heading:
                     match_score = 0.98
                 elif "license" in heading or "contributing" in heading:
                     match_score = 0.70
+
+            if identity_intent:
+                if "what is mira" in heading or "definition & core concept" in heading or "executive overview" in heading:
+                    match_score = 0.98
+                elif "module overview" in heading:
+                    match_score = 0.75
 
             for mod, keywords in module_intents.items():
                 if any(kw in q_lower for kw in keywords):
@@ -318,8 +322,13 @@ def retrieve_mira_context(
     candidate_source_files: List[str] = list(target_files or [])
 
     # Automatic domain-based file inspection:
+    voice_terms = ("voice", "voices", "tts", "stt", "elevenlabs", "eleven labs", "whisper", "speech", "female voice", "male voice", "audio")
     if any(w in q_lower for w in ("who developed", "who created", "who made", "author", "creator", "developed you", "created you")):
         candidate_source_files.append("README.md")
+    elif any(w in q_lower for w in ("what are you", "who are you", "what is mira", "about mira", "define mira")):
+        candidate_source_files.append("README.md")
+    elif any(w in q_lower for w in voice_terms):
+        candidate_source_files.append("Client/src/modules/voice/elevenlabsClient.ts")
     elif "operator" in q_lower or "screen capture" in q_lower:
         candidate_source_files.append("Operator/README.md")
     elif "vault" in q_lower or "keyring" in q_lower or "crypto" in q_lower:
@@ -340,7 +349,12 @@ def retrieve_mira_context(
     for rel_f in candidate_source_files:
         if rel_f not in seen_paths and len(inspected_files) < 2:
             seen_paths.add(rel_f)
-            info = inspect_project_source_file(rel_f, max_lines=60)
+            start_l = 1
+            max_l = 60
+            if "elevenlabsClient.ts" in rel_f:
+                start_l = 22
+                max_l = 120
+            info = inspect_project_source_file(rel_f, max_lines=max_l, start_line=start_l)
             if info:
                 inspected_files.append(info)
 

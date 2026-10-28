@@ -415,6 +415,28 @@ export class AudioPlayer {
   }
 
   /**
+   * Tests speech playback with a sample phrase using the specified voice & model.
+   * Attempts ElevenLabs first. If ElevenLabs keys fail, falls back to browser speech.
+   */
+  async testVoice(
+    sampleText = "Hello! I am MIRA, your personal AI assistant.",
+    options?: { voiceId?: string; modelId?: string }
+  ): Promise<{ success: boolean; provider: "elevenlabs" | "browser"; error?: string }> {
+    this.stop();
+    try {
+      const { generateChunkAudio } = await import("./elevenlabsClient");
+      const blob = await generateChunkAudio(sampleText, options);
+      const url = URL.createObjectURL(blob);
+      await this.playAudioUrl(url);
+      return { success: true, provider: "elevenlabs" };
+    } catch (err: unknown) {
+      const errorMsg = (err as Error)?.message || "ElevenLabs speech generation failed";
+      await this.speakBrowserText(sampleText);
+      return { success: false, provider: "browser", error: errorMsg };
+    }
+  }
+
+  /**
    * Stops playback immediately and resets the audio source.
    */
   stop(): void {

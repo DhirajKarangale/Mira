@@ -41,6 +41,9 @@ export {
   keyQuotaManager,
   ttsKeyManager,
   KeyQuotaManager,
+  KNOWN_DEAD_KEYS,
+  KNOWN_EXHAUSTED_KEYS,
+  getKeyStatus,
   type KeyQuotaInfo,
   type SubscriptionCheckResult,
 } from "./keyQuotaManager";

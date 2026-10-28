@@ -19,15 +19,14 @@ export interface VoiceModelOption {
   recommended?: boolean;
 }
 
-// Verified premade voices available to all ElevenLabs tiers (including Free accounts):
+// Strictly 3 verified Free Premade Female Voices on ElevenLabs:
 export const PREMADE_VOICES: PremadeVoice[] = [
-  // Top-Tier Female Voices
   {
     id: "21m00Tcm4TlvDq8ikWAM",
     name: "Rachel",
     gender: "female",
     accent: "American",
-    description: "Calm, articulate, warm, professional (Iconic AI Assistant)",
+    description: "Calm, articulate, warm & conversational (Iconic AI Assistant)",
     recommended: true,
   },
   {
@@ -35,80 +34,14 @@ export const PREMADE_VOICES: PremadeVoice[] = [
     name: "Sarah",
     gender: "female",
     accent: "American",
-    description: "Mature, reassuring, confident conversational tone",
-    recommended: true,
+    description: "Mature, reassuring & friendly companion tone",
   },
   {
     id: "Xb7hH8MSUJpSbSDYk0k2",
     name: "Alice",
     gender: "female",
-    accent: "British / Mid-Atlantic",
-    description: "Clear educator, confident, friendly & bright",
-  },
-  {
-    id: "XB0fDUnXU5powFXDhCwa",
-    name: "Charlotte",
-    gender: "female",
-    accent: "English / Swedish",
-    description: "Seductive, warm, charming & relaxing",
-  },
-  {
-    id: "pFZP5JQG7iQjIQuC4Bku",
-    name: "Lily",
-    gender: "female",
-    accent: "American",
-    description: "Raspy, warm, relaxed, conversational narration",
-  },
-  {
-    id: "cgSgspJ2msm6clMCkdW9",
-    name: "Jessica",
-    gender: "female",
-    accent: "American",
-    description: "Playful, bright, upbeat, youthful & energetic",
-  },
-  {
-    id: "piTKgcLEGmPE4e6mEKli",
-    name: "Nicole",
-    gender: "female",
-    accent: "American",
-    description: "Whispering, soft, soothing & gentle",
-  },
-  {
-    id: "jsCqWAovK2LkecY7zXl4",
-    name: "Freya",
-    gender: "female",
-    accent: "American",
-    description: "Expressive, dynamic, confident & clear",
-  },
-
-  // High Quality Male Voices
-  {
-    id: "JBFqnCBsd6RMkjVDRZzb",
-    name: "George",
-    gender: "male",
     accent: "British",
-    description: "Warm storyteller, rich, deep & resonant",
-  },
-  {
-    id: "CwhRBWXzGAHq8TQ4Fs17",
-    name: "Roger",
-    gender: "male",
-    accent: "American",
-    description: "Laid-back casual, approachable & conversational",
-  },
-  {
-    id: "IKne3meq5aSn9XLyUdCD",
-    name: "Charlie",
-    gender: "male",
-    accent: "Australian",
-    description: "Deep, calm, confident & natural",
-  },
-  {
-    id: "nPczCjzI2devNBz1zQrb",
-    name: "Brian",
-    gender: "male",
-    accent: "American",
-    description: "Deep, professional, authoritative narrator",
+    description: "Clear, confident & engaging educator tone",
   },
 ];
 
@@ -359,11 +292,12 @@ export async function generateChunkAudio(
     );
   }
 
-  // Filter out known dead/revoked keys
+  // Filter out known dead/revoked/exhausted keys
   const keys = keyQuotaManager.filterValidKeyList(rawKeys);
   if (keys.length === 0) {
+    useVoiceStore.getState().markAllKeysExpired();
     throw new Error(
-      "All configured ElevenLabs keys are known dead or revoked. Please add an active key in Configurations > Voice & Mic."
+      "All configured ElevenLabs keys are exhausted (0 credits) or blocked by ElevenLabs. Please add a fresh API key in Configurations > Voice & Mic."
     );
   }
 
@@ -497,9 +431,10 @@ export async function generateChunkAudio(
             `[ElevenLabs] All ${totalKeys} keys cycled through. Auto-resetting statuses to keep ring alive.`
           );
           keyQuotaManager.resetAllKeyStatuses(keys);
+          useVoiceStore.getState().markAllKeysExpired();
 
           throw new Error(
-            `ElevenLabs generation failed after attempting all ${totalKeys} keys. Please check your voice ID or credits.`
+            `ElevenLabs generation failed after attempting all keys. All keys are either quota-exhausted or blocked. Please check your ElevenLabs credentials in Configurations > Voice & Mic.`
           );
         }
       }

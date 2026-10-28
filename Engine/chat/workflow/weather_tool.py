@@ -539,12 +539,22 @@ def synthesize_weather_response(
     daily_lines = []
     for d in daily[:7]:
         daily_lines.append(
-            f"- {d.get('day', d.get('date'))}: {d.get('condition')}, High: {d.get('temp_max_celsius')}°C, "
-            f"Low: {d.get('temp_min_celsius')}°C, Rain chance: {d.get('precipitation_probability_percent', 0)}%, Rain: {d.get('rain_sum_mm', 0.0)} mm"
+            f"- {d.get('day', d.get('date'))}: {d.get('condition')}, High: {round(d.get('temp_max_celsius', 0))}°C, "
+            f"Low: {round(d.get('temp_min_celsius', 0))}°C, Rain chance: {d.get('precipitation_probability_percent', 0)}%"
         )
     daily_summary = "\n".join(daily_lines) if daily_lines else "None available."
 
     short_loc = location_name.split(",")[0].strip() if location_name else "your area"
+
+    # Only present feels-like when noticeably different (>= 2°C difference and rounded values differ)
+    temp_val = round(cur_temp) if cur_temp is not None else None
+    app_val = round(cur_app) if cur_app is not None else None
+    diff = abs(cur_app - cur_temp) if (cur_temp is not None and cur_app is not None) else 0.0
+    has_significant_feels_like = (temp_val != app_val) and (diff >= 2.0)
+
+    temp_line = f"- Temperature: {temp_val}°C" if temp_val is not None else "- Temperature: Unknown"
+    if has_significant_feels_like:
+        temp_line += f" (Feels noticeably different at ~{app_val}°C due to conditions)"
 
     prompt = f"""You are MIRA, a helpful and natural desktop AI companion.
 Answer the user's weather question naturally and conversationally, like a real person talking, while sticking directly to the point.
@@ -555,7 +565,7 @@ Target Location: {location_name} (short: {short_loc})
 Verified Weather Data:
 Current Conditions:
 - Weather: {cur_cond}
-- Temperature: {cur_temp}°C (Feels like: {cur_app}°C)
+{temp_line}
 - Humidity: {cur_hum}%
 - Wind: {cur_wind} km/h
 - Rain: {cur_rain} mm
@@ -567,15 +577,17 @@ Tone & Style Guidelines:
 1. Speak naturally, smoothly, and conversationally. Avoid stiff or robotic templates like "Currently in [Location], it is [Temp] with [Cond]".
 2. Refer to the location naturally (e.g. "in {short_loc}") without reciting redundant state or country names unless specifically asked.
 3. Answer ONLY what the user asked:
-   - If asked for current weather/temperature: give a single natural sentence about right now (e.g. "It's about 26°C and mainly clear in {short_loc} right now, feeling like 27°C."). Do not mention future days unless asked.
-   - If asked about rain: answer directly and naturally (e.g. "There's a 39% chance of light drizzle tomorrow in {short_loc} with highs near 32°C.").
+   - If asked for current weather/temperature: give a single natural sentence about right now. Do not mention future days unless asked.
+   - If asked about rain: answer directly and naturally.
    - If asked for a forecast: give a concise, clean summary of the requested days.
-4. Keep temperatures and numbers easy to read (round to nearest whole degree or 1 decimal place).
-5. No robotic intros ("Certainly!", "Sure thing!") and no trailing questions ("Let me know if you need more info!").
-6. English only.
+4. Keep temperatures and numbers easy to read (whole degrees).
+5. NEVER mention "feels like" unless an apparent temperature is explicitly provided above. Never repeat the same temperature twice (never say "26°C, feeling like 26°C").
+6. No robotic intros ("Certainly!", "Sure thing!") and no trailing questions ("Let me know if you need more info!").
+7. English only.
 
 Tone Examples:
-- "What's the weather in Pune?" -> "It's about 26°C and mainly clear in Pune right now, feeling like 27°C."
+- "What's the weather in Pune?" -> "It's 26°C and mainly clear in Pune right now."
+- "What's the temperature in Mumbai?" (when feels like 39°C) -> "It's 32°C in Mumbai, but the humidity makes it feel more like 39°C."
 - "Will it rain tomorrow in Pune?" -> "There's a 39% chance of light drizzle tomorrow in Pune with highs near 32°C."
 
 Response:"""
@@ -589,8 +601,8 @@ Response:"""
 
     # Deterministic natural fallback
     q_low = user_query.lower()
-    cur_t_str = f"{round(cur_temp)}°C" if cur_temp is not None else "--"
-    app_t_str = f", feeling like {round(cur_app)}°C" if cur_app is not None and cur_temp is not None and round(cur_app) != round(cur_temp) else ""
+    cur_t_str = f"{temp_val}°C" if temp_val is not None else "--"
+    app_t_str = f", feeling like {app_val}°C" if has_significant_feels_like else ""
     cond_str = (cur_cond or "clear").lower()
 
     if any(k in q_low for k in ("tomorrow",)):

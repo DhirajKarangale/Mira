@@ -196,7 +196,7 @@ User's Latest Query: "{user_query}"
 
 Instructions:
 1. Understand Intent & Route:
-   - "mira_assistant": The user is asking questions about MIRA (architecture, modules, Engine, Vault, Memory, Operator, Message Broker, Client, scripts, APIs, Redis streams, configuration, implementation, debugging, usage) OR asking to make changes, additions, or modifications to the MIRA project directly through chat.
+   - "mira_assistant": The user is asking questions about MIRA (architecture, modules, Engine, Vault, Memory, Operator, Message Broker, Client, scripts, APIs, Redis streams, configuration, implementation, debugging, usage, voice models, female/male voices, TTS, STT, creator/developer) OR asking to make changes, additions, or modifications to the MIRA project directly through chat.
    - "history_answer": The query is a follow-up, clarification, reformatting, or question whose answer is ALREADY present in the conversation history above.
    - "user_activity": The user is asking about their personal activities, screen time, applications used, documents opened, or work history that REQUIRES querying the personal screen activity database.
    - "weather": The user is asking about current weather, weather forecasts, temperature, rain/precipitation, snowfall, humidity, wind speed, or meteorological conditions.

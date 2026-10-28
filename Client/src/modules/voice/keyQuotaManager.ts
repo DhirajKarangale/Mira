@@ -53,6 +53,23 @@ export const KNOWN_DEAD_KEYS = new Set([
   "sk_b9dde3ad58694f35a3a564e6f2ee2b299ce614e67afa3615",
 ]);
 
+// List of known quota-exhausted keys (0 credits remaining)
+export const KNOWN_EXHAUSTED_KEYS = new Set([
+  "sk_8911f5d3f0437bb20706afe3333beae2b5f072f2681b998d",
+  "sk_6ca600631f751e5493095d580405346bf1138ad0ad9abcf5",
+]);
+
+/**
+ * Returns the status category of a given ElevenLabs API key.
+ */
+export function getKeyStatus(key?: string): "valid" | "exhausted" | "blocked" {
+  if (!key) return "valid";
+  const trimmed = key.trim();
+  if (KNOWN_DEAD_KEYS.has(trimmed)) return "blocked";
+  if (KNOWN_EXHAUSTED_KEYS.has(trimmed)) return "exhausted";
+  return "valid";
+}
+
 export class KeyQuotaManager {
   private keyUsage: Record<string, KeyQuotaInfo> = {};
   private subscriptionCache: Map<string, { data: SubscriptionCheckResult; expiresAt: number }> =
@@ -158,7 +175,13 @@ export class KeyQuotaManager {
   public filterValidKeyList(keys: string[]): string[] {
     return keys
       .map((k) => k?.trim())
-      .filter((k) => Boolean(k) && !KNOWN_DEAD_KEYS.has(k));
+      .filter(
+        (k) =>
+          Boolean(k) &&
+          !KNOWN_DEAD_KEYS.has(k) &&
+          !KNOWN_EXHAUSTED_KEYS.has(k) &&
+          !this.keyUsage[k]?.isInvalid
+      );
   }
 
   /**
