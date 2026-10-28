@@ -44,7 +44,56 @@ Rather than functioning as a basic chatbot wrapper, the Client delivers a compre
 <a id="2-module-contents"></a><a id="module-contents"></a>
 ## 2. Module Contents
 
-### 2.1 Primary Views & Page Architecture
+### 2.1 Directory & File Manifest
+```
+Client/
+├── public/                     # Static assets, hero banners, favicons, & web icons
+│   └── icons/                  # High-resolution logos, banners, & window icons
+├── src/                        # React 19 application root
+│   ├── assets/                 # SVGs, animations, sound effects, and UI graphics
+│   ├── components/             # Reusable UI primitives (buttons, modals, cards, badges)
+│   ├── hooks/                  # Custom React hooks (wake-word, speech recognition, window metrics)
+│   ├── lib/                    # Shared utility libraries, formatters, and class helpers (cn)
+│   ├── modules/                # Specialized client runtime engines
+│   │   ├── mic/                # Multi-provider STT engine (Web Speech, Deepgram, Whisper)
+│   │   └── voice/              # Web Audio scheduler, TTS streaming worker, gapless playback
+│   ├── pages/                  # Primary application views & route components
+│   │   ├── About/              # Application credits, version display, and architecture links
+│   │   ├── ChatsPage.tsx       # Multi-session streaming conversational AI interface
+│   │   ├── Configurations/     # System settings, AI keys, blacklist, workers, & audit logs
+│   │   │   ├── AiConfig/       # Gemini & Groq API key configuration, testing, & prioritization
+│   │   │   ├── Capture/        # Screen capture frequency slider & application blacklisting
+│   │   │   ├── Logs/           # Filterable, paginated Vault audit trail explorer
+│   │   │   ├── Microphone/     # Audio hardware selection, gain controls, & ambient engine setup
+│   │   │   ├── Redis/          # Redis Streams consumer group telemetry & queue depth inspector
+│   │   │   └── Workers/        # Background OCR worker concurrency & batch size tuning
+│   │   ├── Mira/               # Morning briefing dashboard, daily suggestions, news, & weather
+│   │   ├── Tools/              # Fullscreen standalone news reader and diagnostic tools
+│   │   └── User/               # Encrypted profile settings, persona tuning, & user preferences
+│   ├── services/               # REST API client services mapping to backend microservices
+│   ├── store/                  # Zustand state stores (useChatStore, useSettingsStore, etc.)
+│   ├── types/                  # Global TypeScript interfaces, API schemas, & state types
+│   ├── App.tsx                 # Root layout, navigation sidebar, and dynamic route switcher
+│   ├── index.css               # Tailwind CSS v4 design system, glassy tokens, and animations
+│   └── main.tsx                # React DOM root bootstrapping & TanStack Query client setup
+├── src-tauri/                  # Tauri v2 native desktop application shell
+│   ├── capabilities/           # Security permissions, window boundaries, & shell plugins
+│   ├── src/                    # Rust entrypoint, backend process supervisor, & system tray
+│   │   ├── main.rs             # Tauri application runner entrypoint
+│   │   └── lib.rs              # Backend supervisor (spawns start.py), TCP 9002 check, & tray builder
+│   ├── windows/                # Windows-specific installer configurations
+│   │   └── hooks.nsh           # NSIS installer & uninstaller integration hooks
+│   ├── tauri.conf.json         # Desktop window size, bundle identity, title bar, & menu configs
+│   └── Cargo.toml              # Rust desktop packaging dependencies
+├── index.html                  # HTML5 entrypoint with Google Fonts and viewport configuration
+├── package.json                # Node.js dependencies (React 19, Tailwind v4, Zustand, Lucide)
+├── tsconfig.json               # TypeScript compiler rules & path alias definitions
+└── vite.config.ts              # Vite 8 bundling pipeline, Tailwind v4 plugin, & dev proxy setup
+```
+
+---
+
+### 2.2 Primary Views & Page Architecture
 The Client application is structured into five core functional views:
 
 #### 1. MIRA Dashboard (`/mira` — `MiraPage.tsx`)
@@ -79,7 +128,7 @@ Central administrative panel providing granular control over the ecosystem:
 
 ---
 
-### 2.2 Frontend Subsystems & State Management
+### 2.3 Frontend Subsystems & State Management
 - **Zustand State Stores (`src/store/`)**:
   - `useChatStore.ts`: Manages active chat sessions, in-flight streaming message buffers, session message histories, and unread counters.
   - `useSettingsStore.ts`: Caches microservice endpoints, application blacklist registries, active AI providers, and UI preferences.
@@ -89,7 +138,7 @@ Central administrative panel providing granular control over the ecosystem:
 
 ---
 
-### 2.3 Integrated Ambient Voice & Audio Engine
+### 2.4 Integrated Ambient Voice & Audio Engine
 The Client houses a modular acoustic engine supporting multiple input and output modalities:
 - **Tri-Provider Speech-to-Text Pipeline (`modules/mic/`)**:
   - *Browser Speech Provider*: Zero-configuration client-side speech recognition via native Web Speech API.

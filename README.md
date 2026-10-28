@@ -1,8 +1,4 @@
 <p align="center">
-  <img src="Client/public/icons/hero-banner.png" alt="MIRA — Memory, Intelligence, Recall, Assistant" width="100%" />
-</p>
-
-<p align="center">
   <img src="Client/public/icons/favicon-96x96.png" alt="MIRA Logo" width="64" height="64" />
 </p>
 
@@ -21,14 +17,17 @@
   <img src="https://img.shields.io/badge/Operator-Native%20Rust%20Engine-DEA584?style=flat-square&logo=rust&logoColor=black" alt="Rust Native Operator" />
   <img src="https://img.shields.io/badge/Vectors-Local%20Qdrant-DC382D?style=flat-square&logo=qdrant&logoColor=white" alt="Qdrant Local" />
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License" />
+  <a href="SECURITY.md"><img src="https://img.shields.io/badge/Security-Policy-blue?style=flat-square" alt="Security Policy" /></a>
 </p>
 
 <p align="center">
   <a href="KNOWLEDGE_BASE.md"><strong>📖 Read the Complete MIRA Knowledge Base & Architecture Manual →</strong></a>
+  <br />
+  <a href="SECURITY.md"><strong>🛡️ Read the Security & Vulnerability Policy (SECURITY.md) →</strong></a>
 </p>
 
 > [!NOTE]
-> **Master Knowledge Base**: For an exhaustive, systematic reference guide detailing every microservice, port mapping, data pipeline, and cryptographic model in MIRA, read the **[MIRA Knowledge Base (KNOWLEDGE_BASE.md)](KNOWLEDGE_BASE.md)**.
+> **Master Knowledge Base & Security Policy**: For an exhaustive, systematic reference guide detailing every microservice, port mapping, data pipeline, and cryptographic model in MIRA, read the **[MIRA Knowledge Base (KNOWLEDGE_BASE.md)](KNOWLEDGE_BASE.md)**. For vulnerability reporting, cryptographic specifications, and privacy guarantees, refer to our **[Security Policy (SECURITY.md)](SECURITY.md)**.
 
 ---
 
@@ -44,7 +43,7 @@
   - [4.5 Vault Module (Encrypted Configuration & Secrets)](#45-vault-module-encrypted-configuration--secrets)
   - [4.6 Message Broker Module (Redis Streams Event Backbone)](#46-message-broker-module-redis-streams-event-backbone)
   - [4.7 Scripts & Orchestration Toolkit (Unified Starter & Builder)](#47-scripts--orchestration-toolkit-unified-starter--builder)
-- [5. How to Install & Run (Every Device & OS)](#5-how-to-install--run-every-device--os)
+- [5. Quickstart & Launching MIRA](#5-quickstart--launching-mira)
 - [6. Technology Stack Matrix](#6-technology-stack-matrix)
 - [7. Future Scope & Roadmap](#7-future-scope--roadmap)
 - [8. Master System Architecture & Flow Diagram](#8-master-system-architecture--flow-diagram)
@@ -85,6 +84,9 @@ MIRA operates seamlessly across two distinct operational paradigms:
 <p align="center">
   <img src="Client/public/icons/features-banner.png" alt="MIRA Privacy & Architecture" width="100%" />
 </p>
+
+> [!TIP]
+> **Formal Security & Vulnerability Policy**: For our coordinated disclosure procedure, response SLA, hardware-backed keyring derivations, and cryptographic guarantees, see **[SECURITY.md](SECURITY.md)**.
 
 <a id="21-local-first-zero-data-harvesting-policy"></a>
 ### 2.1 Local-First Zero Data Harvesting Policy
@@ -211,28 +213,26 @@ Mira/
 
 ---
 
-<a id="5-how-to-install--run-every-device--os"></a><a id="5-how-to-install-run-every-device-os"></a>
-## 5. How to Install & Run (Every Device & OS)
+<a id="5-how-to-install--run-every-device--os"></a><a id="5-quickstart--launching-mira"></a>
+## 5. Quickstart & Launching MIRA
 
 <p align="center">
   <img src="Client/public/icons/download-app-banner.png" alt="Download and Run MIRA" width="100%" />
 </p>
 
-<a id="51-system-prerequisites"></a>
 ### 5.1 System Prerequisites
-Before running MIRA, ensure the following core tools are installed:
+Before launching MIRA, ensure the following core runtimes are installed on your machine:
 - **Python**: `3.10` - `3.12` (`3.11` recommended)
-- **Node.js**: `v18.x` or `v20.x` LTS
-- **Rust Toolchain**: `rustc` and `cargo` (`1.75+`)
+- **Node.js**: `v18.x` or `v20.x` LTS & `npm`
+- **Rust Toolchain**: Stable channel (`rustc` & `cargo` `1.75+`)
 - **Redis Server**: `v6.2+` (running on `127.0.0.1:6379`)
-- **Tesseract OCR**: Installed and added to system PATH
+- **Tesseract OCR**: Installed and reachable in your system PATH
 
 ---
 
-<a id="52-one-click-unified-starter-startpy"></a><a id="52-one-click-unified-starter-start-py"></a>
 ### 5.2 One-Click Unified Starter (`start.py`)
 
-MIRA includes an intelligent root lifecycle manager (`start.py`) that calculates port allocations, resolves port conflicts dynamically, validates dependencies, boots all six microservices in strict dependency order, and displays a unified dashboard:
+MIRA includes an intelligent root lifecycle supervisor (`scripts/start.py`) that checks dependencies, dynamically detects and resolves port conflicts, configures service discovery, boots all background microservices in strict dependency order, and monitors live health metrics:
 
 ```bash
 # Clone the repository
@@ -240,11 +240,10 @@ git clone https://github.com/DhirajKarangale/Mira.git
 cd Mira
 
 # Launch all microservices simultaneously:
-python3 start.py
-# (On Windows): python start.py
+python scripts/start.py
 ```
 
-The system will start and report port allocations:
+Upon boot, the orchestrator reports real-time socket allocations and status:
 ```text
 ==================================================================================
 Module             Default Port   Assigned Port   Assigned Base URL            Status    
@@ -257,130 +256,12 @@ Memory             9006           9006            http://127.0.0.1:9006        O
 Engine             9007           9007            http://127.0.0.1:9007        OK (DEFAULT)
 ==================================================================================
 ```
-Open **`http://localhost:9004`** in your browser to start using MIRA!
 
----
+Open **`http://localhost:9004`** in your browser (or view the native Tauri window) to start interacting with MIRA!
 
-<a id="53-macos-setup-guide"></a>
-### 5.3 macOS Setup Guide
+> [!TIP]
+> **Advanced OS Compilations & Native Installers**: For manual step-by-step per-OS environment setups (macOS Homebrew, Windows Winget, Ubuntu/Debian apt), building native standalone `.exe`, `.dmg`, or `.AppImage` installers via Tauri v2, or customizing `services.json`, refer to **[scripts/README.md](scripts/README.md)** and the **[Master Knowledge Base (KNOWLEDGE_BASE.md)](KNOWLEDGE_BASE.md)**.
 
-```bash
-# 1. Install system prerequisites via Homebrew
-brew install python@3.11 node redis tesseract opencv git
-brew services start redis
-
-# 2. Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source "$HOME/.cargo/env"
-
-# 3. Setup Python Virtual Environment
-python3.11 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip
-
-# 4. Install dependencies across microservices
-pip install -r Vault/requirements.txt
-pip install -r Message_Broker/requirements.txt
-pip install -r Memory/requirements.txt
-pip install -r Engine/requirements.txt
-
-# 5. Build Operator & Install Client
-cd Operator && cargo build --release && cd ..
-cd Client && npm install && cd ..
-
-# 6. Start MIRA
-python3 start.py
-```
-*(Note: On first run, grant macOS **Screen Recording** permissions in System Settings > Privacy & Security).*
-
----
-
-<a id="54-windows-1011-setup-guide"></a><a id="54-windows-10-11-setup-guide"></a>
-### 5.4 Windows 10/11 Setup Guide
-
-```powershell
-# 1. Install Winget Dependencies
-winget install --id Python.Python.3.11
-winget install --id OpenJS.NodeJS.LTS
-winget install --id Rustlang.Rustup
-winget install --id Redis.Redis
-rustup default stable-x86_64-pc-windows-msvc
-
-# 2. Install Tesseract OCR
-# Download installer from: https://github.com/UB-Mannheim/tesseract/wiki
-# Add "C:\Program Files\Tesseract-OCR" to your system PATH.
-
-# 3. Create Virtual Environment
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-
-# 4. Install Microservice Dependencies
-pip install -r Vault/requirements.txt
-pip install -r Message_Broker/requirements.txt
-pip install -r Memory/requirements.txt
-pip install -r Engine/requirements.txt
-
-# 5. Build Native Operator & Client
-cd Operator; cargo build --release; cd ..
-cd Client; npm install; cd ..
-
-# 6. Start MIRA
-python start.py
-```
-
----
-
-<a id="55-linux-ubuntu--debian--fedora--arch-setup-guide"></a><a id="55-linux-ubuntu-debian-fedora-arch-setup-guide"></a>
-### 5.5 Linux (Ubuntu / Debian / Fedora / Arch) Setup Guide
-
-#### Ubuntu / Debian:
-```bash
-# 1. Install System Dependencies
-sudo apt update
-sudo apt install -y python3-dev python3-venv python3-pip redis-server \
-  tesseract-ocr libtesseract-dev libgl1-mesa-glx libsecret-1-dev \
-  libwebkit2gtk-4.1-dev build-essential curl wget libssl-dev
-
-# 2. Start Redis Server
-sudo systemctl enable --now redis-server
-
-# 3. Install Node.js (v20) & Rust
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source "$HOME/.cargo/env"
-
-# 4. Setup Python Environment & Packages
-python3 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip
-pip install -r Vault/requirements.txt
-pip install -r Message_Broker/requirements.txt
-pip install -r Memory/requirements.txt
-pip install -r Engine/requirements.txt
-
-# 5. Build Operator & Client
-cd Operator && cargo build --release && cd ..
-cd Client && npm install && cd ..
-
-# 6. Launch MIRA
-python3 start.py
-```
-
----
-
-<a id="56-native-desktop-app-packaging-tauri-v2"></a>
-### 5.6 Native Desktop App Packaging (Tauri v2)
-
-To compile a native desktop standalone executable with bundled framing:
-```bash
-cd Client
-npm run tauri build
-```
-- **Windows**: Produces `Client\src-tauri\target\release\bundle\nsis\MIRA_0.1.0_x64-setup.exe`
-- **macOS**: Produces `Client/src-tauri/target/release/bundle/dmg/MIRA_0.1.0_aarch64.dmg`
-- **Linux**: Produces `Client/src-tauri/target/release/bundle/appimage/MIRA_0.1.0_amd64.AppImage`
 
 ---
 
