@@ -23,6 +23,7 @@ export const VoicePlaybackOverlay: FC = () => {
   const volume = useVoiceStore((s) => s.volume);
   const setVolume = useVoiceStore((s) => s.setVolume);
   const maximizeVolume = useVoiceStore((s) => s.maximizeVolume);
+  const superBoostVolume = useVoiceStore((s) => s.superBoostVolume);
 
   if (!currentResponse && pendingResponses.length === 0) {
     return null;
@@ -53,7 +54,7 @@ export const VoicePlaybackOverlay: FC = () => {
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[11px] font-semibold tracking-wide uppercase text-cyan-400 flex items-center gap-1.5">
-                <Volume2 className="w-3 h-3 inline text-cyan-300" />
+                <Volume2 className="w-3 visual-icon inline text-cyan-300" />
                 <span>MIRA Voice</span>
               </span>
 
@@ -63,25 +64,39 @@ export const VoicePlaybackOverlay: FC = () => {
                 </span>
               )}
 
-              {/* Volume Status Badge / Quick Toggle */}
+              {/* Volume Status Badge / Quick Multi-Boost Toggle */}
               <button
                 type="button"
                 id="btn-voice-overlay-volume-toggle"
-                onClick={() => (volume === 0 ? maximizeVolume() : setVolume(0))}
-                title={`Playback Volume: ${Math.round(volume * 100)}% (Click to ${volume === 0 ? "restore full volume" : "mute"})`}
+                onClick={() => {
+                  if (volume === 0) {
+                    maximizeVolume();
+                  } else if (volume <= 1.05) {
+                    superBoostVolume(1.5);
+                  } else if (volume <= 1.55) {
+                    superBoostVolume(2.0);
+                  } else {
+                    setVolume(0);
+                  }
+                }}
+                title={`Playback Volume: ${Math.round(volume * 100)}% (Click to cycle 100% -> 150% -> 200% -> Mute)`}
                 className={cn(
                   "text-[10px] font-mono px-1.5 py-0.2 rounded border flex items-center gap-1 transition-all cursor-pointer",
-                  volume > 0
-                    ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25 shadow-[0_0_8px_rgba(16,185,129,0.15)]"
-                    : "bg-zinc-800 text-zinc-400 border-white/10 hover:bg-zinc-700"
+                  volume > 1.0
+                    ? "bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-[0_0_8px_rgba(245,158,11,0.2)]"
+                    : volume > 0
+                      ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25 shadow-[0_0_8px_rgba(16,185,129,0.15)]"
+                      : "bg-zinc-800 text-zinc-400 border-white/10 hover:bg-zinc-700"
                 )}
               >
                 {volume === 0 ? (
                   <VolumeX className="w-2.5 h-2.5 text-zinc-400" />
                 ) : (
-                  <Volume2 className="w-2.5 h-2.5 text-emerald-400" />
+                  <Volume2 className={cn("w-2.5 h-2.5", volume > 1.0 ? "text-amber-400" : "text-emerald-400")} />
                 )}
-                <span>{Math.round(volume * 100)}% Full</span>
+                <span>
+                  {volume === 0 ? "Muted" : `${Math.round(volume * 100)}%${volume > 1.0 ? " Boost" : " Full"}`}
+                </span>
               </button>
 
               {pendingCount > 0 && (

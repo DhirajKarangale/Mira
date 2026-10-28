@@ -11,6 +11,7 @@ import {
   Save,
   RotateCcw,
   Sparkles,
+  Zap,
 } from "lucide-react";
 import type { VoiceConfig, VoiceConfigUpdateRequest } from "@/services";
 import { useVoiceStore } from "@/store/useVoiceStore";
@@ -33,6 +34,7 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
   const volume = useVoiceStore((s) => s.volume);
   const setVolume = useVoiceStore((s) => s.setVolume);
   const maximizeVolume = useVoiceStore((s) => s.maximizeVolume);
+  const superBoostVolume = useVoiceStore((s) => s.superBoostVolume);
 
   const serverModelId = voiceConfig?.voice_model_id ?? "";
   const [modelIdInput, setModelIdInput] = useState(serverModelId);
@@ -343,7 +345,14 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
       <div className="relative p-5 sm:p-6 border-t border-white/[0.06] bg-zinc-950/20">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
-            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0 shadow-[0_0_12px_rgba(16,185,129,0.15)]">
+            <div
+              className={cn(
+                "flex items-center justify-center w-8 h-8 rounded-lg shrink-0 transition-colors",
+                volume > 1.0
+                  ? "bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.2)]"
+                  : "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
+              )}
+            >
               <Volume2 className="w-4 h-4" />
             </div>
             <div>
@@ -351,67 +360,130 @@ export const VoiceControlConfigCard: FC<VoiceControlConfigCardProps> = ({
                 <h3 className="text-sm font-semibold text-white tracking-tight">
                   Speech Output Volume & Booster
                 </h3>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold">
-                  {Math.round(volume * 100)}% Full
-                </span>
+                {volume === 0 ? (
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-white/10 font-bold">
+                    Muted
+                  </span>
+                ) : volume > 1.0 ? (
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold flex items-center gap-1 shadow-[0_0_8px_rgba(245,158,11,0.2)]">
+                    <Zap className="w-2.5 h-2.5 text-amber-400" />
+                    {Math.round(volume * 100)}% Super Boost
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold">
+                    {Math.round(volume * 100)}% Full
+                  </span>
+                )}
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 flex items-center gap-1">
                   <Sparkles className="w-2.5 h-2.5 text-cyan-400" />
                   Speaker Boost Active
                 </span>
               </div>
               <p className="text-xs text-zinc-400 mt-0.5">
-                Full-fidelity output with Web Audio dynamic gain booster and ElevenLabs neural speaker volume boost
+                Full-fidelity output with Web Audio 2.5x dynamic gain booster, anti-clipping dynamics compression, and ElevenLabs neural speaker boost
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 self-start sm:self-auto">
+          <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
             <button
               type="button"
-              id="btn-voice-max-volume"
+              id="btn-voice-normal-volume"
               onClick={maximizeVolume}
               className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-mono font-semibold transition-all cursor-pointer border flex items-center gap-1.5",
-                volume >= 0.99
+                "px-2.5 py-1.5 rounded-lg text-xs font-mono font-semibold transition-all cursor-pointer border flex items-center gap-1.5",
+                Math.abs(volume - 1.0) < 0.05
                   ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
                   : "bg-white/[0.04] hover:bg-white/[0.08] text-zinc-300 border-white/[0.08]"
               )}
-              title="Set playback volume to 100% Full"
+              title="Set playback volume to standard full 100%"
             >
               <Volume2 className="w-3.5 h-3.5" />
-              <span>Full Volume (100%)</span>
+              <span>100% Full</span>
+            </button>
+
+            <button
+              type="button"
+              id="btn-voice-boost-150"
+              onClick={() => superBoostVolume(1.5)}
+              className={cn(
+                "px-2.5 py-1.5 rounded-lg text-xs font-mono font-semibold transition-all cursor-pointer border flex items-center gap-1.5",
+                Math.abs(volume - 1.5) < 0.05
+                  ? "bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.25)]"
+                  : "bg-white/[0.04] hover:bg-white/[0.08] text-zinc-300 border-white/[0.08]"
+              )}
+              title="Boost volume to 150% High"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-400" />
+              <span>150% Boost</span>
+            </button>
+
+            <button
+              type="button"
+              id="btn-voice-boost-200"
+              onClick={() => superBoostVolume(2.0)}
+              className={cn(
+                "px-2.5 py-1.5 rounded-lg text-xs font-mono font-semibold transition-all cursor-pointer border flex items-center gap-1.5",
+                Math.abs(volume - 2.0) < 0.05
+                  ? "bg-rose-500/20 text-rose-300 border-rose-500/40 shadow-[0_0_12px_rgba(244,63,94,0.25)]"
+                  : "bg-white/[0.04] hover:bg-white/[0.08] text-zinc-300 border-white/[0.08]"
+              )}
+              title="Boost volume to 200% Max Ultra Loud"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-rose-400" />
+              <span>200% Ultra</span>
             </button>
           </div>
         </div>
 
-        {/* Volume Slider Bar */}
-        <div className="mt-4 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => (volume === 0 ? maximizeVolume() : setVolume(0))}
-            className="text-zinc-400 hover:text-white transition-colors cursor-pointer"
-            title={volume === 0 ? "Restore full volume" : "Mute playback"}
-          >
-            {volume === 0 ? (
-              <VolumeX className="w-4 h-4 text-zinc-500" />
-            ) : (
-              <Volume2 className="w-4 h-4 text-emerald-400" />
-            )}
-          </button>
-          <input
-            id="slider-voice-volume"
-            type="range"
-            min="0"
-            max="1"
-            step="0.05"
-            value={volume}
-            onChange={(e) => setVolume(parseFloat(e.target.value))}
-            className="w-full sm:max-w-xs h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500 hover:accent-emerald-400 transition-all"
-            title={`Adjust Volume: ${Math.round(volume * 100)}%`}
-          />
-          <span className="text-xs font-mono text-zinc-300 w-12 text-right">
-            {Math.round(volume * 100)}%
-          </span>
+        {/* Volume Slider Bar with Quick Indicators */}
+        <div className="mt-4 flex flex-col gap-2">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => (volume === 0 ? maximizeVolume() : setVolume(0))}
+              className="text-zinc-400 hover:text-white transition-colors cursor-pointer"
+              title={volume === 0 ? "Restore full volume" : "Mute playback"}
+            >
+              {volume === 0 ? (
+                <VolumeX className="w-4 h-4 text-zinc-500" />
+              ) : (
+                <Volume2 className={cn("w-4 h-4", volume > 1.0 ? "text-amber-400" : "text-emerald-400")} />
+              )}
+            </button>
+            <input
+              id="slider-voice-volume"
+              type="range"
+              min="0"
+              max="2"
+              step="0.05"
+              value={volume}
+              onChange={(e) => setVolume(parseFloat(e.target.value))}
+              className={cn(
+                "w-full sm:max-w-md h-2 rounded-lg appearance-none cursor-pointer transition-all bg-zinc-800",
+                volume > 1.0
+                  ? "accent-amber-500 hover:accent-amber-400"
+                  : "accent-emerald-500 hover:accent-emerald-400"
+              )}
+              title={`Adjust Volume: ${Math.round(volume * 100)}% (0% to 200%)`}
+            />
+            <span
+              className={cn(
+                "text-xs font-mono w-16 text-right font-bold",
+                volume > 1.0 ? "text-amber-300" : "text-zinc-300"
+              )}
+            >
+              {Math.round(volume * 100)}%
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between sm:max-w-md pl-7 text-[10px] font-mono text-zinc-500 select-none">
+            <span>0%</span>
+            <span>50%</span>
+            <span className={cn(volume >= 0.95 && volume <= 1.05 ? "text-emerald-400 font-bold" : "")}>100% (Std)</span>
+            <span className={cn(volume >= 1.45 && volume <= 1.55 ? "text-amber-400 font-bold" : "")}>150% (Boost)</span>
+            <span className={cn(volume >= 1.95 ? "text-rose-400 font-bold" : "")}>200% (Ultra)</span>
+          </div>
         </div>
       </div>
 

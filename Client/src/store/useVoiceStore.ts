@@ -22,7 +22,7 @@ export interface VoiceState {
   voiceEnableMaster: boolean;
   voiceEnableWhileTyping: boolean;
   voiceModelId: string;
-  volume: number; // 0.0 - 1.0 (default 1.0 = 100% full volume)
+  volume: number; // 0.0 - 2.0 (default 1.0 = 100% full volume, up to 2.0 = 200% Super Boost)
 
   // Store metadata
   isLoading: boolean;
@@ -41,6 +41,7 @@ export interface VoiceState {
   setKeys: (keys: string[], currentKeyIndex?: number) => void;
   setVolume: (volume: number) => void;
   maximizeVolume: () => void;
+  superBoostVolume: (level?: number) => void;
 }
 
 export const useVoiceStore = create<VoiceState>((set, get) => ({
@@ -256,20 +257,29 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
   },
 
   /**
-   * Sets playback volume (0.0 to 1.0) and updates the audio player.
+   * Sets playback volume (0.0 to 2.0) and updates the audio player.
    */
   setVolume: (volume: number) => {
-    const clamped = Math.max(0, Math.min(1, Number.isFinite(volume) ? volume : 1.0));
+    const clamped = Math.max(0, Math.min(2.0, Number.isFinite(volume) ? volume : 1.0));
     set({ volume: clamped });
     audioPlayer.setVolume(clamped);
   },
 
   /**
-   * Maximizes voice playback volume to full (1.0).
+   * Maximizes voice playback volume to standard full (1.0).
    */
   maximizeVolume: () => {
     set({ volume: 1.0 });
     audioPlayer.maximizeVolume();
+  },
+
+  /**
+   * Sets voice playback volume to super boosted level (e.g. 1.5 or 2.0).
+   */
+  superBoostVolume: (level = 1.5) => {
+    const clamped = Math.max(0, Math.min(2.0, level));
+    set({ volume: clamped });
+    audioPlayer.superBoostVolume(clamped);
   },
 }));
 

@@ -56,18 +56,18 @@ export class AudioPlayer {
 
       this.audioContext = new AudioCtxClass();
       this.gainNode = this.audioContext.createGain();
-      // Set to full volume with studio gain boost (1.25x)
+      // Powerful broadcast studio gain boost (2.5x base gain multiplier)
       this.gainNode.gain.setValueAtTime(
-        this.isMutedState ? 0 : this.volumeLevel * 1.25,
+        this.isMutedState ? 0 : this.volumeLevel * 2.5,
         this.audioContext.currentTime
       );
 
       this.compressorNode = this.audioContext.createDynamicsCompressor();
-      this.compressorNode.threshold.setValueAtTime(-12, this.audioContext.currentTime);
-      this.compressorNode.knee.setValueAtTime(24, this.audioContext.currentTime);
-      this.compressorNode.ratio.setValueAtTime(4, this.audioContext.currentTime);
-      this.compressorNode.attack.setValueAtTime(0.003, this.audioContext.currentTime);
-      this.compressorNode.release.setValueAtTime(0.25, this.audioContext.currentTime);
+      this.compressorNode.threshold.setValueAtTime(-20, this.audioContext.currentTime);
+      this.compressorNode.knee.setValueAtTime(12, this.audioContext.currentTime);
+      this.compressorNode.ratio.setValueAtTime(8, this.audioContext.currentTime);
+      this.compressorNode.attack.setValueAtTime(0.002, this.audioContext.currentTime);
+      this.compressorNode.release.setValueAtTime(0.18, this.audioContext.currentTime);
 
       this.mediaSourceNode = this.audioContext.createMediaElementSource(
         this.audioElement
@@ -76,7 +76,7 @@ export class AudioPlayer {
       this.gainNode.connect(this.compressorNode);
       this.compressorNode.connect(this.audioContext.destination);
       this.isWebAudioReady = true;
-      console.log("[AudioPlayer] Web Audio booster active: 100% Full Volume + 1.25x Gain");
+      console.log("[AudioPlayer] Web Audio booster active: Super Volume (2.5x Gain + Dynamic Compressor)");
     } catch (err) {
       console.warn(
         "[AudioPlayer] Web Audio booster init failed; using direct HTML5 audio output:",
@@ -107,22 +107,27 @@ export class AudioPlayer {
   }
 
   /**
-   * Sets the playback volume (0.0 to 1.0).
-   * 1.0 represents 100% full volume with hardware booster.
+   * Sets the playback volume (0.0 to 2.0).
+   * 1.0 represents standard full volume (with 2.5x gain booster).
+   * Up to 2.0 provides ultra-loud amplified output (up to 5x gain).
    */
   setVolume(volume: number): void {
-    const clamped = Math.max(0, Math.min(1, Number.isFinite(volume) ? volume : 1.0));
+    const clamped = Math.max(0, Math.min(2.0, Number.isFinite(volume) ? volume : 1.0));
     this.volumeLevel = clamped;
     this.isMutedState = clamped === 0;
 
     if (this.audioElement) {
-      this.audioElement.volume = clamped;
+      if (this.isWebAudioReady) {
+        this.audioElement.volume = this.isMutedState ? 0 : 1.0;
+      } else {
+        this.audioElement.volume = Math.min(1.0, clamped);
+      }
       this.audioElement.muted = this.isMutedState;
     }
 
     if (this.gainNode && this.audioContext) {
       try {
-        const targetGain = this.isMutedState ? 0 : clamped * 1.25;
+        const targetGain = this.isMutedState ? 0 : clamped * 2.5;
         this.gainNode.gain.setValueAtTime(
           targetGain,
           this.audioContext.currentTime
@@ -132,17 +137,24 @@ export class AudioPlayer {
   }
 
   /**
-   * Returns current volume level (0.0 to 1.0).
+   * Returns current volume level (0.0 to 2.0).
    */
   getVolume(): number {
     return this.volumeLevel;
   }
 
   /**
-   * Maximizes volume to 100% full volume with hardware booster.
+   * Maximizes volume to full boosted volume.
    */
   maximizeVolume(): void {
     this.setVolume(1.0);
+  }
+
+  /**
+   * Sets volume to super boosted high level (150% - 200%).
+   */
+  superBoostVolume(multiplier = 1.5): void {
+    this.setVolume(multiplier);
   }
 
   /**
