@@ -50,6 +50,7 @@ def get_mira_knowledge_base_path() -> Optional[Path]:
     """
     Requirement 2: First check for the MIRA knowledge base at Vault/system/knowledge_base.
     If missing or stored under knowledge_base_mira, check fallback locations.
+    Picks the newest valid knowledge base if multiple locations exist.
     """
     candidate_paths = [
         # 1. Primary check: Vault/system/knowledge_base (subfolder or direct)
@@ -61,14 +62,19 @@ def get_mira_knowledge_base_path() -> Optional[Path]:
         Path(os.getenv("MIRA_SYSTEM_DIR", str(_REPO_ROOT / "Vault" / "system"))) / "knowledge_base_mira",
     ]
 
+    valid_paths = []
     for p in candidate_paths:
         if p.exists() and p.is_dir():
             sqlite_file = p / "collection" / "knowledge_base" / "storage.sqlite"
             if sqlite_file.exists():
-                return p
-            meta_file = p / "meta.json"
-            if meta_file.exists():
-                return p
+                valid_paths.append((sqlite_file.stat().st_mtime, p))
+            elif (p / "meta.json").exists():
+                valid_paths.append(((p / "meta.json").stat().st_mtime, p))
+
+    if valid_paths:
+        # Sort by modification time descending to pick the freshest build
+        valid_paths.sort(key=lambda x: x[0], reverse=True)
+        return valid_paths[0][1]
 
     return None
 
@@ -331,6 +337,10 @@ def retrieve_mira_context(
         candidate_source_files.append("Client/src/modules/voice/elevenlabsClient.ts")
     elif "operator" in q_lower or "screen capture" in q_lower:
         candidate_source_files.append("Operator/README.md")
+    elif "daily suggestion" in q_lower or "suggestions" in q_lower:
+        candidate_source_files.append("Engine/daily_suggestions/suggestions_section.py")
+    elif "api key" in q_lower or "ai_config" in q_lower:
+        candidate_source_files.append("Vault/config_storage.py")
     elif "vault" in q_lower or "keyring" in q_lower or "crypto" in q_lower:
         candidate_source_files.append("Vault/README.md")
     elif "message broker" in q_lower or "redis stream" in q_lower or "consumer group" in q_lower:

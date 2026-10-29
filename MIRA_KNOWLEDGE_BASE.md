@@ -1458,6 +1458,49 @@ For advanced users and developers, MIRA provides complete visibility into its ba
 
 ---
 
+<a id="911-mira-tool--mira-assistant-chat-operations"></a>
+### 9.11 MIRA Tool & MIRA Assistant Chat Operations
+
+The MIRA Chat module features a dedicated, native **MIRA Tool** (`Engine/chat/mira_assistant/`) integrated directly into the central LangGraph conversational workflow. Rather than functioning as a passive chatbot, the MIRA Assistant serves as your digital systems operator, providing direct conversational access to all MIRA functionality, APIs, background streams, encrypted databases, and configurations.
+
+#### 1. Daily Suggestions & Briefing Management in Chat
+You can manage your morning briefings and daily task lists entirely through conversational chat:
+- **View Today's Suggestions**: *"What are my daily suggestions?"* or *"Show today's suggestions"*. Returns prioritized continuity action items with interactive checkbox states (`[x]` or `[ ]`), localized weather forecast summaries, and top news headlines.
+- **Refresh & Force Re-generation**: *"Refresh daily suggestions"* or *"Regenerate today's suggestions"*. Forces the Engine briefing synthesizer to re-analyze yesterday's vector memories, pull fresh weather/news, and compile an updated continuity checklist.
+- **Toggle Completion Status**: *"Mark suggestion 1 as completed"*, *"Complete task 2"*, or *"Unmark suggestion 1"*. Updates the encrypted `daily_suggestions` database in Vault and broadcasts real-time WebSocket state changes to the Client UI.
+- **Historical Briefings**: *"Show yesterday's suggestions"* or *"Daily suggestions history"*. Retrieves past suggestion records and completion rates across the preceding 14 days.
+
+#### 2. API Key Management & Credential Retrieval
+Manage your multi-provider credentials without leaving the conversation:
+- **List Configured Keys**: *"What API keys do I have configured?"* or *"Show my API keys"*. Displays all AI providers (Groq, Gemini), Voice providers (ElevenLabs), and News providers (GNews) along with total key counts, active key indices, failover priorities, and securely masked key previews (e.g. `gsk_JDF3...6Y00`).
+- **Update or Add API Keys**: *"Update my Gemini API key to AIzaSy..."*, *"Add Groq API key: gsk_..."*, or *"Set GNews key to abc..."*. Stores keys into the encrypted Vault database (`config.db.enc`), derive hardware keyring secrets, and reloads Engine memory in real time.
+- **Reorder AI Failover Priorities**: *"Set AI priorities to Groq, Gemini"* or *"What are the AI priorities?"*. Changes dynamic inference provider order so failovers occur according to your preference.
+- **Remove Credentials**: *"Clear Groq API keys"* or *"Remove Gemini key"*. Removes designated credentials safely from Vault storage.
+
+#### 3. Configurations & Identity Personalization
+Read and modify your user profile and subsystem runtime parameters on the fly:
+- **User Identity**: *"What is my user profile?"* or *"Update my city to Pune and role to AI Engineer"*. Modifies your user details record in Vault and informs weather, news, and daily suggestion location services.
+- **Engine Worker Concurrency**: *"Show engine workers"* or *"Update chat workers to 2 and poll interval to 0.5s"*. Adjusts background job polling frequency and worker pool size.
+- **Application Screen Capture Privacy**: *"List app permissions"*, *"Allow VS Code to capture"*, or *"Blacklist Chrome"*. Configures Operator window title filtering rules in real time.
+
+#### 4. Redis Streams & Live Telemetry Inspection
+Inspect asynchronous event streams and microservice health:
+- **Stream Status & Queue Lengths**: *"Check Redis streams"* or *"Show message broker streams"*. Queries Redis lengths for `stream:operator_screen`, `stream:ocr_extraction`, `stream:ocr_summarization`, `stream:embedding_memory`, and `stream:llm_chat`.
+- **Consumer Groups & PEL**: Displays active consumer group names, consumer worker counts, and pending unacknowledged message counts (Pending Entries List).
+- **Subsystem Microservice Health**: *"Check services status"* or *"MIRA health"*. Probes live HTTP health endpoints for Vault (`9001`), Message Broker (`9002`), Operator (`9003`), Engine (`9007`), and Client.
+
+#### 5. Database Statistics & Memory Vector Recall
+- **Vault Encrypted Database**: *"Check database stats"* or *"How many chat sessions are stored?"*. Reports SQLite file size, active chat sessions, total messages, and daily suggestion table counts.
+- **Memory Vector Store**: Reports local Qdrant collection partitions (`Vault/system/knowledge_base/`), indexed vector counts, and storage footprints.
+
+#### 6. Non-Destructive Code Modifications & Deletion Guardrails
+- **Safe Code Additions & Edits**: *"Add a helper function in Engine/chat/config.py"*. Generates non-destructive diffs, compiles syntax using `py_compile`, and automatically rolls back if syntax errors occur.
+- **Strict Deletion Prohibition**: All destructive deletion commands targeting files, directories, databases, knowledge bases, or stored records are rejected with an explicit security notification.
+
+[↑ Back to Table of Contents](#table-of-contents)
+
+---
+
 <a id="10-detailed-future-scope--system-roadmap"></a>
 ## 10. Detailed Future Scope & System Roadmap
 

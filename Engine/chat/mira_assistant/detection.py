@@ -4,6 +4,8 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from .operations import is_mira_operational_query
+
 logger = logging.getLogger("mira.engine.chat.mira_assistant.detection")
 
 # Core keywords specifically targeting MIRA
@@ -77,6 +79,49 @@ MIRA_SUBSYSTEM_TERMS = [
     ("who is your author",),
     ("who is your developer",),
     ("who programmed you",),
+    # Daily Suggestions terms
+    ("daily suggestion",),
+    ("daily suggestions",),
+    ("my suggestions",),
+    ("morning briefing",),
+    ("daily agenda",),
+    ("refresh suggestions",),
+    ("regenerate suggestions",),
+    # API key and credential terms
+    ("api key",),
+    ("api keys",),
+    ("llm key",),
+    ("llm keys",),
+    ("ai priorities",),
+    ("ai priority",),
+    ("gemini key",),
+    ("groq key",),
+    ("elevenlabs key",),
+    ("gnews key",),
+    ("weather key",),
+    # Configuration and user identity terms
+    ("user profile",),
+    ("user details",),
+    ("app permissions",),
+    ("app permission",),
+    ("app blacklist",),
+    ("engine workers",),
+    ("worker config",),
+    ("system retention",),
+    # Streams, Services, and Storage terms
+    ("redis stream",),
+    ("redis streams",),
+    ("message broker stream",),
+    ("message broker streams",),
+    ("stream lengths",),
+    ("stream status",),
+    ("pel status",),
+    ("mira status",),
+    ("mira health",),
+    ("services status",),
+    ("vault storage",),
+    ("vault database",),
+    ("database status",),
 ]
 
 # Modifying action verbs indicating direct code modification request
@@ -100,6 +145,14 @@ PERSONAL_ACTIVITY_KEYWORDS = [
 def is_personal_activity_query(query: str) -> bool:
     """Detects if query is asking about personal screen time / desktop activity."""
     q = query.strip().lower()
+    # Explicitly protect MIRA operational queries from being misclassified as personal screen activity
+    mira_op_tokens = (
+        "suggestion", "suggestions", "briefing", "agenda",
+        "api key", "api keys", "llm key", "llm keys", "ai priorities",
+        "redis stream", "user profile", "worker config", "mira status"
+    )
+    if any(tok in q for tok in mira_op_tokens):
+        return False
     return any(w in q for w in PERSONAL_ACTIVITY_KEYWORDS)
 
 
@@ -194,17 +247,25 @@ def detect_mira_query(
             is_follow_up = True
 
     # Check if this qualifies as a MIRA query
-    if has_mira_word or has_subsystem_match or has_file_path or is_follow_up:
+    op_info = is_mira_operational_query(query)
+    is_operational = op_info is not None
+
+    if has_mira_word or has_subsystem_match or has_file_path or is_follow_up or is_operational:
         intent = detect_mira_intent(query)
+        op_category, op_action = op_info if op_info else (None, None)
         reasoning = (
             f"Fast heuristic: MIRA query detected (explicit_mira={has_mira_word}, "
-            f"subsystem='{subsystem_matched}', file_path={has_file_path}, follow_up={is_follow_up}, intent={intent})"
+            f"subsystem='{subsystem_matched}', file_path={has_file_path}, follow_up={is_follow_up}, "
+            f"operational={is_operational}, intent={intent})"
         )
         tool_params = {
             "intent": intent,
             "has_mira_word": has_mira_word,
             "subsystem": subsystem_matched,
             "is_follow_up": is_follow_up,
+            "is_operational": is_operational,
+            "op_category": op_category,
+            "op_action": op_action,
             "raw_query": query,
         }
         return "mira_assistant", reasoning, tool_params

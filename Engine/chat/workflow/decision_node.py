@@ -16,9 +16,10 @@ logger = logging.getLogger("mira.engine.chat.workflow.decision")
 # Extensible tool descriptions for routing
 AVAILABLE_ROUTES = {
     "mira_assistant": (
-        "User is asking questions about MIRA (architecture, modules, Engine, Vault, Memory, Operator, "
-        "Message Broker, Client, scripts, APIs, Redis streams, configuration, implementation, debugging, usage) "
-        "or requesting to make changes, additions, or modifications to the MIRA project directly through chat."
+        "User is asking questions about or interacting with MIRA (daily suggestions, viewing/refreshing/completing suggestions, "
+        "API keys, configurations, user profile, engine workers, app permissions, Redis streams, databases, system health, "
+        "architecture, modules, Engine, Vault, Memory, Operator, Message Broker, Client, scripts, voices, creator) "
+        "or requesting to make changes or updates directly through chat."
     ),
     "user_activity": (
         "User is asking about their personal activities, screen time, past work history, "
@@ -192,7 +193,7 @@ Recent Conversation History:
 User Query: "{user_query}"
 
 Routes:
-- "mira_assistant": Questions about MIRA (architecture, modules, code, APIs, streams, config, voices, creator) or project modifications.
+- "mira_assistant": Questions or actions regarding MIRA (daily suggestions, viewing/refreshing/completing suggestions, API keys, configurations, user profile, Redis streams, databases, system health, architecture, code) or project modifications.
 - "history_answer": Query answered directly from the conversation history above.
 - "user_activity": Questions about user's personal screen activity, apps used, or work history.
 - "weather": Weather conditions, forecasts, or temperature.

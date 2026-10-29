@@ -45,9 +45,18 @@ The Engine is constructed around the principle of **Context Minimization**: rath
 ```
 Engine/
 ├── chat/                         # Multi-turn chat & conversational workflows
-│   ├── chat_manager.py           # Session lifecycle, unread counts, and transcript caching
-│   ├── streaming.py              # WebSocket token streamer & chunk formatter
-│   └── context_builder.py        # Context formulation & Memory vector retrieval
+│   ├── router.py                 # REST & WebSocket endpoints (/chats/message, /ws/chat)
+│   ├── workflow/                 # Central LangGraph workflow (decision, weather, news, synthesis)
+│   ├── mira_assistant/           # Native MIRA tool: Daily suggestions, API keys, configs, streams, KB
+│   │   ├── node.py               # LangGraph node dispatcher
+│   │   ├── operations.py         # Direct reading & updating of daily suggestions, keys, configs, streams
+│   │   ├── detection.py          # Fast 0ms intent & operational detection
+│   │   ├── executor.py           # Non-destructive project code modification & verification
+│   │   ├── guidance.py           # Knowledge base guidance synthesizer
+│   │   ├── retrieval.py          # Master Knowledge Base Qdrant hybrid search & source inspection
+│   │   └── safety.py             # Path validation & strict deletion restriction enforcement
+│   ├── websocket.py              # Real-time WebSocket connection manager & telemetry broadcast
+│   └── worker.py                 # Message Broker background consumer worker
 ├── voice_stt/                    # On-device neural speech recognition
 │   ├── router.py                 # REST & WebSocket endpoints for local audio transcription
 │   ├── stt_service.py            # Faster-Whisper local model loader & audio decoding

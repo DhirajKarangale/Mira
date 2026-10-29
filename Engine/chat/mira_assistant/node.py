@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 from .detection import detect_mira_intent
 from .executor import plan_and_execute_modification, ProjectModificationResult
 from .guidance import generate_mira_guidance
+from .operations import is_mira_operational_query, execute_mira_operation
 from .retrieval import retrieve_mira_context
 from vault_logger import log, log_error
 
@@ -45,12 +46,12 @@ def mira_assistant_node(state: Dict[str, Any]) -> Dict[str, Any]:
       2. Direct project modifications (Adding, updating, editing files with safety & verification).
       3. Strict deletion restriction enforcement.
     """
-    user_query = str(state.get("user_query") or "").strip()
-    chat_history = state.get("chat_history") or []
+    user_query = str(state.get("user_query") or state.get("query") or "").strip()
+    chat_history = state.get("chat_history") or state.get("messages") or []
     user_profile = state.get("user_profile") or {}
     job_id = state.get("job_id", "")
     session_id = state.get("session_id", "")
-    tool_params = state.get("tool_parameters") or {}
+    tool_params = state.get("tool_parameters") or state.get("tool_params") or {}
 
     intent = tool_params.get("intent") or detect_mira_intent(user_query)
     log(f"[MIRAAssistantNode] Handling MIRA query (intent='{intent}'): '{user_query[:75]}...'")
@@ -62,7 +63,29 @@ def mira_assistant_node(state: Dict[str, Any]) -> Dict[str, Any]:
     final_answer = ""
     current_outputs = dict(state.get("node_outputs") or {})
 
-    if intent == "MODIFICATION":
+    # Check for direct operational actions (Daily suggestions, API keys, configurations, streams, databases)
+    op_info = (
+        (tool_params.get("op_category"), tool_params.get("op_action"))
+        if tool_params.get("op_category")
+        else is_mira_operational_query(user_query)
+    )
+
+    if op_info and op_info[0]:
+        op_category, op_action = op_info
+        progress_callback("executing_operation", f"Accessing MIRA {op_category.lower()} ({op_action})...")
+        final_answer = execute_mira_operation(
+            category=op_category,
+            action=op_action,
+            query=user_query,
+            tool_params=tool_params,
+            user_profile=user_profile,
+        )
+        current_outputs["mira_operation"] = {
+            "category": op_category,
+            "action": op_action,
+            "success": True,
+        }
+    elif intent == "MODIFICATION":
         progress_callback("started", "Initiating project modification workflow...")
         result: ProjectModificationResult = plan_and_execute_modification(
             query=user_query,

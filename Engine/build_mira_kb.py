@@ -650,6 +650,16 @@ def build_mira_knowledge_base(
     staging_dir.rename(target_dir)
     log(f"[Lifecycle] Successfully deployed MIRA Knowledge Base to: {target_dir}")
 
+    # Synchronize secondary mirror location in Vault storage
+    alt_mirror = SYSTEM_STORAGE_DIR / "knowledge_base" / "knowledge_base_mira"
+    if alt_mirror.resolve() != target_dir.resolve():
+        try:
+            safely_remove_directory(alt_mirror)
+            shutil.copytree(target_dir, alt_mirror)
+            log(f"[Lifecycle] Synchronized secondary knowledge base mirror: {alt_mirror}")
+        except Exception as e:
+            log(f"[Lifecycle] Secondary mirror notice: {e}")
+
     # 7. Apply Security, Manifest, and Access Protections
     log("[Pipeline] Applying Vault cryptographic protection, manifest sealing, and folder locks...")
     manifest_ok = False
