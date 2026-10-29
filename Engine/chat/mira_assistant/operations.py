@@ -134,13 +134,14 @@ def handle_daily_suggestions_op(query: str, tool_params: Optional[Dict[str, Any]
             else:
                 lines.append("- *No action items were synthesized. Check back after your next work session!*")
 
-            # Add weather & news highlights if present
-            weather = rec.get("weather") or {}
-            curr = weather.get("current") or {}
-            loc = weather.get("location") or {}
-            if curr:
-                lines.append("")
-                lines.append(f"🌤️ **Weather**: {curr.get('condition', 'N/A')}, {curr.get('temperature_celsius', 'N/A')}°C ({loc.get('name', 'Local')})")
+            # Add weather & news highlights only if explicitly requested in query
+            if any(w in q for w in ("weather", "briefing", "full")):
+                weather = rec.get("weather") or {}
+                curr = weather.get("current") or {}
+                loc = weather.get("location") or {}
+                if curr:
+                    lines.append("")
+                    lines.append(f"🌤️ **Weather**: {curr.get('condition', 'N/A')}, {curr.get('temperature_celsius', 'N/A')}°C ({loc.get('name', 'Local')})")
 
             return "\n".join(lines)
         except Exception as e:
@@ -194,28 +195,29 @@ def handle_daily_suggestions_op(query: str, tool_params: Optional[Dict[str, Any]
         box = "[x]" if (idx - 1) in completed_indices else "[ ]"
         lines.append(f"- {box} **{idx}.** {text}")
 
-    # Append localized weather briefing if present in record
-    weather = rec.get("weather") or {}
-    curr = weather.get("current") or {}
-    loc = weather.get("location") or {}
-    if curr:
-        lines.append("")
-        lines.append(
-            f"🌤️ **Weather**: {curr.get('condition', 'Current')} | "
-            f"Temp: **{curr.get('temperature_celsius', 'N/A')}°C** (feels like {curr.get('apparent_temperature_celsius', 'N/A')}°C) | "
-            f"Humidity: {curr.get('relative_humidity_percent', 'N/A')}% | "
-            f"Location: {loc.get('name', 'Detected Area')}"
-        )
+    # Append localized weather briefing or news headlines only if specifically requested
+    is_briefing_requested = any(w in q for w in ("briefing", "weather", "news", "headline", "headlines", "full"))
+    if is_briefing_requested:
+        weather = rec.get("weather") or {}
+        curr = weather.get("current") or {}
+        loc = weather.get("location") or {}
+        if curr and not any(w in q for w in ("news", "headline", "headlines")):
+            lines.append("")
+            lines.append(
+                f"🌤️ **Weather**: {curr.get('condition', 'Current')} | "
+                f"Temp: **{curr.get('temperature_celsius', 'N/A')}°C** (feels like {curr.get('apparent_temperature_celsius', 'N/A')}°C) | "
+                f"Humidity: {curr.get('relative_humidity_percent', 'N/A')}% | "
+                f"Location: {loc.get('name', 'Detected Area')}"
+            )
 
-    # Append top curated news headlines if present in record
-    news_items = rec.get("news") or []
-    if news_items:
-        lines.append("")
-        lines.append("📰 **Top Briefing Headlines**:")
-        for item in news_items[:3]:
-            title = item.get("title", "")
-            source = item.get("source", "News")
-            lines.append(f"- **{source}**: {title}")
+        news_items = rec.get("news") or []
+        if news_items and not any(w in q for w in ("weather",)):
+            lines.append("")
+            lines.append("📰 **Top Briefing Headlines**:")
+            for item in news_items[:3]:
+                title = item.get("title", "")
+                source = item.get("source", "News")
+                lines.append(f"- **{source}**: {title}")
 
     return "\n".join(lines)
 
@@ -240,7 +242,7 @@ def handle_api_key_op(query: str, tool_params: Optional[Dict[str, Any]] = None) 
     from config import CONFIG
 
     # 1. Check for AI priorities update
-    pri_update_match = re.search(r'\b(?:set|change|update)\s+ai\s+priorities\s+(?:to\s+)?([a-zA-Z0-9_,\s]+)\b', q_lower)
+    pri_update_match = re.search(r'\b(?:set|change|update)\s+ai\s+priorit(?:y|ies)\s+(?:to\s+)?([a-zA-Z0-9_,\s]+)\b', q_lower)
     if pri_update_match:
         raw_list = pri_update_match.group(1).replace(",", " ").split()
         cleaned_priorities = [p.strip().lower() for p in raw_list if p.strip().lower() in ("groq", "gemini")]
@@ -248,7 +250,7 @@ def handle_api_key_op(query: str, tool_params: Optional[Dict[str, Any]] = None) 
             config_storage.update_ai_priorities(cleaned_priorities)
             CONFIG.ai_priorities = cleaned_priorities
             CONFIG.active_provider = cleaned_priorities[0]
-            return f"✅ **AI Priorities Updated**: `{' -> '.join(cleaned_priorities)}`. Primary active provider set to **{cleaned_priorities[0]}**."
+            return f"✅ **AI Priorities Updated**: Failover Order: `{' -> '.join(cleaned_priorities)}`. Active AI Provider set to **{cleaned_priorities[0]}**."
 
     if any(w in q_lower for w in ("what are the ai priorities", "show ai priorities", "ai priority order")):
         pris = config_storage.get_ai_priorities()
@@ -399,7 +401,66 @@ def handle_api_key_op(query: str, tool_params: Optional[Dict[str, Any]] = None) 
             config_storage.delete_voice_model("elevenlabs")
             return f"🗑️ **Cleared ElevenLabs API keys** from Vault."
 
-    # 4. Default: List / View all configured API keys with secure masking
+    # 4. Check for targeted count queries (e.g., "how many ElevenLabs keys we have")
+    is_count_query = bool(re.search(r'\b(how\s+many|count|number\s+of)\b', q_lower))
+    if is_count_query:
+        if any(w in q_lower for w in ("elevenlabs", "eleven labs", "eleven_labs", "voice")):
+            vkeys = config_storage.get_voice_keys("elevenlabs").get("keys") or []
+            return f"We have **{len(vkeys)}** ElevenLabs keys configured."
+        elif "groq" in q_lower:
+            gcfg = config_storage.get_ai_config("groq") or {}
+            gkeys = gcfg.get("keys", [])
+            return f"We have **{len(gkeys)}** Groq keys configured."
+        elif any(w in q_lower for w in ("gemini", "google")):
+            gemcfg = config_storage.get_ai_config("gemini") or {}
+            gemkeys = gemcfg.get("keys", [])
+            return f"We have **{len(gemkeys)}** Gemini keys configured."
+        elif any(w in q_lower for w in ("gnews", "news")):
+            gnkeys = (config_storage.get_gnews_config() or {}).get("keys", [])
+            return f"We have **{len(gnkeys)}** GNews keys configured."
+        elif any(w in q_lower for w in ("total", "all", "keys")):
+            ai_configs = config_storage.get_all_ai_configs()
+            total_ai = sum(len(item.get("keys") or []) for item in ai_configs)
+            gnews_count = len((config_storage.get_gnews_config() or {}).get("keys") or [])
+            voice_count = len((config_storage.get_voice_keys("elevenlabs") or {}).get("keys") or [])
+            return f"We have **{total_ai + gnews_count + voice_count}** total API keys configured."
+
+    # 5. Check for targeted provider status inquiries
+    is_all_overview = any(w in q_lower for w in ("all", "table", "everything", "overview", "what api keys do i have", "show all keys", "list all keys", "all keys", "credentials", "configured api keys"))
+    if not is_all_overview:
+        if any(w in q_lower for w in ("elevenlabs", "eleven labs", "eleven_labs", "voice key", "voice keys")):
+            vkeys = config_storage.get_voice_keys("elevenlabs").get("keys") or []
+            vprev = f"`{_mask_key(vkeys[0])}`" if vkeys else "*No key set*"
+            status = "🟢 Active" if vkeys else "⚪ Standby (Browser TTS)"
+            return f"**ElevenLabs Keys**: **{len(vkeys)}** configured (Preview: {vprev}, Status: {status})."
+        elif "groq" in q_lower:
+            gcfg = config_storage.get_ai_config("groq") or {}
+            gkeys = gcfg.get("keys", [])
+            curr = gcfg.get("current_key", 0)
+            previews = ", ".join([f"`{_mask_key(k)}`" for k in gkeys[:3]]) if gkeys else "*No keys set*"
+            status = "🟢 Active" if (CONFIG.get_active_provider() or "").lower() == "groq" else "⚪ Standby"
+            return f"**Groq Keys**: **{len(gkeys)}** configured (Active: #{curr+1 if gkeys else 0}, Previews: {previews}, Status: {status})."
+        elif any(w in q_lower for w in ("gemini", "google key", "google keys")):
+            gemcfg = config_storage.get_ai_config("gemini") or {}
+            gemkeys = gemcfg.get("keys", [])
+            curr = gemcfg.get("current_key", 0)
+            previews = ", ".join([f"`{_mask_key(k)}`" for k in gemkeys[:3]]) if gemkeys else "*No keys set*"
+            status = "🟢 Active" if (CONFIG.get_active_provider() or "").lower() == "gemini" else "⚪ Standby"
+            return f"**Gemini Keys**: **{len(gemkeys)}** configured (Active: #{curr+1 if gemkeys else 0}, Previews: {previews}, Status: {status})."
+        elif any(w in q_lower for w in ("gnews", "news key", "news keys")):
+            gn = config_storage.get_gnews_config() or {}
+            gnkeys = gn.get("keys", [])
+            gprev = f"`{_mask_key(gnkeys[0])}`" if gnkeys else "*No key set*"
+            return f"**GNews Keys**: **{len(gnkeys)}** configured (Preview: {gprev}, Status: {'🟢 Active' if gnkeys else '⚪ Optional'})."
+        elif any(term in q_lower for term in ("active provider", "current provider", "active ai provider", "which provider is active")):
+            priorities = config_storage.get_ai_priorities()
+            active_prov = CONFIG.get_active_provider() or (priorities[0] if priorities else "None")
+            return f"The active AI provider is **{active_prov.title()}**."
+        elif any(term in q_lower for term in ("failover order", "failover priority", "ai priorities", "priority order", "failover")):
+            priorities = config_storage.get_ai_priorities()
+            return f"The AI provider failover order is: `{' -> '.join(priorities)}`."
+
+    # 6. Default: List / View all configured API keys with secure masking (overview table only)
     ai_configs = config_storage.get_all_ai_configs()
     priorities = config_storage.get_ai_priorities()
     active_prov = CONFIG.get_active_provider() or (priorities[0] if priorities else "None")
@@ -437,10 +498,6 @@ def handle_api_key_op(query: str, tool_params: Optional[Dict[str, Any]] = None) 
     vkeys = config_storage.get_voice_keys("elevenlabs").get("keys") or []
     vprev = f"`{_mask_key(vkeys[0])}`" if vkeys else "*No key set*"
     lines.append(f"| **ElevenLabs** | {len(vkeys)} | - | {vprev} | {'🟢 Active' if vkeys else '⚪ Standby (Browser TTS)'} |")
-
-    lines.append("")
-    lines.append("> [!NOTE]")
-    lines.append("> Keys are masked for your privacy. You can update any key directly in chat using: `update gemini api key to <YOUR_KEY>`.")
 
     return "\n".join(lines)
 
@@ -547,8 +604,19 @@ def handle_config_op(query: str, user_profile: Optional[Dict[str, Any]] = None) 
             lines.append(f"| **{a.get('app_name', 'Unknown')}** | {allowed} | {a.get('last_discovered', 'N/A')} |")
         return "\n".join(lines)
 
-    # 6. Default: View User Profile
+    # 6. Specific user profile field queries vs full profile
     prof = config_storage.get_configuration("user_details") or user_profile or {}
+    if re.search(r'\b(what\s+is|tell\s+me)\s+(?:my\s+)?name\b', q_lower) or q_lower in ("my name", "what is my name"):
+        return f"Your name is **{prof.get('user_name', 'User')}**."
+    elif any(w in q_lower for w in ("my city", "my location", "where do i live", "my country", "my state", "where am i")):
+        loc_str = f"{prof.get('city', 'Not set')}, {prof.get('state', '')} {prof.get('country', '')}".strip(" ,")
+        return f"Your location is set to **{loc_str}**."
+    elif "my role" in q_lower:
+        return f"Your role is set to **{prof.get('role', 'Not set')}**."
+    elif any(w in q_lower for w in ("my notes", "user notes", "my instructions")):
+        return f"Your notes are: **{prof.get('notes', 'None')}**."
+
+    # Default: View User Profile
     lines = [
         "### 👤 MIRA User Profile & Identity",
         "",
@@ -570,9 +638,37 @@ def handle_streams_and_services_op(query: str) -> str:
     Executes live inspections of Redis streams, consumer groups, pending entries (PEL),
     and validates service health across the MIRA ecosystem.
     """
-    lines = ["### 📡 MIRA Live Telemetry & Redis Stream Status", ""]
+    q_lower = query.strip().lower()
+    is_only_services = any(w in q_lower for w in ("services status", "service status", "services online", "microservice", "microservices", "mira health", "health status", "is vault running", "is engine running", "is operator running", "is broker running")) and not any(w in q_lower for w in ("stream", "streams", "telemetry", "all"))
+    is_only_streams = any(w in q_lower for w in ("redis stream", "redis streams", "stream status", "stream lengths", "consumer group", "pel status")) and not any(w in q_lower for w in ("health", "services", "telemetry", "all"))
 
-    # 1. Connect to Redis with protocol=2 for full Windows compatibility
+    # Service health check section
+    service_lines = [
+        "### 🏥 Subsystem Microservice Health:",
+        "| Microservice | Host / Port | Status | Protocol |",
+        "| :--- | :---: | :---: | :---: |",
+    ]
+    import requests
+    services_to_check = [
+        ("Vault", "http://127.0.0.1:9001/health", "HTTP (PyNaCl/SQLite)"),
+        ("Message Broker", "http://127.0.0.1:9002/health", "HTTP/REST (Redis)"),
+        ("Operator", "http://127.0.0.1:9003/health", "HTTP (Rust Native)"),
+        ("Engine", "http://127.0.0.1:9007/health", "HTTP / WebSocket (FastAPI)"),
+    ]
+    for name, url, proto in services_to_check:
+        try:
+            resp = requests.get(url, timeout=0.8)
+            status_text = "🟢 Online (200 OK)" if resp.status_code == 200 else f"🟡 Status {resp.status_code}"
+        except Exception:
+            status_text = "🔴 Offline / Busy"
+        port_str = url.split(":")[-1].split("/")[0]
+        service_lines.append(f"| **{name}** | `127.0.0.1:{port_str}` | {status_text} | {proto} |")
+
+    if is_only_services:
+        return "\n".join(service_lines)
+
+    # Redis streams check section
+    stream_lines = ["### 📡 MIRA Live Telemetry & Redis Stream Status", ""]
     try:
         import redis
         r = redis.Redis(host="127.0.0.1", port=6379, protocol=2, socket_timeout=1.5)
@@ -580,7 +676,7 @@ def handle_streams_and_services_op(query: str) -> str:
         redis_online = True
     except Exception as e:
         redis_online = False
-        lines.append(f"⚠️ **Redis Connection**: Offline or unreachable ({e}).")
+        stream_lines.append(f"⚠️ **Redis Connection**: Offline or unreachable ({e}).")
 
     if redis_online:
         stream_keys = [
@@ -592,8 +688,8 @@ def handle_streams_and_services_op(query: str) -> str:
             ("mira:stream:user_knowledge_base", "Knowledge Base Sync"),
         ]
 
-        lines.append("| Redis Stream | Description | Length | Consumer Groups | Pending (PEL) |")
-        lines.append("| :--- | :--- | :---: | :---: | :---: |")
+        stream_lines.append("| Redis Stream | Description | Length | Consumer Groups | Pending (PEL) |")
+        stream_lines.append("| :--- | :--- | :---: | :---: | :---: |")
 
         for key, desc in stream_keys:
             try:
@@ -601,35 +697,16 @@ def handle_streams_and_services_op(query: str) -> str:
                 groups = r.xinfo_groups(key) if r.exists(key) else []
                 group_count = len(groups)
                 total_pending = sum(g.get("pending", 0) for g in groups)
-                lines.append(f"| `{key.split(':')[-1]}` | {desc} | **{xlen}** | {group_count} | {total_pending} |")
+                stream_lines.append(f"| `{key.split(':')[-1]}` | {desc} | **{xlen}** | {group_count} | {total_pending} |")
             except Exception:
-                lines.append(f"| `{key.split(':')[-1]}` | {desc} | *idle* | 0 | 0 |")
+                stream_lines.append(f"| `{key.split(':')[-1]}` | {desc} | *idle* | 0 | 0 |")
 
-    # 2. Check service health endpoints
-    lines.append("")
-    lines.append("### 🏥 Subsystem Microservice Health:")
-    lines.append("| Microservice | Host / Port | Status | Protocol |")
-    lines.append("| :--- | :---: | :---: | :---: |")
+    if is_only_streams:
+        return "\n".join(stream_lines)
 
-    import requests
-    services_to_check = [
-        ("Vault", "http://127.0.0.1:9001/health", "HTTP (PyNaCl/SQLite)"),
-        ("Message Broker", "http://127.0.0.1:9002/health", "HTTP/REST (Redis)"),
-        ("Operator", "http://127.0.0.1:9003/health", "HTTP (Rust Native)"),
-        ("Engine", "http://127.0.0.1:9007/health", "HTTP / WebSocket (FastAPI)"),
-    ]
-
-    for name, url, proto in services_to_check:
-        try:
-            resp = requests.get(url, timeout=0.8)
-            status_text = "🟢 Online (200 OK)" if resp.status_code == 200 else f"🟡 Status {resp.status_code}"
-        except Exception:
-            status_text = "🔴 Offline / Busy"
-
-        port_str = url.split(":")[-1].split("/")[0]
-        lines.append(f"| **{name}** | `127.0.0.1:{port_str}` | {status_text} | {proto} |")
-
-    return "\n".join(lines)
+    # Combined full telemetry
+    combined = stream_lines + [""] + service_lines
+    return "\n".join(combined)
 
 
 # =============================================================================
