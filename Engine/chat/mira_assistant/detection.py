@@ -68,6 +68,15 @@ MIRA_SUBSYSTEM_TERMS = [
     ("voice", "list"),
     ("voices", "support"),
     ("voice", "support"),
+    ("tool", "voice"),
+    ("voice from text",),
+    ("generate voice",),
+    ("text to speech",),
+    ("tts",),
+    ("stt",),
+    ("speech to text",),
+    ("voice", "using"),
+    ("voice", "use"),
     # Direct project identity and creator questions
     ("what are you",),
     ("who are you",),
@@ -87,6 +96,12 @@ MIRA_SUBSYSTEM_TERMS = [
     ("daily agenda",),
     ("refresh suggestions",),
     ("regenerate suggestions",),
+    ("give", "suggestions"),
+    ("list", "suggestions"),
+    ("show", "suggestions"),
+    ("suggestions", "here"),
+    ("suggestions", "today"),
+    ("list of suggestions",),
     # API key and credential terms
     ("api key",),
     ("api keys",),
@@ -99,6 +114,14 @@ MIRA_SUBSYSTEM_TERMS = [
     ("elevenlabs key",),
     ("gnews key",),
     ("weather key",),
+    ("keys", "add"),
+    ("key", "add"),
+    ("add", "keys"),
+    ("add", "key"),
+    ("update", "keys"),
+    ("update", "key"),
+    ("my keys",),
+    ("configured keys",),
     # Configuration and user identity terms
     ("user profile",),
     ("user details",),
@@ -149,6 +172,8 @@ def is_personal_activity_query(query: str) -> bool:
     mira_op_tokens = (
         "suggestion", "suggestions", "briefing", "agenda",
         "api key", "api keys", "llm key", "llm keys", "ai priorities",
+        "add key", "add keys", "update key", "update keys", "set key", "set keys",
+        "my keys", "show keys", "list keys", "keys configured",
         "redis stream", "user profile", "worker config", "mira status"
     )
     if any(tok in q for tok in mira_op_tokens):

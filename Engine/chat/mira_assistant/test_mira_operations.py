@@ -45,6 +45,10 @@ class TestMIRAOperationsDetection(unittest.TestCase):
         queries = [
             "What are my daily suggestions?",
             "Show my daily suggestions checklist",
+            "give me list of suggestions here",
+            "give me suggestions",
+            "list of suggestions",
+            "show suggestions",
             "refresh daily suggestions",
             "generate daily suggestions now",
             "mark suggestion 1 as completed",
@@ -66,6 +70,9 @@ class TestMIRAOperationsDetection(unittest.TestCase):
         queries = [
             "What API keys do I have configured?",
             "Show all my LLM API keys",
+            "add keys",
+            "add key",
+            "add elevenlabs key",
             "update gemini api key to AIzaSyTestKey12345",
             "set groq api key to gsk_test1234567890",
             "change AI failover priority to groq, gemini",
