@@ -137,7 +137,8 @@ Strict Rules:
 3. For each story, provide a concise 1-2 sentence factual summary.
 4. Do not include extra information, unsolicited suggestions, or commentary.
 5. All titles and summaries must be strictly in English.
-6. Return strictly a valid JSON array of 3 objects:
+6. Strict Grounding: Do not invent headlines, sources, or URLs. Every selected story must correspond to one of the Candidate news stories above, preserving its exact URL and source.
+7. Return strictly a valid JSON array of 3 objects:
 [
   {{
     "title": "Clean headline",

@@ -161,23 +161,37 @@ PERSONAL_ACTIVITY_KEYWORDS = [
     "my activity", "my work today", "my timeline", "did i open", "did i use",
     "screen time", "apps i used", "what project was i working on yesterday",
     "summarize my day", "summarize my work", "what was i editing at",
-    "how long was i in", "did i visit", "what tab was open"
+    "how long was i in", "did i visit", "what tab was open",
+    "what did i", "what was i", "what i did", "what i was", "what i worked on",
+    "my activities", "my work", "activity history", "work history", "screen activities",
+    "detailed version", "give me detailed", "more details", "in detail", "full details",
+    "detailed timeline", "activity summary", "timeline of my", "what happened today",
+    "what happened yesterday"
 ]
 
 
 def is_personal_activity_query(query: str) -> bool:
-    """Detects if query is asking about personal screen time / desktop activity."""
+    """Dynamically detects if a query is asking about personal screen time / desktop activity."""
     q = query.strip().lower()
     # Explicitly protect MIRA operational queries from being misclassified as personal screen activity
     mira_op_tokens = (
         "suggestion", "suggestions", "briefing", "agenda",
         "api key", "api keys", "llm key", "llm keys", "ai priorities",
         "add key", "add keys", "update key", "update keys", "set key", "set keys",
-        "my keys", "show keys", "list keys", "keys configured",
+        "my keys", "show keys", "list keys", "keys configured", "check key",
+        "key present", "key preset", "is this key", "in vault", "vault", "database",
+        "config.db", "gnews", "groq", "gemini", "elevenlabs",
         "redis stream", "user profile", "worker config", "mira status"
     )
     if any(tok in q for tok in mira_op_tokens):
         return False
+
+    words = set(re.findall(r'\b\w+\b', q))
+    has_self = bool(words.intersection({"i", "my", "me", "we"}))
+    has_act = any(w in words for w in {"do", "did", "doing", "done", "work", "worked", "working", "screen", "activity", "activities", "history", "timeline", "open", "opened", "use", "used", "using", "edit", "edited", "editing", "detail", "details", "detailed"})
+    if has_self and has_act:
+        return True
+
     return any(w in q for w in PERSONAL_ACTIVITY_KEYWORDS)
 
 
@@ -189,17 +203,29 @@ def is_mira_conversation_history(chat_history: List[Dict[str, Any]]) -> bool:
     if not chat_history:
         return False
         
-    mira_history_terms = (
-        "mira", "vault", "message broker", "operator", "subsystem",
-        "engine", "memory", "client", "qdrant", "langgraph",
+    # Check the most recent user turn: if user was asking about personal activity,
+    # then this conversation is about personal activity, not MIRA codebase!
+    for turn in reversed(chat_history[-4:]):
+        role = turn.get("role") or ("user" if "user" in turn else "ai")
+        content = str(turn.get("content") or turn.get("user") or turn.get("ai") or "").lower()
+        if role == "user":
+            if is_personal_activity_query(content):
+                return False
+            break
+
+    mira_technical_terms = (
+        "vault", "message broker", "operator", "subsystem",
         "redis stream", "decision_node", "llm failover", "perceptual hash",
-        "mira assistant"
+        "mira assistant", "mira architecture", "mira codebase", "mira modules",
+        "mira os", "mira system", "build_mira_kb", "qwen3-embedding",
+        "key", "keys", "api key", "api keys", "gnews", "groq", "gemini",
+        "elevenlabs", "voice model", "database", "daily suggestion", "daily suggestions",
     )
 
     recent_history = chat_history[-4:]
     for turn in reversed(recent_history):
         content = str(turn.get("content") or turn.get("user") or turn.get("ai") or "").lower()
-        if any(kw in content for kw in mira_history_terms):
+        if any(kw in content for kw in mira_technical_terms):
             return True
             
     return False
@@ -268,11 +294,11 @@ def detect_mira_query(
             "how do i configure that", "what parameters", "why is that", "explain more",
             "how do i run it", "is it possible to", "can we add", "test that", "can you show"
         ]
-        if any(ind in q for ind in follow_up_indicators) or (len(q.split()) <= 6 and not any(w in q for w in ("weather", "news", "hello", "hi"))):
+        if any(ind in q for ind in follow_up_indicators):
             is_follow_up = True
 
     # Check if this qualifies as a MIRA query
-    op_info = is_mira_operational_query(query)
+    op_info = is_mira_operational_query(query, chat_history=chat_history)
     is_operational = op_info is not None
 
     if has_mira_word or has_subsystem_match or has_file_path or is_follow_up or is_operational:

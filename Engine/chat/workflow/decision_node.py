@@ -63,10 +63,33 @@ def _fast_route_heuristic(query: str, chat_history: List[Dict[str, Any]]) -> Opt
     clean_q = re.sub(r'[^\w\s]', '', q).strip()
 
     # Check for personal activity terms
-    activity_words = ("what did i", "what was i", "my activity", "my work", "my screen", "screen time", "did i open", "did i use", "was i using")
+    activity_words = (
+        "what did i", "what was i", "what i did", "what i was", "what i worked on",
+        "my activity", "my activities", "my work", "my screen", "screen time",
+        "did i open", "did i use", "was i using", "detailed version", "give me detailed",
+        "more details", "detailed timeline", "my day", "what was on my screen"
+    )
     is_activity_query = any(w in q for w in activity_words)
 
-    # 0. Check for MIRA query or project modification request (0ms fast path)
+    # 1. Pure conversational chit-chat / greetings / farewells / thanks (even if addressing MIRA by name)
+    clean_no_mira = re.sub(r'\b(mira|meera)\b', '', clean_q).strip()
+    greetings = {
+        "hello", "hi", "hey", "good morning", "good afternoon", "good evening",
+        "how are you", "thanks", "thank you", "bye", "goodbye", "cool", "ok", "okay", "awesome", "great", "nice"
+    }
+    is_greeting = (
+        clean_q in greetings
+        or clean_no_mira in greetings
+        or any(clean_q.startswith(g + " ") for g in ("hello", "hi", "hey"))
+        or any(clean_no_mira.startswith(g + " ") for g in ("hello", "hi", "hey", "good morning", "good afternoon", "good evening"))
+    )
+    if is_greeting and not is_activity_query:
+        # If greeting does not contain specific system commands/technical inquiries
+        technical_tokens = ("redis", "vault", "broker", "suggestion", "key", "config", "stream", "database", "weather", "news", "who are you", "what are you")
+        if not any(k in q for k in technical_tokens):
+            return "general_llm", "Fast heuristic: Conversational greeting/chit-chat", {}
+
+    # 2. Check for MIRA query or project modification request (0ms fast path)
     if not is_activity_query:
         try:
             mira_match = detect_mira_query(query, chat_history)
@@ -74,15 +97,6 @@ def _fast_route_heuristic(query: str, chat_history: List[Dict[str, Any]]) -> Opt
                 return mira_match
         except Exception as e:
             logger.debug(f"[DecisionNode] Fast MIRA heuristic check notice: {e}")
-
-    # 1. Pure conversational chit-chat / greetings / farewells / thanks
-    greetings = {
-        "hello", "hi", "hey", "good morning", "good afternoon", "good evening",
-        "how are you", "who are you", "what can you do", "thanks", "thank you",
-        "bye", "goodbye", "cool", "ok", "okay", "awesome", "great", "nice"
-    }
-    if clean_q in greetings or any(clean_q.startswith(g + " ") for g in ("hello", "hi", "hey")):
-        return "general_llm", "Fast heuristic: Conversational greeting/chit-chat", {}
 
     # 2. Unambiguous weather query (when not asking about past personal activity)
     weather_terms = ("weather", "forecast", "is it raining", "will it rain", "temperature outside", "rain forecast", "how hot is it", "how cold is it")
@@ -194,8 +208,8 @@ User Query: "{user_query}"
 
 Routes:
 - "mira_assistant": Questions or actions regarding MIRA (daily suggestions, viewing/refreshing/completing suggestions, API keys, configurations, user profile, Redis streams, databases, system health, architecture, code) or project modifications.
-- "history_answer": Query answered directly from the conversation history above.
-- "user_activity": Questions about user's personal screen activity, apps used, or work history.
+- "history_answer": Query answered directly from the conversation history above. ONLY use this when the conversation history ALREADY contains the complete answer (e.g. rephrasing, clarifying a specific fact already stated, summarizing prior text). DO NOT use this if the user is asking for more details, a detailed version, timestamps, full logs, or new information not explicitly present in the history text!
+- "user_activity": Questions about user's personal screen activity, apps used, daily progress, or work history (including requests for detailed versions, expanded timelines, or specific timeframes of past activity).
 - "weather": Weather conditions, forecasts, or temperature.
 - "news": Recent headlines or news articles.
 - "general_llm": General knowledge, coding, or chit-chat not requiring tools.
@@ -205,9 +219,9 @@ Return strictly a valid JSON object matching this schema:
   "route": "mira_assistant" | "user_activity" | "history_answer" | "weather" | "news" | "general_llm",
   "reasoning": "<brief 1-sentence explanation in English>",
   "is_follow_up": <true | false>,
-  "can_answer_from_history": <true | false>,
+  "can_answer_from_history": <true | false>, // MUST be false if user is asking for more details, a detailed version, or logs not already in history!
   "detail_level": "overview" | "detailed" | "concise",
-  "resolved_query": "<string in English>",
+  "resolved_query": "<string in English>", // For follow-up queries, resolve reference (e.g. "give me detailed version" -> "Give me a detailed version of my activity on October 25th")
   "retrieval_plan": {{
     "search_query": "<string or null>",
     "app_name": "<string or null>",
@@ -255,8 +269,15 @@ All values must be in English. Output only the JSON object with no surrounding t
 
             # Route resolution
             if can_answer_from_history and candidate_route in ("history_answer", "user_activity") and chat_history:
-                route = "history_answer"
-                reasoning = "Can be answered directly from session conversation history."
+                detail_terms = ("detailed", "in detail", "more detail", "more details", "expand", "breakdown", "timestamps", "full log", "full timeline", "everything i did")
+                is_asking_more_detail = any(dt in user_query.lower() for dt in detail_terms) or detail_level == "detailed"
+                if is_asking_more_detail:
+                    route = "user_activity"
+                    reasoning = "User is requesting detailed activity logs requiring Knowledge Base retrieval."
+                    can_answer_from_history = False
+                else:
+                    route = "history_answer"
+                    reasoning = "Can be answered directly from session conversation history."
             elif candidate_route in ACTIVE_ROUTE_TARGETS:
                 route = candidate_route
             elif candidate_route in AVAILABLE_ROUTES:
@@ -270,6 +291,27 @@ All values must be in English. Output only the JSON object with no surrounding t
     except Exception as e:
         log_error(f"[DecisionNode] LLM decision call failed: {e}. Applying heuristic fallback.")
         route, reasoning = _heuristic_fallback(user_query, chat_history)
+
+    # If routed to user_activity and time_expression is missing on a follow-up, inherit from recent user query
+    if route == "user_activity":
+        time_expr = retrieval_plan.get("time_expression")
+        if (not time_expr or str(time_expr).lower() in ("none", "null", "")) and chat_history:
+            for turn in reversed(chat_history):
+                role = turn.get("role") or ("user" if "user" in turn else "ai")
+                content = str(turn.get("content") or turn.get("user") or "").strip()
+                if role == "user" and content and content != user_query:
+                    try:
+                        from dateutil import parser as dt_parser
+                        dt_cand = dt_parser.parse(content, fuzzy=True, default=datetime(now_in_tz.year, 1, 1))
+                        if dt_cand:
+                            time_expr = dt_cand.strftime("%B %d, %Y")
+                            retrieval_plan["time_expression"] = time_expr
+                            log(f"[DecisionNode] Inherited time_expression '{time_expr}' from previous user turn")
+                            break
+                    except Exception:
+                        pass
+        if time_expr and (not resolved_query or resolved_query == user_query):
+            resolved_query = f"{user_query} for {time_expr}"
 
     log(f"[DecisionNode] Final decision: route='{route}' (reasoning: {reasoning}, is_follow_up={is_follow_up}, detail={detail_level})")
 

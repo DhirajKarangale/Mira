@@ -70,7 +70,7 @@ interface ChatStoreState {
   checkAndRecoverPendingState: (sessionId: string, messages: ChatMessage[]) => boolean;
 }
 
-const MAX_SENDING_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes timeout
+const MAX_SENDING_TIMEOUT_MS = 60 * 1000; // 60 seconds auto-recovery timeout
 
 export const useChatStore = create<ChatStoreState>()(
   persist(
@@ -190,7 +190,21 @@ export const useChatStore = create<ChatStoreState>()(
         if (!sessionId) return;
         set((state) => {
           const current = state.sessionMessagesCache[sessionId] || [];
-          const updated = current.map((m) => (m.id === tempId ? savedUserMessage : m));
+          let replaced = false;
+          const updated = current.map((m) => {
+            if (
+              m.id === tempId ||
+              (m.id.startsWith("temp-") &&
+                (m.content === savedUserMessage.content || m.content.trim() === savedUserMessage.content.trim()))
+            ) {
+              replaced = true;
+              return savedUserMessage;
+            }
+            return m;
+          });
+          if (!replaced && !updated.some((m) => m.id === savedUserMessage.id)) {
+            updated.push(savedUserMessage);
+          }
           return {
             sessionMessagesCache: {
               ...state.sessionMessagesCache,
@@ -206,20 +220,46 @@ export const useChatStore = create<ChatStoreState>()(
           const current = state.sessionMessagesCache[sessionId] || [];
           let updated = [...current];
 
-          // 1. If userMessage is provided, replace any temp- matching items
+          // 1. If userMessage is provided, reconcile it with temp- messages
           if (userMessage) {
+            let replaced = false;
             updated = updated.map((m) => {
               if (
                 m.id.startsWith("temp-") &&
                 (m.content === userMessage.content || m.content.trim() === userMessage.content.trim())
               ) {
+                replaced = true;
                 return userMessage;
               }
               return m;
             });
+
+            // If no exact match on temp-, but there's a temp- message, replace the latest temp-
+            if (!replaced) {
+              for (let i = updated.length - 1; i >= 0; i--) {
+                if (updated[i].id.startsWith("temp-")) {
+                  updated[i] = userMessage;
+                  replaced = true;
+                  break;
+                }
+              }
+            }
+
+            // Ensure userMessage is present in the list before aiMessage
+            if (!updated.some((m) => m.id === userMessage.id)) {
+              updated.push(userMessage);
+            }
+          } else {
+            // User message was not provided (e.g. from poller or fallback resolution).
+            // DO NOT filter out temp- user messages! Confirm them so the user query is NEVER lost.
+            updated = updated.map((m) =>
+              m.id.startsWith("temp-")
+                ? { ...m, id: `confirmed-${m.id.replace("temp-", "")}` }
+                : m
+            );
           }
 
-          // 2. Remove remaining temp- items for this session
+          // 2. Safely strip any remaining unconfirmed ghost temp- messages
           updated = updated.filter((m) => !m.id.startsWith("temp-"));
 
           // 3. Append aiMessage if provided and not yet in the list

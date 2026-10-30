@@ -888,10 +888,15 @@ def news_node(state: AgentState) -> Dict[str, Any]:
 User Query: "{user_query}"
 
 Live news article search did not return direct matches.
-Respond strictly to the user's query with a short, simple, and precise factual answer based on your knowledge.
-Do not include extra information, unsolicited suggestions, or unrelated content.
-Respond strictly in English.
-"""
+
+Instructions:
+1. Respond strictly to the user's query with a short, simple, and precise answer based on confirmed knowledge.
+2. Do not include extra information, unsolicited suggestions, or unrelated content.
+3. Do not hallucinate or invent breaking events, live scores, stock prices, or recent dates.
+4. If live news is not available, state clearly that live updates were not retrieved for this query.
+5. Respond strictly in English.
+
+Response:"""
         try:
             from llm import call_llm
             llm_answer = call_llm(fallback_prompt, work="general")

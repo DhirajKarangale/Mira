@@ -59,107 +59,161 @@ async def process_chat_job(job: Dict[str, Any], worker_id: int = 1) -> bool:
 
     log(f"[ChatWorker-{worker_id}] Processing job {job_id} for session {session_id}...")
 
-    # Step 1: Retrieve chat history and user profile from memory
-    history = await asyncio.to_thread(get_entire_session_history, session_id)
-    if not history:
-        history = await asyncio.to_thread(get_session_memory, session_id)
-    user_profile = await asyncio.to_thread(get_user_profile)
-    log(f"[ChatWorker-{worker_id}] Retrieved {len(history)} history turns for user '{user_profile.get('user_name', 'User')}' (session {session_id})")
-
-    # Step 2: Execute LangGraph agentic workflow
-    ai_response = ""
-    from config import CONFIG
-    if not CONFIG.has_any_llm_key(force_refresh=False):
-        log_error(f"[ChatWorker-{worker_id}] No LLM API keys configured. Rejecting workflow execution for job {job_id}.")
-        ai_response = (
-            "You don't have any LLM API keys configured. You cannot send messages until you add an LLM key "
-            "in Configurations > AI Config (/configurations/ai-config)."
-        )
-    else:
+    try:
+        # Step 1: Retrieve chat history and user profile from memory
         try:
-            ai_response = await run_chat_workflow(
-                job_id=job_id,
+            history = await asyncio.to_thread(get_entire_session_history, session_id)
+            if not history:
+                history = await asyncio.to_thread(get_session_memory, session_id)
+        except Exception as e:
+            log_error(f"[ChatWorker-{worker_id}] Failed to load history for {session_id}: {e}")
+            history = []
+
+        try:
+            user_profile = await asyncio.to_thread(get_user_profile)
+        except Exception as e:
+            log_error(f"[ChatWorker-{worker_id}] Failed to load profile: {e}")
+            user_profile = {}
+
+        log(f"[ChatWorker-{worker_id}] Retrieved {len(history)} history turns for user '{user_profile.get('user_name', 'User')}' (session {session_id})")
+
+        # Step 2: Execute LangGraph agentic workflow
+        ai_response = ""
+        from config import CONFIG
+        if not CONFIG.has_any_llm_key(force_refresh=False):
+            log_error(f"[ChatWorker-{worker_id}] No LLM API keys configured. Rejecting workflow execution for job {job_id}.")
+            ai_response = (
+                "You don't have any LLM API keys configured. You cannot send messages until you add an LLM key "
+                "in Configurations > AI Config (/configurations/ai-config)."
+            )
+        else:
+            try:
+                ai_response = await run_chat_workflow(
+                    job_id=job_id,
+                    session_id=session_id,
+                    user_query=user_query,
+                    chat_history=history,
+                    user_profile=user_profile,
+                )
+            except Exception as e:
+                log_error(f"[ChatWorker-{worker_id}] Workflow failed for job {job_id}: {mask_sensitive(str(e))}")
+                user_name = user_profile.get("user_name", "there")
+                ai_response = (
+                    f"I apologize {user_name}, but I was unable to complete your request at this moment. "
+                    "Please check your configured AI provider keys in Configurations > AI Config."
+                )
+
+        # Step 3: Resolve user message reference and store AI response in Vault
+        now_str = time.strftime("%Y-%m-%d %H:%M:%S")
+        pre_saved_user = job.get("user_message")
+        user_msg_id = job.get("user_message_id")
+
+        if pre_saved_user and isinstance(pre_saved_user, dict):
+            saved_user = pre_saved_user
+        elif user_msg_id:
+            saved_user = {
+                "id": user_msg_id,
+                "session_id": session_id,
+                "role": "user",
+                "content": user_query,
+                "chat_name": chat_name,
+                "created_at": now_str,
+            }
+        else:
+            saved_user = {
+                "id": str(uuid.uuid4()),
+                "session_id": session_id,
+                "role": "user",
+                "content": user_query,
+                "chat_name": chat_name,
+                "created_at": now_str,
+            }
+
+        saved_ai = None
+        try:
+            saved_ai = await asyncio.to_thread(
+                save_chat_to_vault,
                 session_id=session_id,
-                user_query=user_query,
-                chat_history=history,
-                user_profile=user_profile,
+                role="ai",
+                content=ai_response,
+                chat_name=chat_name,
             )
         except Exception as e:
-            log_error(f"[ChatWorker-{worker_id}] Workflow failed for job {job_id}: {mask_sensitive(str(e))}")
-            user_name = user_profile.get("user_name", "there")
-            ai_response = (
-                f"I apologize {user_name}, but I was unable to complete your request at this moment. "
-                "Please check your configured AI provider keys in Configurations > AI Config."
-            )
+            log_error(f"[ChatWorker-{worker_id}] Failed to save AI response to Vault: {e}")
 
+        if not saved_ai:
+            saved_ai = {
+                "id": str(uuid.uuid4()),
+                "session_id": session_id,
+                "role": "ai",
+                "content": ai_response,
+                "chat_name": chat_name,
+                "created_at": now_str,
+            }
 
-    # Step 3: Resolve user message reference and store AI response in Vault
-    now_str = time.strftime("%Y-%m-%d %H:%M:%S")
-    pre_saved_user = job.get("user_message")
-    user_msg_id = job.get("user_message_id")
+        # Step 4: Store conversation in Redis short-term memory
+        try:
+            await asyncio.to_thread(store_session_memory, session_id, user_query, ai_response)
+        except Exception as e:
+            log_error(f"[ChatWorker-{worker_id}] Failed to store short-term session memory: {e}")
 
-    if pre_saved_user and isinstance(pre_saved_user, dict):
-        saved_user = pre_saved_user
-    elif user_msg_id:
-        saved_user = {
-            "id": user_msg_id,
-            "session_id": session_id,
-            "role": "user",
-            "content": user_query,
-            "chat_name": chat_name,
-            "created_at": now_str,
-        }
-    else:
-        saved_user = {
+        # Step 5: Send response to the Client through WebSockets using existing job_id and session_id
+        await ws_manager.broadcast_chat_response(
+            job_id=job_id,
+            session_id=session_id,
+            user_message=saved_user,
+            ai_message=saved_ai,
+            status="completed",
+        )
+
+        # Step 6: Automatic Chat Naming - If chat_name is null or empty, enqueue for naming
+        if not chat_name or not str(chat_name).strip():
+            chat_naming_queue.enqueue(session_id)
+
+        # Step 7: Acknowledge and remove job from Message Broker & Redis active tracking
+        removed = await asyncio.to_thread(acknowledge_chat_job, job_id)
+        if not removed:
+            log_error(f"[ChatWorker-{worker_id}] Warning: Failed to acknowledge job {job_id}")
+        await asyncio.to_thread(remove_active_chat_session_broker, session_id)
+
+        log(f"[ChatWorker-{worker_id}] Successfully finished job {job_id} for session {session_id}")
+        return True
+
+    except Exception as fatal_e:
+        log_error(f"[ChatWorker-{worker_id}] Fatal error handling job {job_id}: {fatal_e}")
+        now_str = time.strftime("%Y-%m-%d %H:%M:%S")
+        fallback_user = job.get("user_message") or {
             "id": str(uuid.uuid4()),
             "session_id": session_id,
             "role": "user",
             "content": user_query,
-            "chat_name": chat_name,
             "created_at": now_str,
         }
-
-    saved_ai = await asyncio.to_thread(
-        save_chat_to_vault,
-        session_id=session_id,
-        role="ai",
-        content=ai_response,
-        chat_name=chat_name,
-    )
-    if not saved_ai:
-        saved_ai = {
+        fallback_ai = {
             "id": str(uuid.uuid4()),
             "session_id": session_id,
             "role": "ai",
-            "content": ai_response,
+            "content": "I apologize, but I encountered an unexpected error processing your request. Please try again.",
             "chat_name": chat_name,
             "created_at": now_str,
         }
-
-    # Step 4: Store conversation in Redis short-term memory
-    await asyncio.to_thread(store_session_memory, session_id, user_query, ai_response)
-
-    # Step 5: Send response to the Client through WebSockets using existing job_id and session_id
-    await ws_manager.broadcast_chat_response(
-        job_id=job_id,
-        session_id=session_id,
-        user_message=saved_user,
-        ai_message=saved_ai,
-        status="completed",
-    )
-
-    # Step 6: Automatic Chat Naming - If chat_name is null or empty, enqueue for naming
-    if not chat_name or not str(chat_name).strip():
-        chat_naming_queue.enqueue(session_id)
-
-    # Step 7: Acknowledge and remove job from Message Broker & Redis active tracking
-    removed = await asyncio.to_thread(acknowledge_chat_job, job_id)
-    if not removed:
-        log_error(f"[ChatWorker-{worker_id}] Warning: Failed to acknowledge job {job_id}")
-    await asyncio.to_thread(remove_active_chat_session_broker, session_id)
-
-    log(f"[ChatWorker-{worker_id}] Successfully finished job {job_id} for session {session_id}")
-    return True
+        try:
+            await ws_manager.broadcast_chat_response(
+                job_id=job_id,
+                session_id=session_id,
+                user_message=fallback_user,
+                ai_message=fallback_ai,
+                status="completed",
+                error=str(fatal_e),
+            )
+        except Exception:
+            pass
+        try:
+            await asyncio.to_thread(acknowledge_chat_job, job_id)
+            await asyncio.to_thread(remove_active_chat_session_broker, session_id)
+        except Exception:
+            pass
+        return False
 
 
 class ChatWorkerManager:

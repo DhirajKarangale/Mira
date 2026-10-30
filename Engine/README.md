@@ -110,6 +110,12 @@ Engine/
 - **`daily_suggestions.py`**: Synthesizes morning project continuation agendas and task lists by analyzing the previous day's vector memories.
 - **`news_fetcher.py` & `weather_fetcher.py`**: Gathers localized weather and curated technical news to embed within the executive morning brief.
 
+#### 6. MIRA Assistant Tool & LangGraph Workflow (`chat/mira_assistant/` & `chat/workflow/`)
+- **`chat/workflow/`**: LangGraph cognitive reasoning graph orchestrating `decision_node.py`, `user_activity_node.py`, `history_node.py`, `synthesis_node.py`, `weather_tool.py`, and `news_tool.py`.
+- **`mira_assistant/operations.py`**: Direct conversational access to all MIRA subsystems: instant API key verification and updates across Vault tables (`gnews_config`, `ai_configs`, `voice_models`), user identity management, engine worker tuning, app screen capture permissions, Redis stream telemetry, and daily suggestions checklist toggles.
+- **`mira_assistant/guidance.py` & `retrieval.py`**: Semantic search across the master `knowledge_base_mira` Qdrant vector database for authoritative system architecture guidance.
+- **`mira_assistant/safety.py` & `executor.py`**: Strict prohibition of destructive deletion commands with non-destructive code synthesis and syntax verification.
+
 ---
 
 <a id="3-how-it-communicates"></a><a id="how-it-communicates"></a>

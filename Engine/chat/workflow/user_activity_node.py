@@ -59,6 +59,22 @@ def user_activity_node(state: AgentState) -> Dict[str, Any]:
         app_filter = query_params.get("app_name")
         raw_time_expr = query_params.get("time_expression") or user_query
 
+    # If raw_time_expr is missing or empty on a follow-up, inherit from recent user turn in history
+    if (not raw_time_expr or str(raw_time_expr).lower() in ("none", "null", "")) and chat_history:
+        for turn in reversed(chat_history):
+            role = turn.get("role") or ("user" if "user" in turn else "ai")
+            content = str(turn.get("content") or turn.get("user") or "").strip()
+            if role == "user" and content and content != user_query:
+                try:
+                    from dateutil import parser as dt_parser
+                    dt_match = dt_parser.parse(content, fuzzy=True, default=datetime(now_in_tz.year, 1, 1))
+                    if dt_match:
+                        raw_time_expr = dt_match.strftime("%B %d, %Y")
+                        log(f"[UserActivityNode] Fallback inherited date '{raw_time_expr}' from previous user turn")
+                        break
+                except Exception:
+                    pass
+
     # Step 4B: Parse time boundaries into UTC Unix timestamps
     start_ts, end_ts, time_desc = parse_time_expression(raw_time_expr, user_tz, now_in_tz)
     log(f"[UserActivityNode] Time window: '{time_desc}' (start_ts={start_ts}, end_ts={end_ts}), app_filter='{app_filter}', query='{search_query}'")
@@ -119,11 +135,12 @@ def user_activity_node(state: AgentState) -> Dict[str, Any]:
 
     # Formulate factual activity response using low temperature (0.0)
     if not records:
-        activity_answer = f"No activity records were found for {time_desc}."
+        activity_answer = f"No screen activities were recorded for {time_desc}."
     else:
+        effective_query = state.get("resolved_query") or user_query
         activity_answer = _formulate_activity_response(
             user_name=user_profile.get("user_name", "User"),
-            user_query=user_query,
+            user_query=effective_query,
             time_desc=time_desc,
             records=records,
             detail_level=detail_level,
@@ -243,9 +260,10 @@ def _formulate_activity_response(
     Budgets evidence tokens to avoid provider rate limit / 413 errors.
     """
     is_stage_or_project_query = any(k in user_query.lower() for k in ("stage", "status", "current", "latest", "now", "progress", "project", "projects"))
+    max_blocks = 40 if detail_level == "detailed" else 20
     
     # Intelligently cluster continuous records into cohesive session blocks spanning the FULL timeframe
-    session_blocks = _build_session_blocks(records, is_project_query=is_stage_or_project_query, max_blocks=20)
+    session_blocks = _build_session_blocks(records, is_project_query=is_stage_or_project_query, max_blocks=max_blocks)
 
     direct_lines: List[str] = []
     evidence_items: List[str] = []
@@ -259,6 +277,17 @@ def _formulate_activity_response(
     direct_timeline = "\n".join(direct_lines)
     evidence_text = "\n".join(evidence_items)
 
+    if detail_level == "detailed":
+        detail_instruction = (
+            "- Provide an informative, comprehensive chronological breakdown of the user's activities with specific times, application names, documents, windows, and tasks accomplished."
+        )
+    elif detail_level == "concise":
+        detail_instruction = "- Provide a direct, pinpoint factual answer addressing only the specific question asked."
+    else:
+        detail_instruction = (
+            "- Provide a clear, structured overview of the user's primary activities and timeframes organized chronologically (e.g. morning, afternoon, evening) highlighting key accomplishments."
+        )
+
     prompt = f"""You are MIRA.
 
 User Query: "{user_query}"
@@ -267,16 +296,15 @@ Time Range: {time_desc}
 Verified Screen Activity Events:
 {evidence_text}
 
-Strict Rules:
-1. Respond strictly to the user's query with a short, simple, and precise answer based only on the verified events above.
-2. Do not include extra information, unsolicited suggestions, conversational filler, or unrelated content.
-3. State specific documents, files, websites, or tools only when confirmed by the data.
-4. Distinguish between applications and projects. Never call an application a project, and never treat UI labels like 'main' or 'master' as project names.
-5. Do not invent or assume actions or details. If an activity is unclear, state only what is known.
-6. If asked about project stage or status, state the confirmed status directly from the evidence without disclaimers.
-7. Respond strictly in English.
+Instructions:
+1. Respond strictly to the user's query with a short, simple, and precise answer based solely on the verified screen activity events above.
+2. Structure according to detail level ({detail_level}):
+   {detail_instruction}
+3. Do not include extra information, unsolicited suggestions, or unrelated commentary.
+4. Strict Grounding: Rely strictly and solely on the verified screen activity events above. Never hallucinate, invent, extrapolate, or guess files, code changes, websites, meetings, timestamps, or tasks not present in the verified events.
+5. Respond strictly in English.
 
-Answer:"""
+Response:"""
     try:
         raw_ans = call_llm(prompt, work="activity_retrieval").strip()
         # Accept only if valid text and not JSON parameters or unavailable error

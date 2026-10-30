@@ -1473,7 +1473,9 @@ You can manage your morning briefings and daily task lists entirely through conv
 #### 2. API Key Management & Credential Retrieval
 Manage your multi-provider credentials without leaving the conversation:
 - **List Configured Keys**: *"What API keys do I have configured?"* or *"Show my API keys"*. Displays all AI providers (Groq, Gemini), Voice providers (ElevenLabs), and News providers (GNews) along with total key counts, active key indices, failover priorities, and securely masked key previews (e.g. `gsk_JDF3...6Y00`).
-- **Update or Add API Keys**: *"Update my Gemini API key to AIzaSy..."*, *"Add Groq API key: gsk_..."*, or *"Set GNews key to abc..."*. Stores keys into the encrypted Vault database (`config.db.enc`), derive hardware keyring secrets, and reloads Engine memory in real time.
+- **Update or Add API Keys**: *"Update my Gemini API key to AIzaSy..."*, *"Add Groq API key: gsk_..."*, or *"Add this key in gnews '813d6f72fd1e39ff7f832069b82d63fe'"*. Stores keys into the encrypted Vault database (`config.db.enc`), derives hardware keyring secrets, appends without wiping existing keys, and reloads Engine memory in real time.
+- **Check Key Presence & Instant DB Verification**: *"Check if this key is present '813d6f72fd1e39ff7f832069b82d62fd'"*, *"Is this key in vault?"*, or *"Check if this key is preset"*. Immediately checks live Vault tables across GNews, Groq, Gemini, ElevenLabs, and OpenWeather, returning exact key index, provider, and active status with zero LLM hallucination.
+- **Key Counts & Provider Totals**: *"How manys gnews keys are present?"*, *"How many groq keys do I have?"*. Directly returns the factual count of configured keys for any provider.
 - **Reorder AI Failover Priorities**: *"Set AI priorities to Groq, Gemini"* or *"What are the AI priorities?"*. Changes dynamic inference provider order so failovers occur according to your preference.
 - **Remove Credentials**: *"Clear Groq API keys"* or *"Remove Gemini key"*. Removes designated credentials safely from Vault storage.
 

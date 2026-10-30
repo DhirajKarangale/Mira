@@ -22,6 +22,15 @@ if (SCRIPT_DIR.parent / "Vault").exists() and (SCRIPT_DIR.parent / "Client").exi
 else:
     ROOT_DIR = SCRIPT_DIR
 
+try:
+    from dotenv import load_dotenv
+    if (ROOT_DIR / ".env").exists():
+        load_dotenv(ROOT_DIR / ".env")
+    if (ROOT_DIR / ".env.local").exists():
+        load_dotenv(ROOT_DIR / ".env.local")
+except Exception:
+    pass
+
 if sys.stdout is None or not hasattr(sys.stdout, "write"):
     try:
         sys.stdout = open(ROOT_DIR / "mira_backend.log", "a", encoding="utf-8", buffering=1)

@@ -256,102 +256,289 @@ def handle_api_key_op(query: str, tool_params: Optional[Dict[str, Any]] = None) 
         pris = config_storage.get_ai_priorities()
         return f"⚡ **Current AI Failover Priority Order**: `{' -> '.join(pris)}` (Active Provider: **{CONFIG.get_active_provider()}**)."
 
-    # 2. Check for update / set / add API key action
-    update_patterns = [
-        # e.g. "update my gemini api key to AIzaSy..."
-        r'\b(?:update|set|add|change|store|save)\s+(?:my\s+)?([a-zA-Z0-9_\-]+)\s+(?:api\s+)?key\s*(?:to|=|:)?\s*([a-zA-Z0-9_\-\.\:\+]+)\b',
-        # e.g. "update api key for groq to gsk_..."
-        r'\b(?:update|set|add|change|store|save)\s+(?:my\s+)?(?:api\s+)?key\s+(?:for\s+)?([a-zA-Z0-9_\-]+)\s*(?:to|=|:)?\s*([a-zA-Z0-9_\-\.\:\+]+)\b',
-        # e.g. "add key sk_... for elevenlabs"
-        r'\b(?:update|set|add|change|store|save)\s+(?:my\s+)?(?:api\s+)?key\s+([a-zA-Z0-9_\-\.\:\+]{16,})\s+(?:for\s+)?([a-zA-Z0-9_\-]+)\b',
-        # e.g. "elevenlabs key: sk_..."
-        r'\b([a-zA-Z0-9_\-]+)\s+(?:api\s+)?key\s*(?:is|:|=)\s*([a-zA-Z0-9_\-\.\:\+]+)\b',
-    ]
+def _check_key_presence_in_vault(candidate_key: str) -> Dict[str, Any]:
+    """
+    Directly queries all Vault configuration tables to verify whether a given API key exists.
+    Checks GNews, Groq, Gemini, ElevenLabs, and OpenWeather configurations.
+    """
+    clean_cand = str(candidate_key).strip().lower().strip("'\"`")
+    if not clean_cand:
+        return {"found": False, "key": candidate_key, "provider": None, "counts": {}}
 
-    prov_identified = None
-    key_identified = None
+    import config_storage
+    config_storage.init_config_storage()
 
-    for pat in update_patterns:
-        m = re.search(pat, q, re.IGNORECASE)
-        if m:
-            g1, g2 = m.group(1).strip(), m.group(2).strip()
-            if len(g1) > 20 and len(g2) <= 15:
-                key_identified = g1
-                prov_identified = g2.lower()
-            else:
-                prov_identified = g1.lower()
-                key_identified = g2
+    # 1. Check GNews
+    gn = config_storage.get_gnews_config() or {}
+    gkeys = gn.get("keys", [])
+    for idx, k in enumerate(gkeys):
+        k_clean = str(k).strip().lower()
+        if clean_cand == k_clean or clean_cand in k_clean:
+            return {
+                "found": True,
+                "provider": "GNews",
+                "key": k,
+                "index": idx + 1,
+                "total": len(gkeys),
+            }
+
+    # 2. Check AI Providers (Groq, Gemini, etc.)
+    ai_configs = config_storage.get_all_ai_configs()
+    groq_count = 0
+    gemini_count = 0
+    for item in ai_configs:
+        prov = item.get("llm_provider", "Unknown")
+        keys = item.get("keys") or []
+        if prov.lower() == "groq":
+            groq_count = len(keys)
+        elif prov.lower() == "gemini":
+            gemini_count = len(keys)
+        for idx, k in enumerate(keys):
+            k_clean = str(k).strip().lower()
+            if clean_cand == k_clean or clean_cand in k_clean:
+                return {
+                    "found": True,
+                    "provider": prov.title(),
+                    "key": k,
+                    "index": idx + 1,
+                    "total": len(keys),
+                }
+
+    # 3. Check Voice Models (ElevenLabs)
+    vkeys = (config_storage.get_voice_keys("elevenlabs") or {}).get("keys", [])
+    for idx, k in enumerate(vkeys):
+        k_clean = str(k).strip().lower()
+        if clean_cand == k_clean or clean_cand in k_clean:
+            return {
+                "found": True,
+                "provider": "ElevenLabs",
+                "key": k,
+                "index": idx + 1,
+                "total": len(vkeys),
+            }
+
+    # 4. Check Weather Config
+    try:
+        wcfg = config_storage.get_configuration("weather_config") or {}
+        wkey = wcfg.get("api_key")
+        if wkey and (clean_cand == str(wkey).strip().lower() or clean_cand in str(wkey).strip().lower()):
+            return {
+                "found": True,
+                "provider": "OpenWeather",
+                "key": wkey,
+                "index": 1,
+                "total": 1,
+            }
+    except Exception:
+        pass
+
+    return {
+        "found": False,
+        "key": candidate_key,
+        "counts": {
+            "GNews": len(gkeys),
+            "Groq": groq_count or len(config_storage.get_ai_config("groq").get("keys", [])),
+            "Gemini": gemini_count or len(config_storage.get_ai_config("gemini").get("keys", [])),
+            "ElevenLabs": len(vkeys),
+        }
+    }
+
+
+def _extract_key_and_provider(
+    query: str,
+    chat_history: Optional[List[Dict[str, Any]]] = None
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Robustly extracts candidate API key and provider from natural language query.
+    Supports single/double quotes, MD5/SHA hex hashes, standard vendor prefixes,
+    and conversational context.
+    """
+    KNOWN_PROVIDERS = {
+        "gnews": "gnews", "news": "gnews",
+        "groq": "groq",
+        "gemini": "gemini", "google": "gemini",
+        "elevenlabs": "elevenlabs", "eleven_labs": "elevenlabs", "voice": "elevenlabs",
+        "openweather": "openweather", "weather": "openweather",
+    }
+
+    q = query.strip()
+    q_lower = q.lower()
+
+    # 1. Candidate key extraction
+    cand_key = None
+    # a. Quoted token of length >= 16
+    q_match = re.search(r"['\"`]([a-zA-Z0-9_\-\.\:\+]{16,})['\"`]", q)
+    if q_match:
+        cand_key = q_match.group(1).strip()
+
+    # b. Known vendor key prefixes or 32-64 char hex hashes (e.g. GNews MD5 hash)
+    if not cand_key:
+        prefix_match = re.search(r'\b(gsk_[a-zA-Z0-9_\-]{20,}|AIzaSy[a-zA-Z0-9_\-]{20,}|sk_[a-zA-Z0-9_\-]{20,}|[a-fA-F0-9]{32,64})\b', q)
+        if prefix_match:
+            cand_key = prefix_match.group(1).strip()
+
+    # c. Trailing token after key/to/=/is/in/for
+    if not cand_key:
+        token_match = re.search(r'\b(?:key|to|=|:|is|in|for)\s*[\'"`]?([a-zA-Z0-9_\-\.\:\+]{16,})[\'"`]?', q, re.IGNORECASE)
+        if token_match:
+            cand_key = token_match.group(1).strip()
+
+    # 2. Provider extraction
+    provider = None
+    for prov_name, canonical in KNOWN_PROVIDERS.items():
+        if re.search(r'\b' + re.escape(prov_name) + r'\b', q_lower):
+            provider = canonical
             break
 
-    # If key wasn't found through normal patterns, check for auto-identifiable key formats
-    if not key_identified:
-        auto_key_match = re.search(r'\b(?:update|set|add|save|store)\s+(?:my\s+)?(?:api\s+)?key\s*(?:to|=|:)?\s*([a-zA-Z0-9_\-\.\:\+]{20,})\b', q, re.IGNORECASE)
-        if auto_key_match:
-            cand_key = auto_key_match.group(1).strip()
-            if cand_key.startswith("AIzaSy"):
-                prov_identified = "gemini"
-                key_identified = cand_key
-            elif cand_key.startswith("gsk_"):
-                prov_identified = "groq"
-                key_identified = cand_key
-            elif cand_key.startswith("sk_"):
-                prov_identified = "elevenlabs"
-                key_identified = cand_key
+    # If provider wasn't found in current query, check chat history
+    if not provider and chat_history:
+        for turn in reversed(chat_history[-3:]):
+            content = str(turn.get("content") or turn.get("user") or turn.get("ai") or "").lower()
+            for prov_name, canonical in KNOWN_PROVIDERS.items():
+                if re.search(r'\b' + re.escape(prov_name) + r'\b', content):
+                    provider = canonical
+                    break
+            if provider:
+                break
 
-    if prov_identified and key_identified:
-        prov_raw = prov_identified
-        new_key = key_identified
-
-        # Normalize provider alias
-        if prov_raw in ("google", "gemini", "gemini-api"):
+    # Auto-detect provider from candidate key prefix if still not determined
+    if not provider and cand_key:
+        if cand_key.startswith("AIzaSy"):
             provider = "gemini"
-        elif prov_raw in ("groq", "groq-api"):
+        elif cand_key.startswith("gsk_"):
             provider = "groq"
-        elif prov_raw in ("elevenlabs", "eleven_labs", "voice"):
+        elif cand_key.startswith("sk_"):
             provider = "elevenlabs"
-        elif prov_raw in ("gnews", "news"):
-            provider = "gnews"
-        elif prov_raw in ("weather", "openweather", "open-meteo"):
-            provider = "openweather"
-        else:
-            provider = prov_raw
 
-        masked = _mask_key(new_key)
+    return provider, cand_key
 
-        if provider in ("gemini", "groq"):
-            config_storage.update_ai_config(
-                provider=provider,
-                add_keys=[new_key],
-                create_if_missing=True,
-            )
-            CONFIG.fetch_from_vault()
-            total = len(CONFIG.get_provider_config(provider).get("keys", []))
-            return f"✅ **API Key Successfully Added & Configured** for provider **{provider.title()}**!\n- Key: `{masked}`\n- Total Keys for {provider.title()}: **{total}**\n- State: Ready for inference."
 
-        elif provider == "gnews":
-            config_storage.update_gnews_config(keys=[new_key])
-            return f"✅ **GNews API Key Successfully Updated**!\n- Key: `{masked}`"
+def handle_api_key_op(
+    query: str,
+    tool_params: Optional[Dict[str, Any]] = None,
+    chat_history: Optional[List[Dict[str, Any]]] = None
+) -> str:
+    """
+    Executes API key retrieval, additions, updates, verification, and priority configuration:
+      - Verify whether a specific API key exists in Vault (instant DB verification)
+      - List all configured keys across LLM, Voice, and News providers with secure masking
+      - Update or add an API key for Gemini, Groq, OpenWeather, GNews, ElevenLabs
+      - Remove an API key
+      - View or reorder AI provider failover priorities
+    """
+    q = query.strip()
+    q_lower = q.lower()
 
-        elif provider == "elevenlabs":
-            config_storage.update_voice_model(provider="elevenlabs", add_keys=[new_key])
-            return f"✅ **ElevenLabs Voice API Key Successfully Added**!\n- Key: `{masked}`"
+    import config_storage
+    config_storage.init_config_storage()
+    from config import CONFIG
 
-        elif provider == "openweather":
-            config_storage.update_configuration("weather_config", {"api_key": new_key})
-            return f"✅ **Weather API Key Successfully Configured**!\n- Key: `{masked}`"
+    # 1. Check for AI priorities update
+    pri_update_match = re.search(r'\b(?:set|change|update)\s+ai\s+priorit(?:y|ies)\s+(?:to\s+)?([a-zA-Z0-9_,\s]+)\b', q_lower)
+    if pri_update_match:
+        raw_list = pri_update_match.group(1).replace(",", " ").split()
+        cleaned_priorities = [p.strip().lower() for p in raw_list if p.strip().lower() in ("groq", "gemini")]
+        if cleaned_priorities:
+            config_storage.update_ai_priorities(cleaned_priorities)
+            CONFIG.ai_priorities = cleaned_priorities
+            CONFIG.active_provider = cleaned_priorities[0]
+            return f"✅ **AI Priorities Updated**: Failover Order: `{' -> '.join(cleaned_priorities)}`. Active AI Provider set to **{cleaned_priorities[0]}**."
 
-        else:
-            config_storage.update_ai_config(provider=provider, add_keys=[new_key], create_if_missing=True)
-            CONFIG.fetch_from_vault()
-            return f"✅ **API Key Stored in Vault** for provider **{provider}** (Key: `{masked}`)."
+    if any(w in q_lower for w in ("what are the ai priorities", "show ai priorities", "ai priority order")):
+        pris = config_storage.get_ai_priorities()
+        return f"⚡ **Current AI Failover Priority Order**: `{' -> '.join(pris)}` (Active Provider: **{CONFIG.get_active_provider()}**)."
 
-    # If the user is requesting to add/update keys but has not yet supplied the key value
-    is_add_request = (
-        (tool_params and tool_params.get("op_action") == "update")
-        or (bool(re.search(r'\b(add|set|update|insert|configure|put|save|store)\b', q_lower)) and bool(re.search(r'\bkeys?\b', q_lower)))
-        or any(w in q_lower for w in ("how to add", "want to add", "new key", "new keys"))
+    # 2. Check for Key Presence / Verification
+    op_action = (tool_params or {}).get("op_action")
+    is_check_intent = (
+        op_action == "check"
+        or bool(re.search(r'\b(is|check|does|verify|find|search|do\s+we\s+have)\b.*\b(present|preset|in\s+vault|configured|saved|exist|exists|stored)\b', q_lower))
+        or bool(re.search(r'\b(is|check|verify)\s+(?:this\s+)?key\b', q_lower))
+        or any(w in q_lower for w in ("is this key present", "check if this key is preset", "check if this key is present", "is this key configured"))
+        or (bool(re.search(r"['\"`]([a-zA-Z0-9_\-\.\:\+]{16,})['\"`]", q)) and any(w in q_lower for w in ("preset", "present", "check", "this")))
     )
-    if is_add_request:
+    if is_check_intent and not any(w in q_lower for w in ("add", "insert", "store", "save", "update", "delete", "remove", "clear")):
+        _, cand_key = _extract_key_and_provider(q, chat_history)
+        if not cand_key:
+            m = re.search(r"['\"`]([a-zA-Z0-9_\-\.\:\+]{10,})['\"`]", q)
+            if m:
+                cand_key = m.group(1).strip()
+            else:
+                m2 = re.search(r'\b([a-zA-Z0-9_\-\.\:\+]{16,})\b', q)
+                if m2:
+                    cand_key = m2.group(1).strip()
+
+        if not cand_key:
+            return "🔑 Please provide the API key you would like to check (e.g., `check if key <YOUR_KEY> is present in vault`)."
+
+        presence_res = _check_key_presence_in_vault(cand_key)
+        masked_cand = _mask_key(cand_key)
+        if presence_res.get("found"):
+            prov_name = presence_res.get("provider", "Vault")
+            idx = presence_res.get("index", 1)
+            total = presence_res.get("total", 1)
+            return (
+                f"🔍 **API Key Verified: Present in Vault!**\n\n"
+                f"- **Provider**: **{prov_name}**\n"
+                f"- **Key**: `{_mask_key(presence_res.get('key'))}`\n"
+                f"- **Slot**: Key #{idx} of {total}\n"
+                f"- **Status**: 🟢 Active and configured in Vault."
+            )
+        else:
+            counts = presence_res.get("counts") or {}
+            counts_str = ", ".join([f"**{p}** ({c} keys)" for p, c in counts.items()])
+            return (
+                f"❌ **API Key Not Found in Vault**\n\n"
+                f"- The key `{masked_cand}` is **not present** in the Vault database.\n"
+                f"- **Checked Providers**: {counts_str or 'GNews, Groq, Gemini, ElevenLabs'}."
+            )
+
+    # 3. Check for update / set / add API key action
+    is_add_action = (
+        op_action == "update"
+        or bool(re.search(r'\b(add|set|update|change|store|save|configure|insert|put)\b', q_lower))
+    )
+    if is_add_action:
+        provider, new_key = _extract_key_and_provider(q, chat_history)
+
+        if provider and new_key:
+            masked = _mask_key(new_key)
+            if provider == "gnews":
+                config_storage.update_gnews_config(add_keys=[new_key])
+                CONFIG.fetch_from_vault()
+                gn = config_storage.get_gnews_config() or {}
+                total = len(gn.get("keys", []))
+                return f"✅ **GNews API Key Successfully Added & Stored in Vault**!\n- Key: `{masked}`\n- Total Keys for GNews: **{total}**\n- State: 🟢 Active in Vault."
+            elif provider in ("gemini", "groq"):
+                config_storage.update_ai_config(
+                    provider=provider,
+                    add_keys=[new_key],
+                    create_if_missing=True,
+                )
+                CONFIG.fetch_from_vault()
+                total = len(CONFIG.get_provider_config(provider).get("keys", []))
+                return f"✅ **API Key Successfully Added & Configured** for provider **{provider.title()}**!\n- Key: `{masked}`\n- Total Keys for {provider.title()}: **{total}**\n- State: 🟢 Ready for inference."
+            elif provider == "elevenlabs":
+                config_storage.update_voice_model(provider="elevenlabs", add_keys=[new_key])
+                CONFIG.fetch_from_vault()
+                total = len(config_storage.get_voice_keys("elevenlabs").get("keys", []))
+                return f"✅ **ElevenLabs Voice API Key Successfully Added & Stored in Vault**!\n- Key: `{masked}`\n- Total Keys for ElevenLabs: **{total}**\n- State: 🟢 Active in Vault."
+            elif provider == "openweather":
+                config_storage.update_configuration("weather_config", {"api_key": new_key})
+                CONFIG.fetch_from_vault()
+                return f"✅ **Weather API Key Successfully Configured in Vault**!\n- Key: `{masked}`\n- State: 🟢 Active."
+
+        elif new_key and not provider:
+            masked = _mask_key(new_key)
+            return (
+                f"🔑 I identified the key `{masked}`, but please specify which provider to add it to:\n\n"
+                f"- **GNews**: `add this key in gnews '{new_key}'`\n"
+                f"- **Groq**: `add this key in groq '{new_key}'`\n"
+                f"- **Gemini**: `add this key in gemini '{new_key}'`\n"
+                f"- **ElevenLabs**: `add this key in elevenlabs '{new_key}'`"
+            )
+
+        # If user wants to add/update but hasn't provided key value
         if any(w in q_lower for w in ("elevenlabs", "eleven labs", "voice")):
             return (
                 "🔑 I can add and activate your **ElevenLabs** voice API key directly in Vault!\n\n"
@@ -373,14 +560,21 @@ def handle_api_key_op(query: str, tool_params: Optional[Dict[str, Any]] = None) 
                 "`add groq key <YOUR_KEY>`\n\n"
                 "*(e.g., `add groq key gsk_...`)*"
             )
+        elif any(w in q_lower for w in ("gnews", "news")):
+            return (
+                "🔑 I can add and activate your **GNews** API key directly in Vault!\n\n"
+                "Please provide your key using this format:\n"
+                "`add gnews key <YOUR_KEY>`\n\n"
+                "*(e.g., `add this key in gnews '...'`)*"
+            )
         else:
             return (
                 "🔑 I can add and configure your API keys directly here in chat!\n\n"
                 "Simply provide the key in one of the following formats:\n"
-                "- **ElevenLabs**: `add elevenlabs key <YOUR_KEY>`\n"
-                "- **Gemini**: `add gemini key <YOUR_KEY>`\n"
+                "- **GNews**: `add this key in gnews '<YOUR_KEY>'`\n"
                 "- **Groq**: `add groq key <YOUR_KEY>`\n"
-                "- **GNews**: `add gnews key <YOUR_KEY>`\n"
+                "- **Gemini**: `add gemini key <YOUR_KEY>`\n"
+                "- **ElevenLabs**: `add elevenlabs key <YOUR_KEY>`\n"
                 "- **OpenWeather**: `add weather key <YOUR_KEY>`\n\n"
                 "Once provided, your key will be securely stored in Vault's encrypted database and activated immediately.\n\n"
                 "You can also view your currently configured keys anytime with **\"What API keys do I have?\"**."
@@ -401,29 +595,29 @@ def handle_api_key_op(query: str, tool_params: Optional[Dict[str, Any]] = None) 
             config_storage.delete_voice_model("elevenlabs")
             return f"🗑️ **Cleared ElevenLabs API keys** from Vault."
 
-    # 4. Check for targeted count queries (e.g., "how many ElevenLabs keys we have")
-    is_count_query = bool(re.search(r'\b(how\s+many|count|number\s+of)\b', q_lower))
+    # 4. Check for targeted count queries (e.g., "how many ElevenLabs keys we have" or "how manys gnews keys are present")
+    is_count_query = bool(re.search(r'\b(how\s+manys?|count|number\s+of)\b', q_lower))
     if is_count_query:
         if any(w in q_lower for w in ("elevenlabs", "eleven labs", "eleven_labs", "voice")):
             vkeys = config_storage.get_voice_keys("elevenlabs").get("keys") or []
-            return f"We have **{len(vkeys)}** ElevenLabs keys configured."
+            return f"We have **{len(vkeys)}** ElevenLabs keys configured in Vault."
         elif "groq" in q_lower:
             gcfg = config_storage.get_ai_config("groq") or {}
             gkeys = gcfg.get("keys", [])
-            return f"We have **{len(gkeys)}** Groq keys configured."
+            return f"We have **{len(gkeys)}** Groq keys configured in Vault."
         elif any(w in q_lower for w in ("gemini", "google")):
             gemcfg = config_storage.get_ai_config("gemini") or {}
             gemkeys = gemcfg.get("keys", [])
-            return f"We have **{len(gemkeys)}** Gemini keys configured."
+            return f"We have **{len(gemkeys)}** Gemini keys configured in Vault."
         elif any(w in q_lower for w in ("gnews", "news")):
             gnkeys = (config_storage.get_gnews_config() or {}).get("keys", [])
-            return f"We have **{len(gnkeys)}** GNews keys configured."
+            return f"We have **{len(gnkeys)}** GNews keys configured in Vault."
         elif any(w in q_lower for w in ("total", "all", "keys")):
             ai_configs = config_storage.get_all_ai_configs()
             total_ai = sum(len(item.get("keys") or []) for item in ai_configs)
             gnews_count = len((config_storage.get_gnews_config() or {}).get("keys") or [])
             voice_count = len((config_storage.get_voice_keys("elevenlabs") or {}).get("keys") or [])
-            return f"We have **{total_ai + gnews_count + voice_count}** total API keys configured."
+            return f"We have **{total_ai + gnews_count + voice_count}** total API keys configured in Vault."
 
     # 5. Check for targeted provider status inquiries
     is_all_overview = any(w in q_lower for w in ("all", "table", "everything", "overview", "what api keys do i have", "show all keys", "list all keys", "all keys", "credentials", "configured api keys"))
@@ -720,10 +914,25 @@ def handle_database_op(query: str) -> str:
     """
     import config_storage
     config_storage.init_config_storage()
+    from config import CONFIG
 
     lines = ["### 🗄️ MIRA Database & Vector Storage Status", ""]
 
-    # 1. Vault SQLite Tables
+    # 1. Configured Credentials in Vault
+    lines.append("#### 🔐 Configured Credentials in Vault:")
+    ai_configs = config_storage.get_all_ai_configs()
+    for item in ai_configs:
+        prov = item.get("llm_provider", "Unknown").title()
+        k_count = len(item.get("keys") or [])
+        lines.append(f"- **{prov} AI Keys**: **{k_count}** configured (Active: #{item.get('current_key', 0) + 1})")
+
+    gn = config_storage.get_gnews_config() or {}
+    lines.append(f"- **GNews API Keys**: **{len(gn.get('keys') or [])}** configured")
+
+    vk = config_storage.get_voice_keys("elevenlabs") or {}
+    lines.append(f"- **ElevenLabs Voice Keys**: **{len(vk.get('keys') or [])}** configured")
+
+    # 2. Vault SQLite Tables
     conn = config_storage._DB_CONN
     if conn:
         try:
@@ -753,15 +962,24 @@ def handle_database_op(query: str) -> str:
         enc_db_path = _REPO_ROOT / "Vault" / "system" / "config.db.enc"
         db_size_kb = round(enc_db_path.stat().st_size / 1024, 2) if enc_db_path.exists() else 0.0
 
+        lines.append("")
+        lines.append("#### 📋 Vault Database Tables & Counts:")
         lines.append(f"- **Encrypted Vault Database**: `Vault/system/config.db.enc` ({db_size_kb} KB)")
         lines.append(f"- **Chat Sessions**: **{sessions_count}** sessions ({messages_count} total messages)")
         lines.append(f"- **Daily Suggestions Records**: **{suggestions_count}** entries")
         lines.append(f"- **Discovered Applications**: **{apps_count}** registered apps")
+        for tbl in ("ai_configs", "gnews_config", "voice_models"):
+            try:
+                cur = conn.execute(f"SELECT count(*) FROM {tbl}")
+                cnt = cur.fetchone()[0]
+                lines.append(f"- **`{tbl}`**: **{cnt}** records")
+            except Exception:
+                pass
 
-    # 2. Memory Qdrant Knowledge Bases
+    # 3. Memory Qdrant Knowledge Bases
     kb_parent = _REPO_ROOT / "Vault" / "system" / "knowledge_base"
     lines.append("")
-    lines.append("**Vector Knowledge Bases (Memory & System):**")
+    lines.append("#### 🧠 Vector Knowledge Bases (Memory & System):")
 
     if kb_parent.exists():
         sub_kbs = [p for p in kb_parent.iterdir() if p.is_dir() and (p / "collection" / "knowledge_base" / "storage.sqlite").exists()]
@@ -786,7 +1004,10 @@ def handle_database_op(query: str) -> str:
 # Master Dispatcher
 # =============================================================================
 
-def is_mira_operational_query(query: str) -> Optional[Tuple[str, str]]:
+def is_mira_operational_query(
+    query: str,
+    chat_history: Optional[List[Dict[str, Any]]] = None
+) -> Optional[Tuple[str, str]]:
     """
     Determines whether a query is an operational request to read or update MIRA data.
     Returns (category, action) or None.
@@ -796,71 +1017,108 @@ def is_mira_operational_query(query: str) -> Optional[Tuple[str, str]]:
     # Exclusions: do not match general non-MIRA suggestions (e.g. food, dinner, movie)
     foreign_suggestion_topics = ("movie", "film", "book", "restaurant", "food", "dinner", "lunch", "breakfast", "gift", "song", "music", "hotel", "vacation", "trip", "travel", "game", "recipe")
     is_foreign_suggestion = any(w in q for w in foreign_suggestion_topics)
+    if is_foreign_suggestion:
+        return None
 
-    # 1. Daily Suggestions Patterns
-    if not is_foreign_suggestion:
-        is_suggestion_query = (
-            any(term in q for term in (
-                "daily suggestion", "daily suggestions", "my suggestions", "today's suggestion",
-                "morning briefing", "daily briefing", "daily agenda", "suggestions checklist", "suggestion checklist",
-                "continuity item", "continuity items", "action item", "action items", "daily tasks",
-                "list of suggestions", "list suggestions", "show suggestions", "give suggestions",
-                "suggestions here", "suggestions list"
-            ))
-            or bool(re.search(r'\b(?:suggestion|suggestions)\b', q) and re.search(r'\b(mark|complete|unmark|check\s*off|finish|done|toggle|refresh|regenerate|generate|history|list|show|give|fetch|view)\b', q))
-            or bool(re.search(r'\b(give|show|get|list|display|view|check|see|read|fetch|what\s+are)\s+(?:me\s+)?(?:the\s+|a\s+|my\s+)?(?:list\s+of\s+|of\s+)?suggestions?\b', q))
-            or bool(re.search(r'\b(?:a\s+)?list\s+of\s+suggestions?\b', q))
-            or bool(re.search(r'\bsuggestions?\s+(?:here|today|now|list|for\s+today)\b', q))
-            or q in ("suggestions", "suggestions list", "my suggestions", "daily suggestions", "list suggestions", "show suggestions", "give suggestions", "list of suggestions")
-            or q.strip(" ?.!").endswith("suggestions")
-            or q.strip(" ?.!").endswith("suggestion")
-        )
+    # Check for candidate key token
+    has_key_token = (
+        bool(re.search(r"['\"`]([a-zA-Z0-9_\-\.\:\+]{16,})['\"`]", query))
+        or bool(re.search(r'\b(gsk_[a-zA-Z0-9_\-]{20,}|AIzaSy[a-zA-Z0-9_\-]{20,}|sk_[a-zA-Z0-9_\-]{20,}|[a-fA-F0-9]{32,64})\b', query))
+    )
 
-        if is_suggestion_query:
-            if re.search(r'\b(mark|complete|unmark|check\s+off|finish|done)\b', q) and (re.search(r'\b\d+\b', q) or "suggestion" in q):
-                return "DAILY_SUGGESTIONS", "complete"
-            elif any(w in q for w in ("refresh", "regenerate", "re-generate", "generate today", "generate daily", "generate", "create new", "generate new", "new suggestions", "new suggestion")):
-                return "DAILY_SUGGESTIONS", "refresh"
-            elif any(w in q for w in ("previous", "yesterday", "past", "history", "earlier")):
-                return "DAILY_SUGGESTIONS", "history"
-            else:
-                return "DAILY_SUGGESTIONS", "view"
+    # Check if recent chat history was about API keys or Vault
+    was_recent_key_chat = False
+    if chat_history:
+        for turn in reversed(chat_history[-3:]):
+            content = str(turn.get("content") or turn.get("user") or turn.get("ai") or "").lower()
+            if any(term in content for term in ("key", "keys", "vault", "gnews", "groq", "gemini", "elevenlabs")):
+                was_recent_key_chat = True
+                break
 
-    # 2. API Key & Credential Patterns
+    # 1. API Key Check / Presence Verification
+    is_presence_query = (
+        bool(re.search(r'\b(is|check|does|verify|find|search|do\s+we\s+have)\b.*\b(present|preset|in\s+vault|configured|saved|exist|exists|stored)\b', q))
+        or bool(re.search(r'\b(is|check|verify)\s+(?:this\s+)?key\b', q))
+        or (has_key_token and any(w in q for w in ("present", "preset", "in vault", "configured", "exist", "exists", "check", "verify", "is this", "this")))
+        or (has_key_token and was_recent_key_chat)
+    )
+    if is_presence_query and not any(w in q for w in ("add", "insert", "store", "save", "update", "delete", "remove", "clear")):
+        return "API_KEYS", "check"
+
+    # 2. Daily Suggestions Patterns
+    is_suggestion_query = (
+        any(term in q for term in (
+            "daily suggestion", "daily suggestions", "my suggestions", "today's suggestion",
+            "morning briefing", "daily briefing", "daily agenda", "suggestions checklist", "suggestion checklist",
+            "continuity item", "continuity items", "action item", "action items", "daily tasks",
+            "list of suggestions", "list suggestions", "show suggestions", "give suggestions",
+            "suggestions here", "suggestions list"
+        ))
+        or bool(re.search(r'\b(?:suggestion|suggestions)\b', q) and re.search(r'\b(mark|complete|unmark|check\s*off|finish|done|toggle|refresh|regenerate|generate|history|list|show|give|fetch|view)\b', q))
+        or bool(re.search(r'\b(give|show|get|list|display|view|check|see|read|fetch|what\s+are)\s+(?:me\s+)?(?:the\s+|a\s+|my\s+)?(?:list\s+of\s+|of\s+)?suggestions?\b', q))
+        or bool(re.search(r'\b(?:a\s+)?list\s+of\s+suggestions?\b', q))
+        or bool(re.search(r'\bsuggestions?\s+(?:here|today|now|list|for\s+today)\b', q))
+        or q in ("suggestions", "suggestions list", "my suggestions", "daily suggestions", "list suggestions", "show suggestions", "give suggestions", "list of suggestions")
+        or q.strip(" ?.!").endswith("suggestions")
+        or q.strip(" ?.!").endswith("suggestion")
+    )
+
+    if is_suggestion_query:
+        if re.search(r'\b(mark|complete|unmark|check\s+off|finish|done)\b', q) and (re.search(r'\b\d+\b', q) or "suggestion" in q):
+            return "DAILY_SUGGESTIONS", "complete"
+        elif any(w in q for w in ("refresh", "regenerate", "re-generate", "generate today", "generate daily", "generate", "create new", "generate new", "new suggestions", "new suggestion")):
+            return "DAILY_SUGGESTIONS", "refresh"
+        elif any(w in q for w in ("previous", "yesterday", "past", "history", "earlier")):
+            return "DAILY_SUGGESTIONS", "history"
+        else:
+            return "DAILY_SUGGESTIONS", "view"
+
+    # 3. API Key & Credential Patterns
     key_terms = (
         "api key", "api keys", "llm key", "llm keys", "ai priorities", "ai priority",
         "failover priority", "failover order", "gemini key", "groq key", "elevenlabs key",
-        "gnews key", "weather key", "openweather key", "voice key", "voice keys", "credentials"
+        "gnews key", "weather key", "openweather key", "voice key", "voice keys", "credentials",
+        "gnews keys", "groq keys", "gemini keys", "elevenlabs keys"
     )
     is_key_query = (
         any(term in q for term in key_terms)
-        or bool(re.search(r'\b(add|update|set|change|remove|delete|clear|show|list|view|check|my|get|configured)\s+.*keys?\b', q))
+        or bool(re.search(r'\b(add|update|set|change|remove|delete|clear|show|list|view|check|my|get|configured|how\s+many|how\s+manys)\s+.*keys?\b', q))
         or bool(re.search(r'\bkeys?\s+(?:configured|set|saved|in\s+vault|list)\b', q))
+        or (has_key_token and any(w in q for w in ("add", "update", "set", "save", "store", "insert", "gnews", "groq", "gemini", "elevenlabs")))
         or q in ("keys", "api keys", "show keys", "my keys", "list keys", "add keys", "update keys")
     )
     if is_key_query:
         if any(w in q for w in ("priority", "failover", "reorder", "order")):
             return "API_KEYS", "priority"
-        elif any(w in q for w in ("update", "set", "add", "change", "store", "save", "configure", "insert", "put")):
+        elif bool(re.search(r'\b(how\s+manys?|count|number\s+of)\b', q)):
+            return "API_KEYS", "count"
+        elif bool(re.search(r'\b(add|set|update|change|store|save|configure|insert|put)\b', q)):
             return "API_KEYS", "update"
-        elif any(w in q for w in ("remove", "delete", "clear", "erase")):
+        elif bool(re.search(r'\b(remove|delete|clear|erase)\b', q)):
             return "API_KEYS", "remove"
         else:
             return "API_KEYS", "list"
 
-    # 3. Stream & Services Patterns
+    # 4. Stream & Services Patterns
     if any(term in q for term in ("redis stream", "redis streams", "message broker stream", "stream status", "consumer group", "pending entries", "pel status", "mira health", "system status", "mira status", "services status", "services running", "microservices", "microservice", "stream:operator_screen", "stream:ocr")):
         return "STREAMS_AND_SERVICES", "view"
 
-    # 4. Configuration & User Profile Patterns
+    # 5. Configuration & User Profile Patterns
     if any(term in q for term in ("user profile", "user details", "who am i in mira", "user role", "user name", "user city", "user location", "worker config", "engine workers", "engine worker", "app permissions", "app capture permissions", "app blacklist", "allowed apps", "screen capture permissions")):
         if any(w in q for w in ("update", "set", "change", "allow", "block", "blacklist", "add")):
             return "CONFIGURATIONS", "update"
         else:
             return "CONFIGURATIONS", "view"
 
-    # 5. Database & Storage Patterns
-    if any(term in q for term in ("vault storage", "vault database", "config.db", "config storage", "database status", "sqlite storage", "memory knowledge bases", "how many chat sessions", "database tables", "database counts", "inspect vault database", "chat messages", "sqlite")):
+    # 6. Database & Storage Patterns (including generic Vault inspections)
+    if any(term in q for term in (
+        "vault storage", "vault database", "config.db", "config storage", "database status",
+        "sqlite storage", "memory knowledge bases", "how many chat sessions", "database tables",
+        "database counts", "inspect vault database", "chat messages", "sqlite",
+        "what is in vault", "what is stored in vault", "what data is in vault",
+        "show vault", "inspect vault", "check vault", "is anything in vault", "is anything added to vault",
+        "vault data", "database data", "what do we have in vault"
+    )) or (bool(re.search(r'\b(vault|database|sqlite)\b', q)) and bool(re.search(r'\b(data|stored|status|tables|inspect|show|check|content)\b', q))):
         return "DATABASES", "view"
 
     return None
@@ -872,12 +1130,13 @@ def execute_mira_operation(
     query: str,
     tool_params: Optional[Dict[str, Any]] = None,
     user_profile: Optional[Dict[str, Any]] = None,
+    chat_history: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """Dispatches operational requests to the respective live handler."""
     if category == "DAILY_SUGGESTIONS":
         return handle_daily_suggestions_op(query, tool_params)
     elif category == "API_KEYS":
-        return handle_api_key_op(query, tool_params)
+        return handle_api_key_op(query, tool_params, chat_history)
     elif category == "CONFIGURATIONS":
         return handle_config_op(query, user_profile)
     elif category == "STREAMS_AND_SERVICES":

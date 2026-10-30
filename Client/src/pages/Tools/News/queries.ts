@@ -12,7 +12,10 @@ export function useGNewsConfigQuery() {
   return useQuery<GNewsConfig>({
     queryKey: GNEWS_QUERY_KEY,
     queryFn: () => vaultService.getGNewsConfig(),
-    staleTime: 1000 * 30,
+    staleTime: 5000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
+    refetchInterval: 10000,
     retry: 2,
   });
 }

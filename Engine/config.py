@@ -206,6 +206,7 @@ class EngineMemoryConfig:
                 self.active_provider = next(iter(self.ai_configs.keys()))
             if success:
                 self._initialized = True
+                self._last_vault_fetch_time = time.time()
         from vault_logger import log as v_log
         v_log(f'Engine configuration initialized from Vault. Priorities: {self.ai_priorities}, Active: {self.active_provider}, User: {self.user_profile.get("user_name", "Unknown")}')
         return success
@@ -259,8 +260,28 @@ class EngineMemoryConfig:
         with self._lock:
             self.active_provider = clean
 
-    def get_provider_config(self, provider: str) -> Dict[str, Any]:
+    def get_provider_config(self, provider: str, force_refresh: bool = False) -> Dict[str, Any]:
         clean = provider.strip().lower()
+        import time
+        now_t = time.time()
+        last_t = getattr(self, '_last_vault_fetch_time', 0.0)
+
+        if force_refresh or (now_t - last_t >= 10.0):
+            try:
+                self.fetch_from_vault()
+            except Exception:
+                pass
+
+        with self._lock:
+            cfg = self.ai_configs.get(clean)
+            if cfg and cfg.get('keys') and not force_refresh:
+                return {'provider': cfg['provider'], 'display_name': cfg.get('display_name', cfg['provider']), 'keys': list(cfg.get('keys', [])), 'current_key': cfg.get('current_key', 0), 'total_keys': cfg.get('total_keys', len(cfg.get('keys', [])))}
+
+        # If no keys in memory or forced, try a quick refresh from Vault or storage
+        try:
+            self.fetch_from_vault()
+        except Exception:
+            pass
         with self._lock:
             cfg = self.ai_configs.get(clean)
             if cfg:
@@ -363,18 +384,23 @@ class EngineMemoryConfig:
         Checks whether any active, non-empty API keys are configured for any LLM provider.
         Protects backend from making unnecessary LLM calls when no keys are available.
         """
-        if self._initialized and not force_refresh:
+        import time
+        now_t = time.time()
+        last_t = getattr(self, '_last_vault_fetch_time', 0.0)
+
+        # Fast path: check in-memory cache if recently fetched (< 10s) and not force_refresh
+        if not force_refresh and (now_t - last_t < 10.0):
             with self._lock:
                 for prov, cfg in self.ai_configs.items():
                     keys = [k for k in cfg.get('keys', []) if str(k).strip()]
                     if keys:
                         return True
 
-        if not self._initialized or force_refresh:
-            try:
-                self.fetch_from_vault()
-            except Exception:
-                pass
+        # If no keys in memory or forced or cache expired (> 10s), refresh from Vault
+        try:
+            self.fetch_from_vault()
+        except Exception:
+            pass
 
         with self._lock:
             for prov, cfg in self.ai_configs.items():
@@ -382,7 +408,7 @@ class EngineMemoryConfig:
                 if keys:
                     return True
 
-        # Direct Vault storage fallback
+        # Direct Vault storage fallback (also triggers Vault's sync_env_keys!)
         try:
             import sys
             vault_dir = Path(__file__).resolve().parent.parent / 'Vault'
@@ -390,10 +416,21 @@ class EngineMemoryConfig:
                 sys.path.append(str(vault_dir))
             import config_storage
             config_storage.init_config_storage()
+            config_storage.sync_env_keys(force=False)
             direct_configs = config_storage.get_all_ai_configs()
             for item in direct_configs:
                 keys = [k for k in item.get('keys', []) if str(k).strip()]
                 if keys:
+                    prov_name = str(item.get('llm_provider', '')).strip().lower()
+                    if prov_name:
+                        with self._lock:
+                            self.ai_configs[prov_name] = {
+                                'provider': prov_name,
+                                'display_name': prov_name,
+                                'keys': keys,
+                                'current_key': int(item.get('current_key', 0)),
+                                'total_keys': len(keys)
+                            }
                     return True
         except Exception:
             pass

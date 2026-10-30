@@ -108,7 +108,9 @@ export function useVoiceProvidersQuery() {
   return useQuery<string[]>({
     queryKey: QUERY_KEYS.voice.providers,
     queryFn: () => vaultService.getVoiceProviders(),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 5000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
   });
 }
 
@@ -116,7 +118,10 @@ export function useVoiceModelsQuery() {
   return useQuery<VoiceModel[]>({
     queryKey: QUERY_KEYS.voice.models,
     queryFn: () => vaultService.getAllVoiceModels(),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 5000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
+    refetchInterval: 10000,
   });
 }
 
@@ -125,7 +130,9 @@ export function useVoiceModelQuery(provider: string) {
     queryKey: QUERY_KEYS.voice.model(provider),
     queryFn: () => vaultService.getVoiceModel(provider),
     enabled: Boolean(provider && provider.trim()),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 5000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
   });
 }
 

@@ -41,17 +41,17 @@ def history_node(state: AgentState) -> Dict[str, Any]:
 
 User Query: "{user_query}"
 
-Conversation History:
+Recent Conversation History:
 {history_text}
 
-Strict Rules:
-1. Respond strictly to the user's query using only facts from the conversation history above.
-2. Provide a short, simple, and precise answer.
-3. Do not include extra information, unsolicited suggestions, or unrelated content.
-4. Do not invent or assume details. If the conversation history does not contain the answer, state clearly that it was not mentioned previously.
+Instructions:
+1. Respond strictly to the user's query with a short, simple, and precise answer using the conversation history above.
+2. Do not include extra information, unsolicited suggestions, or unrelated content.
+3. Strict History Grounding: Rely strictly on what was said above. Never hallucinate or invent statements, commitments, or details not present in the history.
+4. If the requested information was not discussed in the history, state that directly without unsolicited offers or filler.
 5. Respond strictly in English.
 
-Answer:"""
+Response:"""
 
     try:
         raw_response = call_llm(prompt, work="general")

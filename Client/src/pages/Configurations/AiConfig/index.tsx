@@ -26,7 +26,7 @@ import { AddApiKeyCard } from "./components/AddApiKeyCard";
 import { ApiKeyList } from "./components/ApiKeyList";
 import { LlmManagementView } from "./components/LlmManagementView";
 import { getProviderMeta } from "./types";
-import type { AIConfig } from "@/services";
+import { vaultService, type AIConfig } from "@/services";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components";
 
@@ -193,6 +193,11 @@ export const AiConfigPage: FC = () => {
   };
 
   const handleRefresh = async () => {
+    try {
+      await vaultService.syncEnvKeys();
+    } catch {
+      // Best-effort hot sync from .env / environment
+    }
     await Promise.all([
       refetchProviders(),
       refetchPriorities(),

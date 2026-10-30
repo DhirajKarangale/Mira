@@ -10,7 +10,9 @@ export function useAIProvidersQuery() {
   return useQuery<string[]>({
     queryKey: QUERY_KEYS.ai.providers,
     queryFn: () => vaultService.getAIProviders(),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 5000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
   });
 }
 
@@ -18,7 +20,10 @@ export function useAIConfigsQuery() {
   return useQuery<AIConfig[]>({
     queryKey: QUERY_KEYS.ai.configs,
     queryFn: () => vaultService.getAllAIConfigs(),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 5000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
+    refetchInterval: 10000,
   });
 }
 
@@ -27,7 +32,9 @@ export function useAIConfigQuery(provider: string) {
     queryKey: QUERY_KEYS.ai.config(provider),
     queryFn: () => vaultService.getAIConfig(provider),
     enabled: Boolean(provider && provider.trim()),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 5000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
   });
 }
 
@@ -88,7 +95,9 @@ export function useAIPrioritiesQuery() {
   return useQuery<string[]>({
     queryKey: QUERY_KEYS.ai.priorities,
     queryFn: () => vaultService.getAIPriorities(),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 5000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
   });
 }
 

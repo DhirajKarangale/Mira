@@ -45,6 +45,7 @@ export class ChatRouter {
     }
 
     this.isSubmitting = true;
+    let targetSessionId = "";
 
     try {
       const store = useChatStore.getState();
@@ -56,7 +57,7 @@ export class ChatRouter {
       const isNewSession = !hasOpenSessionOnChatScreen;
 
       // Determine target session ID
-      const targetSessionId = hasOpenSessionOnChatScreen && activeSessionId
+      targetSessionId = hasOpenSessionOnChatScreen && activeSessionId
         ? activeSessionId
         : generateUUID();
 
@@ -191,6 +192,9 @@ export class ChatRouter {
         command: cleanCommand,
       };
     } catch (err: unknown) {
+      if (targetSessionId) {
+        useChatStore.getState().clearSendingSession(targetSessionId);
+      }
       const errorMsg = (err as Error)?.message || "Failed to submit voice command to chat.";
       console.error("[ChatRouter] Submission failed:", err);
       toast.error(errorMsg, {

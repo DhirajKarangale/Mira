@@ -67,7 +67,7 @@ def mira_assistant_node(state: Dict[str, Any]) -> Dict[str, Any]:
     op_info = (
         (tool_params.get("op_category"), tool_params.get("op_action"))
         if tool_params.get("op_category")
-        else is_mira_operational_query(user_query)
+        else is_mira_operational_query(user_query, chat_history=chat_history)
     )
 
     if op_info and op_info[0]:
@@ -79,6 +79,7 @@ def mira_assistant_node(state: Dict[str, Any]) -> Dict[str, Any]:
             query=user_query,
             tool_params=tool_params,
             user_profile=user_profile,
+            chat_history=chat_history,
         )
         current_outputs["mira_operation"] = {
             "category": op_category,

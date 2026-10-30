@@ -111,23 +111,41 @@ async def chat_websocket_endpoint(websocket: WebSocket):
             try:
                 import json
                 msg = json.loads(raw_text)
-                if isinstance(msg, dict) and msg.get("type") == "chat_query":
-                    job_id = msg.get("job_id") or str(uuid.uuid4())
-                    session_id = msg.get("session_id") or str(uuid.uuid4())
-                    user_query = msg.get("content") or msg.get("user_query") or ""
-                    chat_name = msg.get("chat_name")
-                    if user_query:
-                        publish_chat_job(
-                            job_id=job_id,
-                            session_id=session_id,
-                            user_query=user_query,
-                            extra_data={"chat_name": chat_name},
-                        )
-                        await websocket.send_json({
-                            "type": "job_queued",
-                            "job_id": job_id,
-                            "session_id": session_id,
-                        })
+                if isinstance(msg, dict):
+                    if msg.get("type") == "ping":
+                        await websocket.send_json({"type": "pong"})
+                        continue
+                    if msg.get("type") == "chat_query":
+                        job_id = msg.get("job_id") or str(uuid.uuid4())
+                        session_id = msg.get("session_id") or str(uuid.uuid4())
+                        user_query = msg.get("content") or msg.get("user_query") or ""
+                        chat_name = msg.get("chat_name")
+                        if user_query:
+                            q_ok = await asyncio.to_thread(
+                                publish_chat_job,
+                                job_id=job_id,
+                                session_id=session_id,
+                                user_query=user_query,
+                                extra_data={"chat_name": chat_name},
+                            )
+                            if not q_ok:
+                                from .worker import process_chat_job
+                                asyncio.create_task(
+                                    process_chat_job(
+                                        {
+                                            "job_id": job_id,
+                                            "session_id": session_id,
+                                            "user_query": user_query,
+                                            "chat_name": chat_name,
+                                        },
+                                        worker_id=0,
+                                    )
+                                )
+                            await websocket.send_json({
+                                "type": "job_queued",
+                                "job_id": job_id,
+                                "session_id": session_id,
+                            })
             except Exception as e:
                 logger.debug(f"Error handling incoming websocket message: {e}")
     except WebSocketDisconnect:
@@ -294,8 +312,26 @@ async def send_chat_message_endpoint(request: SendChatMessageRequest):
             },
         )
         if not queued:
-            logger.warning(f"Failed to queue chat job {job_id} into Message Broker stream.")
+            logger.warning(
+                f"Failed to queue chat job {job_id} into Message Broker stream. "
+                "Executing directly in-process via fallback task to guarantee AI response delivery."
+            )
+            from .worker import process_chat_job
+            fallback_job = {
+                "job_id": job_id,
+                "session_id": session_id,
+                "user_query": content,
+                "chat_name": chat_name,
+                "user_message_id": saved_user_msg.get("id"),
+                "user_message": saved_user_msg,
+            }
+            asyncio.create_task(process_chat_job(fallback_job, worker_id=0))
         else:
+            from .worker import worker_manager
+            if not worker_manager.is_running():
+                logger.info("Chat worker manager was not running; starting chat workers...")
+                await worker_manager.start()
+
             # Record in Redis active tracking for UI cross-screen persistence
             await asyncio.to_thread(
                 set_active_chat_session_broker,

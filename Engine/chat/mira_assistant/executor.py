@@ -170,6 +170,7 @@ Strict Rules:
 3. Preserve all existing coding conventions, docstrings, typing annotations, imports, and comments.
 4. Minimal complete change: Modify only what is strictly necessary to satisfy the request.
 5. Provide COMPLETE, valid file content for any modified or created file.
+6. Strict Grounding: Verify that all imported modules, variables, and referenced functions actually exist in the project or Python standard library. Do not fabricate imaginary libraries, APIs, or unverified endpoints.
 
 Return strictly a valid JSON object matching this schema:
 {{

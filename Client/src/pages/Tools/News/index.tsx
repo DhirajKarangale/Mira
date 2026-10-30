@@ -1,4 +1,5 @@
 import type { FC } from "react";
+import { vaultService } from "@/services";
 import {
   Newspaper,
   ShieldCheck,
@@ -34,6 +35,11 @@ export const NewsToolPage: FC = () => {
   const userCountry = userDetails?.country?.trim() || "Not configured (Defaults to United States)";
 
   const handleRefresh = async () => {
+    try {
+      await vaultService.syncEnvKeys();
+    } catch {
+      // Best effort sync from .env / environment
+    }
     await refetchConfig();
     toast.info("Synchronized latest GNews credentials from Vault.", {
       title: "Vault Synchronized",

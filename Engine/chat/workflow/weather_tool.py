@@ -566,14 +566,11 @@ Current: {cur_cond}, {temp_line.lstrip('- ')}, Humidity: {cur_hum}%, Wind: {cur_
 Daily Forecast:
 {daily_summary}
 
-Strict Rules:
+Instructions:
 1. Respond strictly to the user's query with a short, simple, and precise answer.
-2. Answer only what was asked:
-   - For current weather or temperature, state only current conditions.
-   - For rain, answer only regarding rain.
-   - For forecasts, give a concise summary for the requested days only.
-3. Do not include extra information, unsolicited suggestions, conversational filler, or unrelated content.
-4. Never mention "feels like" unless an apparent temperature is explicitly provided.
+2. Rely solely on the verified weather data above. Never invent, extrapolate, or hallucinate temperatures, precipitation, or conditions.
+3. Do not include extra information, unsolicited suggestions, or unrelated content.
+4. Never mention "feels like" unless an apparent temperature is explicitly provided above.
 5. Respond strictly in English.
 
 Answer:"""

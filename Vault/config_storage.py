@@ -3,6 +3,7 @@ import base64
 from datetime import datetime, timezone
 import json
 import logging
+import os
 import math
 import re
 import sqlite3
@@ -179,6 +180,7 @@ def init_config_storage(schema_path: Optional[Path]=None, enc_db_path: Optional[
         cleanup_duplicate_chats()
     except Exception as e:
         logger.debug(f"Cleanup duplicate chats: {e}")
+    sync_env_keys(force=True)
     save_config_storage(enc_db_path)
 
 def cleanup_duplicate_chats() -> int:
@@ -421,6 +423,277 @@ def update_app_permission(app_id: str, allowed_to_capture: bool) -> Dict[str, An
     logger.info(f"Updated capture permission for '{updated['app_name']}' ({clean_id}) -> {allowed_to_capture}")
     return updated
 
+
+PROVIDER_ENV_PATTERNS: Dict[str, List[re.Pattern]] = {
+    'gemini': [
+        re.compile(r'^(GEMINI|GOOGLE)_.*KEYS?.*$', re.I),
+    ],
+    'groq': [
+        re.compile(r'^GROQ_.*KEYS?.*$', re.I),
+    ],
+    'gnews': [
+        re.compile(r'^(GNEWS|NEWS)_.*KEYS?.*$', re.I),
+    ],
+    'elevenlabs': [
+        re.compile(r'^ELEVEN.*KEYS?.*$', re.I),
+    ],
+    'openai': [
+        re.compile(r'^OPENAI_.*KEYS?.*$', re.I),
+    ],
+    'anthropic': [
+        re.compile(r'^(ANTHROPIC|CLAUDE)_.*KEYS?.*$', re.I),
+    ],
+}
+
+def match_provider_for_env(key_name: str) -> Optional[str]:
+    k = key_name.strip()
+    for prov, patterns in PROVIDER_ENV_PATTERNS.items():
+        for pat in patterns:
+            if pat.match(k):
+                return prov
+    return None
+
+def _parse_keys_from_value(raw_val: Any) -> List[str]:
+    if not raw_val:
+        return []
+    if isinstance(raw_val, list):
+        return [str(k).strip().strip('\'\"') for k in raw_val if str(k).strip().strip('\'\"')]
+    val_str = str(raw_val).strip()
+    if not val_str:
+        return []
+    if val_str.startswith('[') and val_str.endswith(']'):
+        try:
+            arr = json.loads(val_str)
+            if isinstance(arr, list):
+                return [str(k).strip().strip('\'\"') for k in arr if str(k).strip().strip('\'\"')]
+        except Exception:
+            pass
+    parts = re.split(r'[,;\n\r]+', val_str)
+    return [p.strip().strip('\'\"') for p in parts if p.strip().strip('\'\"')]
+
+def get_candidate_env_paths() -> List[Path]:
+    vault_dir = getattr(config, 'VAULT_DIR', Path(__file__).resolve().parent)
+    candidates = [
+        vault_dir.parent / '.env',
+        vault_dir.parent / '.env.local',
+        vault_dir / '.env',
+        vault_dir / '.env.local',
+        vault_dir.parent / 'Engine' / '.env',
+        vault_dir.parent / 'Client' / '.env',
+        vault_dir.parent / 'Client' / '.env.local',
+        Path.cwd() / '.env',
+        Path.cwd() / '.env.local',
+    ]
+    seen = set()
+    result = []
+    for p in candidates:
+        try:
+            resolved = p.resolve()
+            if resolved not in seen:
+                seen.add(resolved)
+                result.append(resolved)
+        except Exception:
+            pass
+    return result
+
+def parse_env_file(path: Path) -> Dict[str, str]:
+    if not path.is_file():
+        return {}
+    try:
+        from dotenv import dotenv_values
+        vals = dotenv_values(path)
+        if vals:
+            return {k: str(v) for k, v in vals.items() if k and v is not None}
+    except Exception:
+        pass
+    vals: Dict[str, str] = {}
+    try:
+        content = path.read_text(encoding='utf-8', errors='ignore')
+        for line in content.splitlines():
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            if '=' in line:
+                k, v = line.split('=', 1)
+                k = k.strip()
+                v = v.strip().strip('\'\"')
+                if k:
+                    vals[k] = v
+    except Exception:
+        pass
+    return vals
+
+_LAST_ENV_STATE: Dict[str, Any] = {
+    'mtimes': {},
+    'env_snapshot': {},
+}
+
+def sync_env_keys(force: bool = False) -> Dict[str, Any]:
+    global _DB_CONN, _LAST_ENV_STATE
+    if _DB_CONN is None:
+        init_config_storage()
+
+    candidate_paths = get_candidate_env_paths()
+    cur_mtimes: Dict[str, float] = {}
+    for p in candidate_paths:
+        try:
+            if p.is_file():
+                cur_mtimes[str(p)] = p.stat().st_mtime
+        except Exception:
+            pass
+
+    cur_env_snapshot: Dict[str, str] = {}
+    for k, v in os.environ.items():
+        if match_provider_for_env(k):
+            cur_env_snapshot[k] = str(v)
+
+    if not force:
+        if (
+            cur_mtimes == _LAST_ENV_STATE.get('mtimes')
+            and cur_env_snapshot == _LAST_ENV_STATE.get('env_snapshot')
+        ):
+            return {'synced': False, 'added_keys': 0, 'message': 'No changes in .env or environment variables.'}
+
+    _LAST_ENV_STATE['mtimes'] = dict(cur_mtimes)
+    _LAST_ENV_STATE['env_snapshot'] = dict(cur_env_snapshot)
+
+    all_pairs: Dict[str, str] = {}
+    for p in candidate_paths:
+        if p.is_file():
+            all_pairs.update(parse_env_file(p))
+    all_pairs.update(cur_env_snapshot)
+
+    provider_keys: Dict[str, List[str]] = {}
+    for var_name, var_val in all_pairs.items():
+        prov = match_provider_for_env(var_name)
+        if prov:
+            parsed = _parse_keys_from_value(var_val)
+            if parsed:
+                if prov not in provider_keys:
+                    provider_keys[prov] = []
+                for k in parsed:
+                    if k not in provider_keys[prov]:
+                        provider_keys[prov].append(k)
+
+    added_total = 0
+    synced_summary: Dict[str, int] = {}
+
+    for prov, new_keys in provider_keys.items():
+        if prov in ('groq', 'gemini', 'openai', 'anthropic'):
+            cursor = _DB_CONN.execute(
+                'SELECT id, total_keys, current_key, keys FROM ai_configs WHERE LOWER(llm_provider) = LOWER(?)',
+                (prov,)
+            )
+            row = cursor.fetchone()
+            if not row:
+                _DB_CONN.execute(
+                    "INSERT INTO ai_configs (llm_provider, total_keys, current_key, keys) VALUES (?, ?, 0, ?)",
+                    (prov, len(new_keys), json.dumps(new_keys))
+                )
+                added_total += len(new_keys)
+                synced_summary[prov] = len(new_keys)
+            else:
+                row_id, cur_total, cur_key_idx, raw_keys = row
+                try:
+                    existing = json.loads(raw_keys) if raw_keys else []
+                except Exception:
+                    existing = []
+                existing = [str(k).strip() for k in existing if str(k).strip()]
+                merged = list(existing)
+                new_added = 0
+                for k in new_keys:
+                    if k not in merged:
+                        merged.append(k)
+                        new_added += 1
+                if new_added > 0:
+                    valid_idx = min(cur_key_idx, max(0, len(merged) - 1)) if merged else 0
+                    _DB_CONN.execute(
+                        'UPDATE ai_configs SET total_keys = ?, current_key = ?, keys = ? WHERE id = ?',
+                        (len(merged), valid_idx, json.dumps(merged), row_id)
+                    )
+                    added_total += new_added
+                    synced_summary[prov] = new_added
+
+        elif prov == 'gnews':
+            cursor = _DB_CONN.execute('SELECT id, current_key, keys FROM gnews_config LIMIT 1')
+            row = cursor.fetchone()
+            if not row:
+                new_id = str(uuid.uuid4())
+                _DB_CONN.execute(
+                    "INSERT INTO gnews_config (id, current_key, keys) VALUES (?, 0, ?)",
+                    (new_id, json.dumps(new_keys))
+                )
+                added_total += len(new_keys)
+                synced_summary[prov] = len(new_keys)
+            else:
+                row_id, cur_key_idx, raw_keys = row
+                try:
+                    existing = json.loads(raw_keys) if raw_keys else []
+                except Exception:
+                    existing = []
+                existing = [str(k).strip() for k in existing if str(k).strip()]
+                merged = list(existing)
+                new_added = 0
+                for k in new_keys:
+                    if k not in merged:
+                        merged.append(k)
+                        new_added += 1
+                if new_added > 0:
+                    valid_idx = min(cur_key_idx, max(0, len(merged) - 1)) if merged else 0
+                    _DB_CONN.execute(
+                        'UPDATE gnews_config SET current_key = ?, keys = ? WHERE id = ?',
+                        (valid_idx, json.dumps(merged), row_id)
+                    )
+                    added_total += new_added
+                    synced_summary[prov] = new_added
+
+        elif prov == 'elevenlabs':
+            cursor = _DB_CONN.execute(
+                'SELECT id, total_keys, current_key, keys FROM voice_models WHERE LOWER(provider) = LOWER(?)',
+                ('elevenlabs',)
+            )
+            row = cursor.fetchone()
+            if not row:
+                _DB_CONN.execute(
+                    "INSERT INTO voice_models (provider, total_keys, current_key, keys) VALUES (?, ?, 0, ?)",
+                    ('elevenlabs', len(new_keys), json.dumps(new_keys))
+                )
+                added_total += len(new_keys)
+                synced_summary[prov] = len(new_keys)
+            else:
+                row_id, cur_total, cur_key_idx, raw_keys = row
+                try:
+                    existing = json.loads(raw_keys) if raw_keys else []
+                except Exception:
+                    existing = []
+                existing = [str(k).strip() for k in existing if str(k).strip()]
+                merged = list(existing)
+                new_added = 0
+                for k in new_keys:
+                    if k not in merged:
+                        merged.append(k)
+                        new_added += 1
+                if new_added > 0:
+                    valid_idx = min(cur_key_idx, max(0, len(merged) - 1)) if merged else 0
+                    _DB_CONN.execute(
+                        'UPDATE voice_models SET total_keys = ?, current_key = ?, keys = ? WHERE id = ?',
+                        (len(merged), valid_idx, json.dumps(merged), row_id)
+                    )
+                    added_total += new_added
+                    synced_summary[prov] = new_added
+
+    if added_total > 0:
+        _DB_CONN.commit()
+        save_config_storage()
+        logger.info(f"Synchronized {added_total} new API key(s) from .env / environment into Vault: {synced_summary}")
+
+    return {
+        'synced': True,
+        'added_keys': added_total,
+        'summary': synced_summary,
+        'message': f"Synchronized {added_total} new API key(s) from .env / environment." if added_total > 0 else "Environment checked; no new keys to add."
+    }
+
 def _seed_default_ai_configs() -> None:
     global _DB_CONN
     if _DB_CONN is None:
@@ -469,6 +742,7 @@ def get_gnews_config() -> Dict[str, Any]:
     global _DB_CONN
     if _DB_CONN is None:
         init_config_storage()
+    sync_env_keys(force=False)
     cursor = _DB_CONN.execute("SELECT id, current_key, keys FROM gnews_config LIMIT 1")
     row = cursor.fetchone()
     if not row:
@@ -610,6 +884,7 @@ def get_all_ai_configs() -> List[Dict[str, Any]]:
     global _DB_CONN
     if _DB_CONN is None:
         init_config_storage()
+    sync_env_keys(force=False)
     cursor = _DB_CONN.execute('SELECT id, llm_provider, total_keys, current_key, keys FROM ai_configs ORDER BY id ASC')
     rows = cursor.fetchall()
     results: List[Dict[str, Any]] = []
@@ -628,6 +903,7 @@ def get_ai_config(provider: str) -> Dict[str, Any]:
     global _DB_CONN
     if _DB_CONN is None:
         init_config_storage()
+    sync_env_keys(force=False)
     clean_provider = provider.strip()
     if not clean_provider:
         raise ValueError('Provider name cannot be empty')
@@ -724,6 +1000,7 @@ def get_all_voice_models() -> List[Dict[str, Any]]:
     global _DB_CONN
     if _DB_CONN is None:
         init_config_storage()
+    sync_env_keys(force=False)
     cursor = _DB_CONN.execute('SELECT id, provider, total_keys, current_key, keys FROM voice_models ORDER BY id ASC')
     rows = cursor.fetchall()
     results: List[Dict[str, Any]] = []
@@ -748,6 +1025,7 @@ def get_voice_model(provider: str) -> Dict[str, Any]:
     global _DB_CONN
     if _DB_CONN is None:
         init_config_storage()
+    sync_env_keys(force=False)
     clean_provider = provider.strip()
     if not clean_provider:
         raise ValueError('Provider name cannot be empty')

@@ -32,6 +32,7 @@ def call(prompt: str, work: str) -> str:
     english_system_instruction = (
         "You are MIRA AI. Respond strictly to the user query or task with short, simple, and precise answers. "
         "Do not include extra information, unsolicited suggestions, or unrelated content. "
+        "Be factually accurate, grounded, and truthful. Never hallucinate, invent, or assume facts, code, or data not supported by context. "
         "You must ALWAYS communicate and respond strictly in English."
     )
     for model_idx, model in enumerate(models):

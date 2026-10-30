@@ -824,20 +824,50 @@ export const ChatsPage: FC = () => {
       const currentSid = selectedSessionIdRef.current;
       if (currentSid === session_id || !currentSid) {
         setMessages((prev) => {
-          if (prev.some((m) => m.id === ai_message.id)) {
+          const hasAi = prev.some((m) => m.id === ai_message.id);
+          const hasTemp = prev.some((m) => m.id.startsWith("temp-"));
+          if (hasAi && !hasTemp) {
             return prev;
           }
+
           let updated = [...prev];
           if (user_message) {
-            updated = updated.map((m) =>
-              m.id.startsWith("temp-") &&
+            let replaced = false;
+            updated = updated.map((m) => {
+              if (
+                m.id.startsWith("temp-") &&
                 (m.content === user_message.content || m.content.trim() === user_message.content.trim())
-                ? user_message
+              ) {
+                replaced = true;
+                return user_message;
+              }
+              return m;
+            });
+            if (!replaced) {
+              for (let i = updated.length - 1; i >= 0; i--) {
+                if (updated[i].id.startsWith("temp-")) {
+                  updated[i] = user_message;
+                  replaced = true;
+                  break;
+                }
+              }
+            }
+            if (!updated.some((m) => m.id === user_message.id)) {
+              updated.push(user_message);
+            }
+          } else {
+            // Keep temp- user messages by confirming them so user prompt never vanishes
+            updated = updated.map((m) =>
+              m.id.startsWith("temp-")
+                ? { ...m, id: `confirmed-${m.id.replace("temp-", "")}` }
                 : m
             );
           }
+
           updated = updated.filter((m) => !m.id.startsWith("temp-"));
-          updated.push(ai_message);
+          if (!updated.some((m) => m.id === ai_message.id)) {
+            updated.push(ai_message);
+          }
           return updated;
         });
 
@@ -894,15 +924,14 @@ export const ChatsPage: FC = () => {
 
     setMessages((prev) => {
       // Avoid state update if messages list has not actually changed
-      const isSame =
-        prev === cached ||
-        (prev.length === cached.length &&
-          prev.length > 0 &&
-          prev[prev.length - 1]?.id === cached[cached.length - 1]?.id &&
-          prev[prev.length - 1]?.content === cached[cached.length - 1]?.content);
-
-      if (isSame) {
-        return prev;
+      if (prev === cached) return prev;
+      if (prev.length === cached.length) {
+        const isIdentical = prev.every(
+          (p, idx) => p.id === cached[idx]?.id && p.content === cached[idx]?.content
+        );
+        if (isIdentical) {
+          return prev;
+        }
       }
 
       // If user is at or near bottom, keep pinned to bottom smoothly
@@ -1184,12 +1213,18 @@ export const ChatsPage: FC = () => {
       // If response returned synchronous ai_message (e.g. fallback or mock)
       if (response.ai_message) {
         const aiMsg = response.ai_message;
-        resolveAiMessage(targetSessionId, jobId, response.user_message, aiMsg);
+        const userMsg = response.user_message;
+        resolveAiMessage(targetSessionId, jobId, userMsg, aiMsg);
         if (selectedSessionIdRef.current === targetSessionId) {
           setMessages((prev) => {
-            const hasAi = prev.some((m) => m.id === aiMsg.id);
-            if (hasAi) return prev;
-            return [...prev.filter((m) => !m.id.startsWith("temp-")), aiMsg];
+            let updated = prev.filter((m) => m.id !== tempId && !m.id.startsWith("temp-"));
+            if (userMsg && !updated.some((m) => m.id === userMsg.id)) {
+              updated.push(userMsg);
+            }
+            if (!updated.some((m) => m.id === aiMsg.id)) {
+              updated.push(aiMsg);
+            }
+            return updated;
           });
         }
         fetchSessions(1, null, false, true);
@@ -2002,15 +2037,32 @@ export const ChatsPage: FC = () => {
                       <span className="font-semibold text-cyan-400">Mira</span>
                       <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
                     </div>
-                    <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-zinc-900/90 border border-cyan-500/30 text-xs sm:text-[13px] text-zinc-200 shadow-[0_0_25px_rgba(6,182,212,0.1)] flex items-center gap-3">
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-bounce [animation-delay:-0.3s]" />
-                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-bounce [animation-delay:-0.15s]" />
-                        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-bounce" />
+                    <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-zinc-900/90 border border-cyan-500/30 text-xs sm:text-[13px] text-zinc-200 shadow-[0_0_25px_rgba(6,182,212,0.1)] flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-bounce [animation-delay:-0.3s]" />
+                          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-bounce [animation-delay:-0.15s]" />
+                          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-bounce" />
+                        </div>
+                        <span className="font-mono text-cyan-300 text-xs transition-all duration-300 animate-pulse truncate">
+                          {CHAT_LOADING_MESSAGES[loadingMessageIndex]}
+                        </span>
                       </div>
-                      <span className="font-mono text-cyan-300 text-xs transition-all duration-300 animate-pulse truncate">
-                        {CHAT_LOADING_MESSAGES[loadingMessageIndex]}
-                      </span>
+                      {selectedSessionId && (
+                        <button
+                          type="button"
+                          id="btn-cancel-waiting"
+                          onClick={() => {
+                            clearSendingSession(selectedSessionId);
+                            toast.info("Waiting cancelled. You can send another message.", { title: "Cancelled" });
+                          }}
+                          title="Cancel waiting and unlock chat input"
+                          aria-label="Cancel waiting"
+                          className="px-2 py-0.5 text-[11px] font-sans text-zinc-400 hover:text-cyan-300 hover:bg-white/10 rounded-lg border border-white/10 hover:border-cyan-500/40 shrink-0 transition-colors cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2123,19 +2175,38 @@ export const ChatsPage: FC = () => {
               <button
                 type="button"
                 id="btn-send-message"
-                onClick={handleSendMessage}
-                disabled={!inputText.trim() || isCurrentSessionSending || (!hasLlmKeys && !isAiConfigsLoading)}
+                onClick={() => {
+                  if (isCurrentSessionSending && selectedSessionId) {
+                    const info = sendingSessions[selectedSessionId];
+                    if (info && Date.now() - info.startedAt > 20000) {
+                      clearSendingSession(selectedSessionId);
+                      toast.info("Sending reset. You can now send again.", { title: "Reset" });
+                      return;
+                    }
+                  }
+                  handleSendMessage();
+                }}
+                disabled={
+                  !inputText.trim() ||
+                  (!hasLlmKeys && !isAiConfigsLoading) ||
+                  (isCurrentSessionSending &&
+                    Boolean(
+                      selectedSessionId &&
+                      sendingSessions[selectedSessionId] &&
+                      Date.now() - sendingSessions[selectedSessionId].startedAt <= 20000
+                    ))
+                }
                 title={
                   !hasLlmKeys && !isAiConfigsLoading
                     ? "LLM API key required to send messages"
                     : isCurrentSessionSending
-                      ? "Waiting for AI response..."
+                      ? "Waiting for AI response... (Click after 20s to unlock)"
                       : "Send message (Enter)"
                 }
                 aria-label="Send message"
                 className={cn(
                   "p-2 rounded-xl text-white font-medium transition-all duration-150 flex items-center justify-center shrink-0 cursor-pointer shadow-md",
-                  inputText.trim() && !isCurrentSessionSending && hasLlmKeys
+                  inputText.trim() && (!isCurrentSessionSending || (selectedSessionId && sendingSessions[selectedSessionId] && Date.now() - sendingSessions[selectedSessionId].startedAt > 20000)) && hasLlmKeys
                     ? "bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 active:scale-95 shadow-cyan-500/20"
                     : "bg-zinc-800 text-zinc-500 opacity-60 cursor-not-allowed"
                 )}

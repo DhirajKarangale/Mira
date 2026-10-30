@@ -663,7 +663,7 @@ Strict Rules:
 1. Every suggestion must explicitly reference confirmed active files, components, or tasks from the context above.
 2. Keep each suggestion short, simple, and precise (1 to 2 short sentences, maximum 28 words).
 3. Do not include extra information, unsolicited generic advice, or unrelated content.
-4. Do not invent unverified tasks or projects.
+4. Strict Anti-Hallucination Grounding: Rely strictly and exclusively on the Ongoing Work, Active Files, and Signals provided above. Do not invent, extrapolate, or hallucinate non-existent files, foreign repositories, unverified bugs, or imaginary companies. If context is sparse, suggest only actions verifiable from the active applications and files listed.
 5. All suggestions must be in English.
 6. Return strictly a valid JSON array of {target_count} strings:
 [

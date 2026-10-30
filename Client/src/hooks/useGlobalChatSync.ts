@@ -195,6 +195,8 @@ export function useGlobalChatSync() {
         try {
           socket.send(JSON.stringify({ type: "ping" }));
         } catch {}
+      } else if (socket && (socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING)) {
+        connectWs();
       }
     }, 15000);
 
@@ -255,7 +257,13 @@ export function useGlobalChatSync() {
           if (lastMsg && lastMsg.role === "ai") {
             const sendingInfo = store.sendingSessions[sid];
             const userPrompt = sendingInfo?.userPrompt;
-            store.resolveAiMessage(sid, sendingInfo?.jobId, null, lastMsg);
+            // Find matching user message in msgs so user prompt is never lost
+            const matchedUserMsg =
+              msgs.length >= 2 && msgs[msgs.length - 2]?.role === "user"
+                ? msgs[msgs.length - 2]
+                : ([...msgs].reverse().find((m) => m.role === "user") || null);
+
+            store.resolveAiMessage(sid, sendingInfo?.jobId, matchedUserMsg, lastMsg);
             store.setSessionMessages(sid, msgs);
 
             // Instantly notify active chat view for zero-latency DOM render
@@ -264,6 +272,7 @@ export function useGlobalChatSync() {
                 detail: {
                   session_id: sid,
                   job_id: sendingInfo?.jobId,
+                  user_message: matchedUserMsg,
                   ai_message: lastMsg,
                 },
               })

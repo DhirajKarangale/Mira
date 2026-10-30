@@ -44,15 +44,13 @@ def general_llm_node(state: AgentState) -> Dict[str, Any]:
 
     system_preamble = (
         f"You are MIRA.\n\n"
-        f"User Profile:\n"
-        f"- Name: {user_name}\n"
-        f"- Location: {location_str}\n\n"
+        f"User: {user_name} (Location: {location_str})\n\n"
         f"Conversation History:\n{history_text}\n\n"
         f"User Query: {user_query}\n\n"
         f"Instructions:\n"
         f"1. Respond strictly to the user's query with a short, simple, and precise answer.\n"
         f"2. Do not include extra information, unsolicited suggestions, or unrelated content.\n"
-        f"3. Be factually accurate and stick strictly to the point.\n"
+        f"3. Strict Factual Accuracy: Be factually accurate and truthful. Never fabricate facts, citations, dates, statistics, API parameters, or imaginary code libraries. If you are uncertain or if information cannot be verified, state your uncertainty clearly rather than hallucinating.\n"
         f"4. Respond strictly in English."
     )
 

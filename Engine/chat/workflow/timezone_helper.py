@@ -198,31 +198,25 @@ def parse_time_expression(
         desc = f"past 7 days ({start_day.strftime('%Y-%m-%d')} to {today.strftime('%Y-%m-%d')})"
         return int(start_dt.timestamp()), int(end_dt.timestamp()), desc
 
-    # 6. Specific explicit date e.g. "24/10/2026", "24-10-2026", "24_10_2026", "2026-10-24"
-    date_match = re.search(r'\b(\d{1,2})[/_\-](\d{1,2})[/_\-](\d{4})\b', expr_clean)
-    if date_match:
-        d_val, m_val, y_val = int(date_match.group(1)), int(date_match.group(2)), int(date_match.group(3))
-        try:
-            target_date = date(y_val, m_val, d_val)
+    # 6. Universal dynamic date parsing (handles all standard numeric and natural language calendar dates)
+    try:
+        from dateutil import parser as dt_parser
+        default_dt = datetime(today.year, 1, 1, 0, 0, 0)
+        parsed_dt = dt_parser.parse(expr_clean, fuzzy=True, default=default_dt)
+        if parsed_dt:
+            target_date = parsed_dt.date()
             start_dt, end_dt, sub_desc = _extract_subday_range(expr_clean, target_date, user_tz)
             if start_dt and end_dt:
-                return int(start_dt.timestamp()), int(end_dt.timestamp()), f"{target_date.strftime('%Y-%m-%d')} {sub_desc}"
+                return int(start_dt.timestamp()), int(end_dt.timestamp()), f"{target_date.strftime('%B %d, %Y')} {sub_desc}"
+            if parsed_dt.time() != dtime.min:
+                st = datetime.combine(target_date, parsed_dt.time(), tzinfo=user_tz) - timedelta(minutes=30)
+                et = st + timedelta(hours=1)
+                return int(st.timestamp()), int(et.timestamp()), f"around {parsed_dt.strftime('%I:%M %p')} on {target_date.strftime('%B %d, %Y')}"
             start_dt = datetime.combine(target_date, dtime.min, tzinfo=user_tz)
             end_dt = datetime.combine(target_date, dtime.max, tzinfo=user_tz)
-            return int(start_dt.timestamp()), int(end_dt.timestamp()), target_date.strftime('%Y-%m-%d')
-        except ValueError:
-            pass
-
-    iso_date_match = re.search(r'\b(\d{4})[/_\-](\d{1,2})[/_\-](\d{1,2})\b', expr_clean)
-    if iso_date_match:
-        y_val, m_val, d_val = int(iso_date_match.group(1)), int(iso_date_match.group(2)), int(iso_date_match.group(3))
-        try:
-            target_date = date(y_val, m_val, d_val)
-            start_dt = datetime.combine(target_date, dtime.min, tzinfo=user_tz)
-            end_dt = datetime.combine(target_date, dtime.max, tzinfo=user_tz)
-            return int(start_dt.timestamp()), int(end_dt.timestamp()), target_date.strftime('%Y-%m-%d')
-        except ValueError:
-            pass
+            return int(start_dt.timestamp()), int(end_dt.timestamp()), target_date.strftime('%B %d, %Y')
+    except Exception:
+        pass
 
     # 7. "between X and Y" on current date
     start_dt, end_dt, sub_desc = _extract_subday_range(expr_clean, today, user_tz)

@@ -469,6 +469,13 @@ async def update_ai_priorities_endpoint(payload: Union[List[str], AIPrioritiesUp
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to update AI priorities: {str(e)}'})
 
+@router.post('/config/sync-env', status_code=status.HTTP_200_OK)
+async def sync_env_endpoint():
+    try:
+        return config_storage.sync_env_keys(force=True)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={'message': f'Failed to synchronize environment keys: {str(e)}'})
+
 class VoiceModelResponse(BaseModel):
     id: Optional[int] = None
     provider: str

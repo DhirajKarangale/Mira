@@ -104,6 +104,7 @@ Weather report for {city_name}:
 Task:
 Generate a short, precise weather summary for {city_name} (1 to 2 short sentences, max 22 words).
 State current conditions, high/low, and rain expectations.
+Strict Grounding: Rely strictly and solely on the verified weather parameters above. Do not invent or hallucinate temperatures, precipitation, or conditions not present in the report.
 Strict English only. No quotation marks, conversational filler, or markdown asterisks."""
 
     from config import CONFIG
@@ -262,7 +263,8 @@ Strict Rules:
    State simply and directly that no weather precautions are needed.
 3. Keep the response short, simple, and precise (max 25 words).
 4. Do not include extra information, unsolicited suggestions, or conversational fluff.
-5. Strictly return ONLY the message text in English without quotation marks or asterisks."""
+5. Strict Grounding: Rely strictly on the verified weather parameters above. Do not invent or hallucinate temperatures, precipitation, or conditions not present in the report.
+6. Strictly return ONLY the message text in English without quotation marks or asterisks."""
 
     from config import CONFIG
     if CONFIG.has_any_llm_key():

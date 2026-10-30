@@ -4,11 +4,16 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import sys
 _engine_dir = Path(__file__).resolve().parent.parent
-import importlib.util
-_spec = importlib.util.spec_from_file_location("engine_config_module", _engine_dir / "config.py")
-engine_config = importlib.util.module_from_spec(_spec)
-sys.modules["engine_config_module"] = engine_config
-_spec.loader.exec_module(engine_config)
+if str(_engine_dir) not in sys.path:
+    sys.path.insert(0, str(_engine_dir))
+try:
+    import config as engine_config
+except ImportError:
+    import importlib.util
+    _spec = importlib.util.spec_from_file_location("engine_config_module", _engine_dir / "config.py")
+    engine_config = importlib.util.module_from_spec(_spec)
+    sys.modules["engine_config_module"] = engine_config
+    _spec.loader.exec_module(engine_config)
 _CONFIG_PATH = Path(__file__).resolve().parent / 'config.json'
 _WORK_CONFIGS: Dict[str, Any] = {}
 _CONFIG_LAST_MTIME: float = 0.0

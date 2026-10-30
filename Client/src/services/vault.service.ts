@@ -300,6 +300,11 @@ export const vaultService = {
     return response.data;
   },
 
+  async syncEnvKeys(): Promise<{ status: string; message: string; added_keys?: number; summary?: Record<string, number> }> {
+    const response = await vaultApi.post<{ status: string; message: string; added_keys?: number; summary?: Record<string, number> }>("/config/sync-env");
+    return response.data;
+  },
+
   async getAIPriorities(): Promise<string[]> {
     const response = await vaultApi.get<string[]>("/ai/priorities");
     return response.data;
