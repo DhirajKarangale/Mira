@@ -251,6 +251,38 @@ def detect_mira_intent(query: str) -> str:
     return "INFORMATIONAL"
 
 
+def is_query_about_mira(q: str) -> bool:
+    """
+    Distinguishes queries genuinely asking about MIRA (its identity, architecture, creator,
+    codebase, modules) from casual greetings or vocative addresses like 'Hey Mira, ...'
+    where MIRA is not the subject of the request.
+    """
+    q_lower = q.strip().lower()
+
+    # 1. Direct phrases where MIRA is the subject
+    mira_subject_patterns = [
+        r'\b(what|who|how|why|tell me about|explain|describe)\b.*\b(mira|meera)\b',
+        r'\b(mira|meera)\b.*\b(architecture|modules?|codebase|repo|system|engine|vault|memory|operator|broker|features?|capabilities|version|framework|design)\b',
+        r'\b(architecture|modules?|codebase|repo|system|engine|vault|memory|operator|broker|features?|capabilities|version|framework|design)\b.*\b(mira|meera)\b',
+        r'\b(who|what)\s+(are\s+you|created\s+you|made\s+you|built\s+you|developed\s+you|programmed\s+you|is\s+your\s+creator|is\s+your\s+author|is\s+your\s+developer)\b',
+        r'^\s*(what|who)\s+is\s+(mira|meera)\s*[\?\.\!]*$',
+        r'^\s*(mira|meera)\s*[\?\.\!]*$',
+    ]
+    for pattern in mira_subject_patterns:
+        if re.search(pattern, q_lower):
+            return True
+
+    # 2. Strip salutation / vocative prefixes: "Hey, Mira.", "Hey Mira,", "Mira, ...", "..., Mira"
+    stripped = re.sub(r'^(hey|hi|hello|ok|okay|dear)?[,\s]*(mira|meera)\b[,\.\!\?\:\s]*', '', q_lower).strip()
+    stripped = re.sub(r'[,\.\!\?\s]+(mira|meera)[,\.\!\?\s]*$', '', stripped).strip()
+
+    # If after stripping the vocative greeting, the word 'mira' is still present as a topic
+    if re.search(r'\b(mira|meera|miras|mira\'s)\b', stripped):
+        return True
+
+    return False
+
+
 def detect_mira_query(
     query: str,
     chat_history: Optional[List[Dict[str, Any]]] = None
@@ -269,8 +301,21 @@ def detect_mira_query(
     if is_personal_activity_query(q):
         return None
 
-    # Rule 1: Explicit MIRA mention
-    has_mira_word = bool(words.intersection({"mira", "miras"})) or "mira " in q or " mira" in q
+    # Check for MIRA operational query (keys, suggestions, redis, workers, db)
+    op_info = is_mira_operational_query(query, chat_history=chat_history)
+    is_operational = op_info is not None
+
+    # Rule 0.5: If it is NOT an operational query, don't intercept weather or news
+    if not is_operational:
+        is_weather = any(w in q for w in ("weather", "forecast", "is it raining", "will it rain", "temperature", "how hot is it", "how cold is it"))
+        if is_weather:
+            return None
+        is_news = any(n in q for n in ("top headlines", "latest news", "breaking news", "tech news", "sports news", "business news", "world news", "current headlines")) or re.search(r'\b(news\s+in|news\s+about|today\'s\s+news)\b', q)
+        if is_news:
+            return None
+
+    # Rule 1: Explicit MIRA mention where MIRA is the subject (not just a greeting like 'Hey Mira')
+    has_mira_word = is_query_about_mira(query)
     
     # Rule 2: Subsystem combinations
     has_subsystem_match = False

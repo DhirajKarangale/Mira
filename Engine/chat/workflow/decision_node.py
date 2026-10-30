@@ -73,15 +73,19 @@ def _fast_route_heuristic(query: str, chat_history: List[Dict[str, Any]]) -> Opt
 
     # 1. Pure conversational chit-chat / greetings / farewells / thanks (even if addressing MIRA by name)
     clean_no_mira = re.sub(r'\b(mira|meera)\b', '', clean_q).strip()
-    greetings = {
+    clean_no_mira = re.sub(r'\s+', ' ', clean_no_mira)
+    pure_greetings = {
         "hello", "hi", "hey", "good morning", "good afternoon", "good evening",
-        "how are you", "thanks", "thank you", "bye", "goodbye", "cool", "ok", "okay", "awesome", "great", "nice"
+        "how are you", "how are you doing", "hows it going", "how is it going",
+        "whats up", "what's up", "wassup",
+        "thanks", "thank you", "bye", "goodbye", "cool", "ok", "okay", "awesome", "great", "nice",
+        "hey there", "hi there", "hello there"
     }
+    remainder = re.sub(r'^(hello|hi|hey|good morning|good afternoon|good evening)\b', '', clean_no_mira).strip()
     is_greeting = (
-        clean_q in greetings
-        or clean_no_mira in greetings
-        or any(clean_q.startswith(g + " ") for g in ("hello", "hi", "hey"))
-        or any(clean_no_mira.startswith(g + " ") for g in ("hello", "hi", "hey", "good morning", "good afternoon", "good evening"))
+        clean_q in pure_greetings
+        or clean_no_mira in pure_greetings
+        or (remainder in pure_greetings or remainder in {"there", "buddy", "friend", ""})
     )
     if is_greeting and not is_activity_query:
         # If greeting does not contain specific system commands/technical inquiries
@@ -89,7 +93,19 @@ def _fast_route_heuristic(query: str, chat_history: List[Dict[str, Any]]) -> Opt
         if not any(k in q for k in technical_tokens):
             return "general_llm", "Fast heuristic: Conversational greeting/chit-chat", {}
 
-    # 2. Check for MIRA query or project modification request (0ms fast path)
+    # 2. Unambiguous weather query (when not asking about past personal activity or MIRA keys)
+    weather_terms = ("weather", "forecast", "temperature", "is it raining", "will it rain", "rain forecast", "how hot is it", "how cold is it")
+    is_weather_key = any(k in q for k in ("weather key", "weather api key", "weather_config"))
+    if not is_activity_query and not is_weather_key and any(w in q for w in weather_terms):
+        return "weather", "Fast heuristic: Weather query", {}
+
+    # 3. Unambiguous news query (when not asking about past personal activity or MIRA keys)
+    news_terms = ("top headlines", "latest news", "breaking news", "tech news", "sports news", "business news", "world news", "current headlines", "news about", "news in", "news today", "today's news")
+    is_news_key = any(k in q for k in ("gnews key", "news key", "gnews api key", "gnews_config"))
+    if not is_activity_query and not is_news_key and (any(n in q for n in news_terms) or re.search(r'\b(headlines?|breaking\s+news|top\s+stories)\b', q)):
+        return "news", "Fast heuristic: News query", {}
+
+    # 4. Check for MIRA query or project modification request (0ms fast path)
     if not is_activity_query:
         try:
             mira_match = detect_mira_query(query, chat_history)
@@ -98,17 +114,11 @@ def _fast_route_heuristic(query: str, chat_history: List[Dict[str, Any]]) -> Opt
         except Exception as e:
             logger.debug(f"[DecisionNode] Fast MIRA heuristic check notice: {e}")
 
-    # 2. Unambiguous weather query (when not asking about past personal activity)
-    weather_terms = ("weather", "forecast", "is it raining", "will it rain", "temperature outside", "rain forecast", "how hot is it", "how cold is it")
-    if not is_activity_query and any(w in q for w in weather_terms):
-        return "weather", "Fast heuristic: Weather query", {}
+    # 5. Unambiguous personal activity query
+    if is_activity_query:
+        return "user_activity", "Fast heuristic: Personal activity query", {}
 
-    # 3. Unambiguous news query (when not asking about past personal activity)
-    news_terms = ("top headlines", "latest news", "breaking news", "tech news", "sports news", "business news", "world news", "current headlines")
-    if not is_activity_query and any(n in q for n in news_terms):
-        return "news", "Fast heuristic: News query", {}
-
-    # 4. Unambiguous general technical / coding / comparison query
+    # 6. Unambiguous general technical / coding / comparison query
     coding_pattern = r'\b(write|create|implement|give me|show me|how to)\s+(a\s+)?([a-z]+\s+)?(python|javascript|typescript|c\+\+|java|go|rust|sql|html|css|code|function|script|algorithm|regex|query|program|implement|build)\b'
     comp_pattern = r'\b(which\s+(?:llm|model|framework|language|tool|one)?\s*(?:is|are)\s+better|difference\s+between|compare\s+|versus|\bvs\b)'
     if not is_activity_query and not chat_history:
@@ -156,7 +166,7 @@ def decision_node(state: AgentState) -> Dict[str, Any]:
         weather_location = None
         if target_route == "weather":
             from .weather_tool import parse_forecast_days_from_query, parse_location_from_query
-            forecast_days = parse_forecast_days_from_query(user_query, default=7)
+            forecast_days = parse_forecast_days_from_query(user_query, default=1)
             weather_location = parse_location_from_query(user_query)
 
         tool_params = {

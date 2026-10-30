@@ -226,35 +226,7 @@ def handle_daily_suggestions_op(query: str, tool_params: Optional[Dict[str, Any]
 # 2. API Key Retrieval & Update Operations
 # =============================================================================
 
-def handle_api_key_op(query: str, tool_params: Optional[Dict[str, Any]] = None) -> str:
-    """
-    Executes API key retrieval, additions, updates, rotations, and priority configuration:
-      - List all configured keys across LLM, Voice, and News providers with secure masking
-      - Update or add an API key for Gemini, Groq, OpenWeather, GNews, ElevenLabs
-      - Remove an API key
-      - View or reorder AI provider failover priorities
-    """
-    q = query.strip()
-    q_lower = q.lower()
 
-    import config_storage
-    config_storage.init_config_storage()
-    from config import CONFIG
-
-    # 1. Check for AI priorities update
-    pri_update_match = re.search(r'\b(?:set|change|update)\s+ai\s+priorit(?:y|ies)\s+(?:to\s+)?([a-zA-Z0-9_,\s]+)\b', q_lower)
-    if pri_update_match:
-        raw_list = pri_update_match.group(1).replace(",", " ").split()
-        cleaned_priorities = [p.strip().lower() for p in raw_list if p.strip().lower() in ("groq", "gemini")]
-        if cleaned_priorities:
-            config_storage.update_ai_priorities(cleaned_priorities)
-            CONFIG.ai_priorities = cleaned_priorities
-            CONFIG.active_provider = cleaned_priorities[0]
-            return f"✅ **AI Priorities Updated**: Failover Order: `{' -> '.join(cleaned_priorities)}`. Active AI Provider set to **{cleaned_priorities[0]}**."
-
-    if any(w in q_lower for w in ("what are the ai priorities", "show ai priorities", "ai priority order")):
-        pris = config_storage.get_ai_priorities()
-        return f"⚡ **Current AI Failover Priority Order**: `{' -> '.join(pris)}` (Active Provider: **{CONFIG.get_active_provider()}**)."
 
 def _check_key_presence_in_vault(candidate_key: str) -> Dict[str, Any]:
     """
@@ -436,8 +408,17 @@ def handle_api_key_op(
     # 1. Check for AI priorities update
     pri_update_match = re.search(r'\b(?:set|change|update)\s+ai\s+priorit(?:y|ies)\s+(?:to\s+)?([a-zA-Z0-9_,\s]+)\b', q_lower)
     if pri_update_match:
+        current_priorities = config_storage.get_ai_priorities()
         raw_list = pri_update_match.group(1).replace(",", " ").split()
-        cleaned_priorities = [p.strip().lower() for p in raw_list if p.strip().lower() in ("groq", "gemini")]
+        valid_providers = ("groq", "gemini", "anthropic")
+        cleaned_priorities = []
+        for p in raw_list:
+            p_clean = p.strip().lower()
+            if p_clean in valid_providers and p_clean not in cleaned_priorities:
+                cleaned_priorities.append(p_clean)
+        for p in current_priorities:
+            if p not in cleaned_priorities:
+                cleaned_priorities.append(p)
         if cleaned_priorities:
             config_storage.update_ai_priorities(cleaned_priorities)
             CONFIG.ai_priorities = cleaned_priorities

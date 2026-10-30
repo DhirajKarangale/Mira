@@ -16,7 +16,7 @@ OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 OPEN_METEO_GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 MIN_FORECAST_DAYS = 1
 MAX_FORECAST_DAYS = 16
-DEFAULT_FORECAST_DAYS = 7
+DEFAULT_FORECAST_DAYS = 1
 
 # WMO Weather interpretation codes (WW)
 # https://open-meteo.com/en/docs
@@ -97,8 +97,8 @@ def parse_forecast_days_from_query(query: str, default: int = DEFAULT_FORECAST_D
     if "tomorrow" in q:
         return 2
 
-    # "week" / "weekend" indicates 7-day outlook
-    if "week" in q or "weekend" in q:
+    # "week" / "weekend" / "weekly" / "forecast" indicates 7-day outlook
+    if any(k in q for k in ("week", "weekend", "forecast", "outlook", "upcoming")):
         return 7
 
     # "today", "current", "now", "tonight", "right now", "currently", "temperature"
