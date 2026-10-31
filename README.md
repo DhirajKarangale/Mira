@@ -31,6 +31,15 @@
   <a href="SECURITY.md"><strong>🛡️ Read the Security & Vulnerability Policy (SECURITY.md) →</strong></a>
 </p>
 
+<p align="center">
+  <video src="Assets/Mira.mp4" controls="controls" width="100%">
+    <source src="Assets/Mira.mp4" type="video/mp4" />
+    Your browser does not support the video tag.
+  </video>
+  <br />
+  <em>📹 Watch the <a href="Assets/Mira.mp4"><strong>MIRA Demonstration Video</strong></a> in action.</em>
+</p>
+
 > [!NOTE]
 > **Master Knowledge Base & Security Policy**: For an exhaustive, systematic reference guide detailing every microservice, port mapping, data pipeline, and cryptographic model in MIRA, read the **[MIRA Knowledge Base (KNOWLEDGE_BASE.md)](KNOWLEDGE_BASE.md)**. For vulnerability reporting, cryptographic specifications, and privacy guarantees, refer to our **[Security Policy (SECURITY.md)](SECURITY.md)**.
 
