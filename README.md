@@ -31,21 +31,13 @@
   <a href="SECURITY.md"><strong>🛡️ Read the Security & Vulnerability Policy (SECURITY.md) →</strong></a>
 </p>
 
-<p align="center">
-  <video src="Assets/Mira.mp4" controls="controls" width="100%">
-    <source src="Assets/Mira.mp4" type="video/mp4" />
-    Your browser does not support the video tag.
-  </video>
-  <br />
-  <em>📹 Watch the <a href="Assets/Mira.mp4"><strong>MIRA Demonstration Video</strong></a> in action.</em>
-</p>
-
 > [!NOTE]
 > **Master Knowledge Base & Security Policy**: For an exhaustive, systematic reference guide detailing every microservice, port mapping, data pipeline, and cryptographic model in MIRA, read the **[MIRA Knowledge Base (KNOWLEDGE_BASE.md)](KNOWLEDGE_BASE.md)**. For vulnerability reporting, cryptographic specifications, and privacy guarantees, refer to our **[Security Policy (SECURITY.md)](SECURITY.md)**.
 
 ---
 
 ## Table of Contents
+- [Demo & Presentation](#demo--presentation)
 - [1. What Is MIRA?](#1-what-is-mira)
 - [2. Privacy-First Architecture & Guarantees](#2-privacy-first-architecture--guarantees)
 - [3. Core Feature Matrix](#3-core-feature-matrix)
@@ -63,6 +55,21 @@
 - [8. Master System Architecture & Flow Diagram](#8-master-system-architecture--flow-diagram)
 - [9. License & Contributing](#9-license--contributing)
 - [10. Author & Contact](#10-author--contact)
+
+---
+
+<a id="demo--presentation"></a>
+## 📺 Demo & Presentation
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=LVYMRSHZtVc">
+    <img src="https://img.youtube.com/vi/LVYMRSHZtVc/maxresdefault.jpg" alt="MIRA – Your Privacy-First AI Personal Assistant | Memory, Intelligence & Voice AI" width="100%" />
+  </a>
+</p>
+
+<p align="center">
+  🎥 <strong>Video Demonstration:</strong> <a href="https://www.youtube.com/watch?v=LVYMRSHZtVc">Watch on YouTube</a> &nbsp;|&nbsp; 📊 <strong>Project Slides:</strong> <a href="Assets/Mira.pptx">View Mira.pptx</a>
+</p>
 
 ---
 
